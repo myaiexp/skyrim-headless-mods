@@ -3,9 +3,43 @@
 #include <spdlog/sinks/basic_file_sink.h>
 
 #include <cstdint>
+#include <unordered_map>
 
 namespace
 {
+	// Reserved 16-bit "ghost" systemGroup. Havok's group filter skips collision between two
+	// bodies that share the same non-zero systemGroup (top 16 bits of collisionFilterInfo) —
+	// the same rule that makes a projectile ignore its own shooter. We stamp this single shared
+	// value onto every player teammate's char-controller collidable AND onto the player's shot
+	// projectile, so the projectile phases through the entire party at once.
+	//
+	// Value choice: the 16-bit space is 0..0xFFFF. The engine assigns per-object systemGroups
+	// incrementally from low numbers as ragdolls/characters spawn; over a play session this
+	// counter stays in the low thousands at most and never climbs near the top of the range.
+	// 0xFEED (65261) sits just below the 0xFFFF ceiling, far above any value the engine hands
+	// out, so it won't clash with an actor's engine-assigned group. The enroll log line below
+	// records each teammate's *original* group, giving an in-game no-clash audit trail.
+	constexpr std::uint32_t kGhostGroup = 0xFEED;
+
+	// bhkCharacterController vtable slot 0x09 is the engine's own SetCollisionFilterInfo(uint32).
+	// CommonLibSSE-NG only labels it Unk_09 (B/bhkCharacterController.h), but two independent
+	// Skyrim SE reverse-engineering sources both place a writable filter setter there, directly
+	// after GetCollisionFilterInfo at slot 0x08 which CommonLib *does* name:
+	//   - adamhynek/activeragdoll  include/RE/havok_behavior.h
+	//   - adamhynek/higgs          include/RE/havok.h
+	// Both: `virtual void SetCollisionFilterInfo(std::uint32_t filterInfo) = 0; // 09`.
+	// This setter is what propagates the filter into the underlying Havok proxy/rigid-body
+	// collidable, so it's the correct write path (cleaner and safer than poking the collidable
+	// memory by raw offset, which is unk-padded in the headers). We invoke it through the live
+	// vtable rather than redeclaring the class.
+	constexpr std::size_t kCharCtrlSetFilterInfoSlot = 0x09;
+
+	void CharController_SetCollisionFilterInfo(RE::bhkCharacterController* a_ctrl, std::uint32_t a_filterInfo)
+	{
+		auto* vtbl = *reinterpret_cast<void***>(a_ctrl);
+		auto  fn = reinterpret_cast<void (*)(RE::bhkCharacterController*, std::uint32_t)>(vtbl[kCharCtrlSetFilterInfoSlot]);
+		fn(a_ctrl, a_filterInfo);
+	}
 	// Send spdlog (what SKSE::log::* uses) to <My Games>/SKSE/GhostAllies.log so the
 	// plugin leaves a visible trace when the game loads it.
 	void SetupLog()
@@ -22,19 +56,28 @@ namespace
 		spdlog::set_default_logger(std::move(logger));
 	}
 
-	// Find the player's teammate (follower) nearest to the player. Returns nullptr if
-	// the player has no active follower. The systemGroup is a single 16-bit value, so a
-	// given projectile can only be made to ignore ONE actor via this read-only stamp —
-	// the nearest teammate. (v2 Task 3 lifts this to the whole party via a shared group.)
-	RE::Actor* FindNearestFollower(RE::Actor* a_player)
+	// --- Whole-party ghost-group membership --------------------------------------
+	//
+	// FormID -> the teammate's ORIGINAL systemGroup, saved when we enrolled it into the ghost
+	// group. We must always be able to restore an actor's real group when it stops being a
+	// teammate, so we never strand an actor in kGhostGroup. Enroll/restore is done lazily from
+	// the stamp path (no SKSE event hooking): each player shot reconciles the map against the
+	// current teammate set.
+	std::unordered_map<RE::FormID, std::uint32_t> g_enrolled;
+
+	// Reconcile g_enrolled with the player's current teammate set:
+	//   - new teammates: save their original group, write kGhostGroup, log enrollment;
+	//   - actors no longer teammates (or whose handle is gone): restore their saved group, erase.
+	// Idempotent: an actor already at kGhostGroup is left untouched; only the top-16 systemGroup
+	// bits are changed, the low-16 layer/subsystem bits are preserved.
+	void MaintainGhostGroup(RE::PlayerCharacter* a_player)
 	{
 		auto* lists = RE::ProcessLists::GetSingleton();
 		if (!lists) {
-			return nullptr;
+			return;
 		}
-		const RE::NiPoint3 playerPos = a_player->GetPosition();
-		RE::Actor*         best = nullptr;
-		float              bestDist = 0.0f;
+
+		// Pass 1 — enroll current teammates not yet in the map.
 		for (auto& handle : lists->highActorHandles) {
 			auto actor = handle.get();
 			if (!actor || actor.get() == a_player) {
@@ -43,13 +86,47 @@ namespace
 			if (!actor->IsPlayerTeammate()) {
 				continue;
 			}
-			const float dist = actor->GetPosition().GetDistance(playerPos);
-			if (!best || dist < bestDist) {
-				best = actor.get();
-				bestDist = dist;
+			auto* ctrl = actor->GetCharController();
+			if (!ctrl) {
+				continue;
 			}
+			std::uint32_t info = 0;
+			ctrl->GetCollisionFilterInfo(info);
+			const std::uint32_t group = info >> 16;
+			if (group == kGhostGroup) {
+				continue;  // already ghosted (e.g. we enrolled it on a prior frame)
+			}
+			const RE::FormID id = actor->GetFormID();
+			if (g_enrolled.find(id) == g_enrolled.end()) {
+				g_enrolled.emplace(id, group);
+			}
+			const std::uint32_t ghosted = (info & 0x0000FFFF) | (kGhostGroup << 16);
+			CharController_SetCollisionFilterInfo(ctrl, ghosted);
+			SKSE::log::info("enrolled teammate {} ({:08X}) orig group {}",
+				actor->GetName(), id, group);
 		}
-		return best;
+
+		// Pass 2 — restore + drop anyone in the map who is no longer a current teammate.
+		for (auto it = g_enrolled.begin(); it != g_enrolled.end();) {
+			const RE::FormID id = it->first;
+			auto*            form = RE::TESForm::LookupByID(id);
+			auto*            actor = form ? form->As<RE::Actor>() : nullptr;
+			const bool       stillTeammate = actor && actor->IsPlayerTeammate();
+			if (stillTeammate) {
+				++it;
+				continue;
+			}
+			if (actor) {
+				if (auto* ctrl = actor->GetCharController()) {
+					std::uint32_t info = 0;
+					ctrl->GetCollisionFilterInfo(info);
+					const std::uint32_t restored = (info & 0x0000FFFF) | (it->second << 16);
+					CharController_SetCollisionFilterInfo(ctrl, restored);
+				}
+			}
+			SKSE::log::info("restored teammate {:08X}", id);
+			it = g_enrolled.erase(it);
+		}
 	}
 
 	// --- Ghost-allies stamp -------------------------------------------------------
@@ -59,19 +136,18 @@ namespace
 	// offset 0x0E0) via a shape linear-cast. What that cast hits is governed by the phantom
 	// collidable's broadPhaseHandle.collisionFilterInfo. Havok's group filter skips bodies
 	// sharing a non-zero systemGroup (top 16 bits) — which is exactly how a projectile
-	// already ignores its own shooter. Copying a follower's systemGroup onto the projectile's
-	// phantom makes it ignore that follower too: it passes through and keeps flying to the
-	// enemy behind, and the follower takes no hit.
+	// already ignores its own shooter. We put the WHOLE party and the projectile into one
+	// shared kGhostGroup (MaintainGhostGroup writes kGhostGroup onto each teammate's
+	// char-controller collidable); the projectile then ignores every enrolled teammate at once,
+	// passing through them and flying on to the enemy behind, and no teammate takes a hit.
 	//
-	// This is read-only — it only reads the follower's existing group and never modifies the
-	// follower. Works for arrows and every spell-projectile subclass alike (the phantom and
-	// shooter live on the base Projectile), so one routine serves them all.
+	// Works for arrows and every spell-projectile subclass alike (the phantom and shooter live
+	// on the base Projectile), so one routine serves them all.
 	//
-	// Per-projectile idempotence: we only stamp when the phantom's top-16 group bits don't
-	// already equal the follower's group. A fresh projectile may already carry its shooter's
-	// group (that's how it ignores the shooter), so we guard against the follower group rather
-	// than against 0 — guarding on ==0 could mean we never stamp at all. Overwriting also drops
-	// shooter-ignore, which is fine (the player is behind the shot).
+	// Per-projectile idempotence: we only stamp when the phantom's top-16 group bits aren't
+	// already kGhostGroup. A fresh projectile may carry its shooter's group (that's how it
+	// ignores the shooter); overwriting drops shooter-ignore, which is fine (the player is
+	// behind the shot).
 	void StampProjectilePhantom(RE::Projectile* a_proj, const char* a_label)
 	{
 		auto& runtime = a_proj->GetProjectileRuntimeData();
@@ -101,18 +177,18 @@ namespace
 		if (!player) {
 			return;
 		}
-		auto* follower = FindNearestFollower(player);
-		if (!follower) {
-			return;
-		}
-		std::uint32_t followerInfo = 0;
-		follower->GetCollisionFilterInfo(followerInfo);
-		const std::uint32_t group = followerInfo >> 16;
-		if (group != 0 && (filterInfo >> 16) != group) {
+		// Do the work only on a projectile's FIRST stamp: once its phantom carries the ghost
+		// group, the guard skips it on every later frame of its flight. Reconciling teammates
+		// here (inside the guard) rather than unconditionally means the full high-actor scan +
+		// enroll runs once per shot, not every frame for every projectile in flight — important
+		// with the auto-fire bow spamming projectiles.
+		if ((filterInfo >> 16) != kGhostGroup) {
+			// Ensure every current teammate is enrolled in the ghost group (and any ex-teammate
+			// restored) before stamping the projectile with that same group.
+			MaintainGhostGroup(player);
 			filterInfo &= 0x0000FFFF;
-			filterInfo |= (group << 16);
-			SKSE::log::info("stamped player {} -> follower {} ({:08X}) group {}",
-				a_label, follower->GetName(), follower->GetFormID(), group);
+			filterInfo |= (kGhostGroup << 16);
+			SKSE::log::info("stamped player {} -> ghost group", a_label);
 		}
 	}
 
