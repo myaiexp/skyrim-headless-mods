@@ -37,23 +37,36 @@ The physical attack button is already held while the loop runs, so the engine is
   (value `0.0`, held duration set) into the input pipeline, in place of
   `NotifyAnimationGraph("attackRelease")`. The engine runs its own loose on a genuinely-charged
   draw → honest power/damage, **no clamp**.
-- **Re-nock** = the open question (below). After a *real* release with the button still physically
-  held, the engine may auto-start a new real draw on its own. If so, the loop deletes its graph
-  re-nock (`bowAttackStart`/`BowDrawStart`/`bowDraw`) entirely and just waits for the next
-  `BowDrawn`. If not, inject a synthetic **press** to kick the next draw.
+- **Re-nock** = inject a synthetic **press** to kick the next draw. (The engine does **not**
+  auto-redraw on a still-held button — see note below — so a press injection is always required.)
 
 If this lands, **both clamps, the `PowerSpeedHook` vtable hook, and all `NotifyAnimationGraph` calls
 disappear**, replaced by input-event injection. The ~220ms saturation gap and the "graph release is
 uncharged" caveat both vanish because we are back on the engine's real path.
 
-### The one unknown that decides cleanliness
+### Note (2026-06-08): the redraw "unknown" is resolved; the real risk is deeper
 
-**Does the engine auto-redraw when the attack button is still held after a real loose?**
+The originally-flagged unknown — "does a held button auto-redraw after a loose?" — is **answered:
+no** (Mase confirmed from play). It can't, by the engine's input model: holding LMB *is* the draw
+and releasing *is* the loose; they're the same axis, so a held button never produces the
+button-**up** that looses, nor the fresh button-**down** that would redraw. So re-nock always needs
+a synthetic press; there's nothing to probe there.
 
-- Can only be answered in-game.
-- The current design's manual graph re-nock suggests "maybe not" — but that re-nock follows a
-  *cosmetic* release, which leaves the attack state machine in an odd spot. After a *real* release
-  the behavior may differ. Don't assume; probe.
+The **real** make-or-break is one level down: **will the engine honor *synthetic* button events for
+the charge path at all, or is charge welded to physical device state?** The findings doc already
+concluded charge is welded to "the real input-release path." If the attack handler **polls device
+state** rather than consuming queued events, **no injection variant works** — that's the genuine
+gamble (a "hail mary," in Mase's words). Probe step 1 is really testing *this*, not redraw.
+
+**Preferred fallback if injection doesn't charge — direct-engine loose (promising, not a long
+shot).** When the button is held past `BowDrawn`, the bow is *genuinely fully charged and waiting*
+in engine state; the physical release just triggers a launch that **consumes** that charge. The
+graph `attackRelease` triggers a launch too, but a charge-*ignorant* one (→ 0.350). So the honest
+fix may not need fake input at all: find and call the engine's **real charge-consuming loose path**
+directly (the `HighProcessData` attack-release that the physical up invokes) while the real charge
+sits there, then kick a fresh draw the same way. Precedent: *Manual Crossbow Reload* drives bow
+draw via direct engine calls. This is the first fallback below and is arguably the stronger primary
+— but we stick with the input route first per plan; pivot here if step 1 reads 0.350.
 
 ## Sequencing (probe-first)
 
