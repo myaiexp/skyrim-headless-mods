@@ -24,7 +24,8 @@ namespace
 
 	// Find the player's teammate (follower) nearest to the player. Returns nullptr if
 	// the player has no active follower. The systemGroup is a single 16-bit value, so a
-	// given arrow can only be made to ignore ONE actor — v1 picks the nearest teammate.
+	// given projectile can only be made to ignore ONE actor via this read-only stamp —
+	// the nearest teammate. (v2 Task 3 lifts this to the whole party via a shared group.)
 	RE::Actor* FindNearestFollower(RE::Actor* a_player)
 	{
 		auto* lists = RE::ProcessLists::GetSingleton();
@@ -51,87 +52,116 @@ namespace
 		return best;
 	}
 
-	// --- Ghost-allies stamp hook -------------------------------------------------
+	// --- Ghost-allies stamp -------------------------------------------------------
 	//
-	// Arrows don't collide as broadphase body pairs; each frame Projectile::UpdateImpl
+	// Projectiles don't collide as broadphase body pairs; each frame Projectile::UpdateImpl
 	// sweeps the projectile's own bhkSimpleShapePhantom (PROJECTILE_RUNTIME_DATA.unk0E0,
-	// offset 0x0E0) via a shape linear-cast. What that cast hits is governed by the
-	// phantom collidable's broadPhaseHandle.collisionFilterInfo. Havok's group filter
-	// skips bodies sharing a non-zero systemGroup (top 16 bits) — which is exactly how an
-	// arrow already ignores its own shooter. Copying a follower's systemGroup onto the
-	// arrow's phantom makes the arrow ignore that follower too: it passes through and
-	// keeps flying to the enemy behind, and the follower takes no hit.
+	// offset 0x0E0) via a shape linear-cast. What that cast hits is governed by the phantom
+	// collidable's broadPhaseHandle.collisionFilterInfo. Havok's group filter skips bodies
+	// sharing a non-zero systemGroup (top 16 bits) — which is exactly how a projectile
+	// already ignores its own shooter. Copying a follower's systemGroup onto the projectile's
+	// phantom makes it ignore that follower too: it passes through and keeps flying to the
+	// enemy behind, and the follower takes no hit.
 	//
-	// Hook point: ArrowProjectile::GetPowerSpeedMult (AE vtable slot 0xB0; SE 0xAF), the
-	// same slot RapidBow uses. It fires once per arrow at launch with the shooter known,
-	// so it's a clean place to stamp. We call the original and return it unchanged.
+	// This is read-only — it only reads the follower's existing group and never modifies the
+	// follower. Works for arrows and every spell-projectile subclass alike (the phantom and
+	// shooter live on the base Projectile), so one routine serves them all.
 	//
-	// Per-arrow idempotence: we only stamp when the phantom's systemGroup bits are still
-	// zero (a fresh arrow's phantom carries no group). Once stamped, the group is
-	// non-zero and we skip — no separate guard flag needed.
+	// Per-projectile idempotence: we only stamp when the phantom's top-16 group bits don't
+	// already equal the follower's group. A fresh projectile may already carry its shooter's
+	// group (that's how it ignores the shooter), so we guard against the follower group rather
+	// than against 0 — guarding on ==0 could mean we never stamp at all. Overwriting also drops
+	// shooter-ignore, which is fine (the player is behind the shot).
+	void StampProjectilePhantom(RE::Projectile* a_proj, const char* a_label)
+	{
+		auto& runtime = a_proj->GetProjectileRuntimeData();
+		auto  shooter = runtime.shooter.get();
+		if (!shooter || !shooter->IsPlayerRef() || !runtime.unk0E0) {
+			return;
+		}
+		// Reach the underlying hkpShapePhantom's collidable filter info:
+		//   bhkSimpleShapePhantom*  unk0E0                              (0x0E0, Projectile.h)
+		//     ->referencedObject (hkRefPtr<hkReferencedObject>)         (bhkRefObject, 0x10)
+		//       .get() -> hkpShapePhantom*                              (hkpWorldObject subtype)
+		//         ->collidable (hkpLinkedCollidable : hkpCollidable)   (hkpWorldObject, 0x20)
+		//           .broadPhaseHandle (hkpTypedBroadPhaseHandle)       (hkpCollidable, 0x24)
+		//             .collisionFilterInfo (std::uint32_t)             (handle +0x8)
+		//
+		// CommonLibSSE-NG only forward-declares bhkSimpleShapePhantom (no full def), so we
+		// reinterpret_cast unk0E0 to its complete base bhkShapePhantom to reach the inherited
+		// referencedObject. Single inheritance, base at offset 0 → safe.
+		auto* bhkPhantom = reinterpret_cast<RE::bhkShapePhantom*>(runtime.unk0E0);
+		auto* phantom = static_cast<RE::hkpShapePhantom*>(bhkPhantom->referencedObject.get());
+		if (!phantom) {
+			return;
+		}
+		std::uint32_t& filterInfo = phantom->collidable.broadPhaseHandle.collisionFilterInfo;
+
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
+			return;
+		}
+		auto* follower = FindNearestFollower(player);
+		if (!follower) {
+			return;
+		}
+		std::uint32_t followerInfo = 0;
+		follower->GetCollisionFilterInfo(followerInfo);
+		const std::uint32_t group = followerInfo >> 16;
+		if (group != 0 && (filterInfo >> 16) != group) {
+			filterInfo &= 0x0000FFFF;
+			filterInfo |= (group << 16);
+			SKSE::log::info("stamped player {} -> follower {} ({:08X}) group {}",
+				a_label, follower->GetName(), follower->GetFormID(), group);
+		}
+	}
+
+	// --- Unified per-subclass UpdateImpl hook ------------------------------------
+	//
+	// Every projectile subclass overrides Projectile::UpdateImpl at the same vtable slot
+	// (0xAB), and Projectile is each one's first base, so T::VTABLE[0] is the right vtable.
+	// We hook that slot on each subclass, all routing to the one shared stamp above. Each
+	// subclass carries its OWN original UpdateImpl, so the original must be stored per
+	// subclass — the template gives each instantiation its own static `func` (a single
+	// shared Relocation, as in v1's arrow-only hook, would call the wrong original).
+	//
+	// UpdateImpl fires every frame per projectile; the stamp's idempotence guard makes the
+	// steady-state cost one compare + the original call after the first stamp.
+	template <class T>
 	struct StampHook
 	{
-		static float thunk(RE::Projectile* a_this)
+		static inline const char* label = "projectile";
+
+		static void thunk(RE::Projectile* a_this, float a_delta)
 		{
-			auto& runtime = a_this->GetProjectileRuntimeData();
-			auto  shooter = runtime.shooter.get();
-			if (shooter && shooter->IsPlayerRef() && runtime.unk0E0) {
-				// Reach the underlying hkpShapePhantom's collidable filter info:
-				//   bhkSimpleShapePhantom*  unk0E0                              (0x0E0, Projectile.h)
-				//     ->referencedObject (hkRefPtr<hkReferencedObject>)         (bhkRefObject, 0x10)
-				//       .get() -> hkpShapePhantom*                              (hkpWorldObject subtype)
-				//         ->collidable (hkpLinkedCollidable : hkpCollidable)   (hkpWorldObject, 0x20)
-				//           .broadPhaseHandle (hkpTypedBroadPhaseHandle)       (hkpCollidable, 0x24)
-				//             .collisionFilterInfo (std::uint32_t)             (handle +0x8)
-				//
-				// CommonLibSSE-NG only forward-declares bhkSimpleShapePhantom (no full def),
-				// so we reinterpret_cast unk0E0 to its complete base bhkShapePhantom to reach
-				// the inherited referencedObject. Single inheritance, base at offset 0 → safe.
-				auto* bhkPhantom = reinterpret_cast<RE::bhkShapePhantom*>(runtime.unk0E0);
-				auto* phantom = static_cast<RE::hkpShapePhantom*>(bhkPhantom->referencedObject.get());
-				if (phantom) {
-					std::uint32_t& filterInfo = phantom->collidable.broadPhaseHandle.collisionFilterInfo;
-					if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-						if (auto* follower = FindNearestFollower(player)) {
-							std::uint32_t followerInfo = 0;
-							follower->GetCollisionFilterInfo(followerInfo);
-							const std::uint32_t group = followerInfo >> 16;
-							// Stamp once: skip if the phantom already carries the follower's
-							// group. We compare against the follower group rather than 0, because
-							// a launched arrow may already hold its shooter's systemGroup (that's
-							// how it ignores the shooter) — guarding on ==0 could mean we never
-							// stamp at all. Overwriting also drops shooter-ignore, which is fine
-							// (the player is behind the bow).
-							if (group != 0 && (filterInfo >> 16) != group) {
-								filterInfo &= 0x0000FFFF;
-								filterInfo |= (group << 16);
-								SKSE::log::info("stamped player arrow -> follower {} ({:08X}) group {}",
-									follower->GetName(), follower->GetFormID(), group);
-							}
-						}
-					}
-				}
-			}
-			return func(a_this);
+			StampProjectilePhantom(a_this, label);
+			func(a_this, a_delta);  // this subclass's original UpdateImpl
 		}
 
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
+	template <class T>
+	void InstallStamp(const char* a_label)
+	{
+		StampHook<T>::label = a_label;
+		REL::Relocation<std::uintptr_t> vtbl{ T::VTABLE[0] };
+		StampHook<T>::func = vtbl.write_vfunc(0xAB, StampHook<T>::thunk);
+	}
+
 	void InstallHooks()
 	{
-		// AE (1.6.x) vtable slot for GetPowerSpeedMult is 0xB0 (SE is 0xAF); see
-		// CommonLibSSE-NG Projectile::GetPowerSpeedMult -> RelocateVirtual(0xAF, 0xB0).
-		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ArrowProjectile[0] };
-		StampHook::func = vtbl.write_vfunc(0xB0, StampHook::thunk);
-		SKSE::log::info("GhostAllies: hooked ArrowProjectile::GetPowerSpeedMult (AE vtable 0xB0) for systemGroup stamp");
+		// Task 1: arrows only, via the unified UpdateImpl hook (replaces v1's
+		// GetPowerSpeedMult 0xB0 hook). Task 2 adds the spell-projectile subclasses.
+		InstallStamp<RE::ArrowProjectile>("arrow");
+		SKSE::log::info("GhostAllies: hooked ArrowProjectile::UpdateImpl (vtable 0xAB) for systemGroup stamp");
 	}
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 4, 0 },
+	.Version = REL::Version{ 0, 5, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -142,7 +172,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 4, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 5, 0 }.string());
 
 	InstallHooks();
 
