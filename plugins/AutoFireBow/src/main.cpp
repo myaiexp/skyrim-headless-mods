@@ -31,10 +31,49 @@ namespace
 	// AttackBlockHandler held-flags didn't reflect this reliably).
 	bool g_attackHeld = false;
 
+	// Set true only while we synchronously dispatch a synthetic attack event through the
+	// input pipeline (see SendSyntheticAttack). AttackInputSink is itself a sink on the
+	// same BSInputDeviceManager source, so without this guard our own fake release would
+	// flip g_attackHeld and break the hold-gated loop. SendEvent notifies sinks inline on
+	// the main thread, so a plain bool is sufficient (no reentrancy across frames).
+	bool g_injectingSynthetic = false;
+
 	// Loop helpers (defined below; the animation-event sink drives them).
 	bool AttackHeld() { return g_attackHeld; }
 	void ScheduleRelease();
 	void ScheduleRedraw();
+
+	// Drive the engine's real attack pipeline with a synthetic "Right Attack/Block" button
+	// event, so the loose runs on the genuinely-charged draw the held button already built
+	// (honest power/damage — no projectile clamp). pressed=false => release (value 0, IsUp);
+	// pressed=true => fresh press (value 1, IsDown) to start the next draw.
+	//
+	// Route: BSInputDeviceManager is the BSTEventSource<InputEvent*> the engine's own input
+	// poll fans out to every frame; PlayerControls' attack/block handler is one of its sinks.
+	// SendEvent(&head) replays that exact fan-out with our event, synchronously. QUserEvent is
+	// set directly to the control string so the handler routes it regardless of device/idCode.
+	//
+	// The make-or-break unknown (design doc): the attack handler may consume this queued event
+	// (works) or poll live device state (won't charge/loose) — Task 1 probes that in-game.
+	void SendSyntheticAttack(bool pressed)
+	{
+		auto* idm = RE::BSInputDeviceManager::GetSingleton();
+		if (!idm) {
+			return;
+		}
+		const float value = pressed ? 1.0f : 0.0f;
+		// Press: heldDownSecs 0 => IsDown(). Release: value 0 with heldDownSecs>0 => IsUp().
+		const float heldSecs = pressed ? 0.0f : 0.5f;
+		auto* be = RE::ButtonEvent::Create(RE::INPUT_DEVICE::kMouse, "Right Attack/Block", 0, value, heldSecs);
+		if (!be) {
+			return;
+		}
+		RE::InputEvent* head = be;
+		g_injectingSynthetic = true;
+		idm->SendEvent(&head);
+		g_injectingSynthetic = false;
+		RE::free(be);
+	}
 
 	// Force full bow charge for the player. (Crossbow bolts are also ArrowProjectiles,
 	// so they pass through this hook too — but a crossbow always fires at full draw, so
@@ -131,7 +170,9 @@ namespace
 			RE::BSTEventSource<RE::InputEvent*>*    a_source) override
 		{
 			(void)a_source;
-			if (!a_event) {
+			if (!a_event || g_injectingSynthetic) {
+				// Skip our own injected events (SendSyntheticAttack) — they must not move
+				// the real held-state the loop gates on.
 				return RE::BSEventNotifyControl::kContinue;
 			}
 			for (auto* e = *a_event; e; e = e->next) {
