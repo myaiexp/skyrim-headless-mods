@@ -1,6 +1,8 @@
 # GhostAllies — design
 
-**Status:** approved (brainstorming complete), ready for implementation plan
+**Status:** ✅ shipped — v1 working in-game (2026-06-08). Arrows pass through the nearest follower
+via launch-time systemGroup stamp. Pivoted away from the original collision-filter approach (see
+"Pivot" below). Multi-follower / spells deferred to v2 (`docs/ideas.md`).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)

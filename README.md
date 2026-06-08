@@ -24,6 +24,7 @@ So the whole pipeline is command-line, reproducible, and version-controllable.
 | `tools/compile-papyrus.sh` | Generic `.psc` → `.pex` wrapper around the compiler + sources. |
 | `tools/env.sh` | Machine paths (dotnet, game install, wine prefix). Edit to match your setup. |
 | `mods/RapidBowHold/` | First mod (Papyrus). Proof-of-concept that validated the toolchain — but hit a hard engine limit (see below). |
+| `plugins/GhostAllies/` | **Working SKSE C++ mod.** Player arrows pass *through* a follower to hit the enemy behind (stamps the follower's Havok systemGroup onto the arrow's cast phantom at launch). v1: single follower, arrows only. See `docs/plans/ghost-allies-{design,plan}.md`. |
 | `docs/toolchain.md` | How the headless Papyrus toolchain works, end to end. |
 | `docs/workflow.md` | Build / install / **iterate** — including the non-obvious gotchas that waste hours. |
 | `docs/findings-papyrus-limits.md` | **What Papyrus can't do** — the bow-charge wall, with evidence. Read before trying anything input/engine-coupled. |
