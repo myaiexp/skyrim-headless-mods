@@ -1,8 +1,9 @@
 # GhostAllies — design
 
-**Status:** ✅ shipped — v1 working in-game (2026-06-08). Arrows pass through the nearest follower
-via launch-time systemGroup stamp. Pivoted away from the original collision-filter approach (see
-"Pivot" below). Multi-follower / spells deferred to v2 (`docs/ideas.md`).
+**Status:** v1 ✅ shipped & verified in-game (2026-06-08) — arrows pass through the nearest follower
+via launch-time systemGroup stamp. **v2 designed (2026-06-08, approved), not yet built** — extends
+the effect to spell projectiles and folds in whole-party multi-follower (see "## v2 design" below).
+Pivoted away from the original collision-filter approach (see "Pivot" below).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)
@@ -110,7 +111,107 @@ continue — proven in `vinymayan/Parry-for-all`, `D7ry/EldenParry`, `Soaringwha
 
 Either (a) assign all "ghost ally" followers to one shared custom systemGroup and stamp that group
 on player arrows, or (b) hook `ArrowProjectile` slot 190 with a set of follower IDs and manage
-per-frame re-hit suppression. Both add complexity; out of scope for v1.
+per-frame re-hit suppression. Both add complexity; out of scope for v1. (v2 below adopts (a).)
+
+## v2 design — spells + whole-party multi-follower
+
+**Status:** approved 2026-06-08, not yet built. Supersedes v1's arrow-only, single-nearest,
+read-only stamp. v1's mechanism stays documented as the trivially-revertible fallback (below).
+
+### Goal
+
+Extend the phase-through effect from arrows to **spell projectiles**, and from the single nearest
+follower to the player's **entire party**. Same core mechanism (Havok systemGroup on the
+projectile's phantom), generalized.
+
+### Key structural finding (CommonLibSSE-NG headers)
+
+`ArrowProjectile : MissileProjectile : Projectile`. Every projectile subclass overrides the same
+virtuals at the same vtable slots: `Process3D` (0xA9), **`UpdateImpl` (0xAB)**, `Handle3DLoaded`
+(0xC0). The phantom (`unk0E0`) and `shooter` live on the base `Projectile`, so v1's stamp body
+applies **unchanged** to every projectile type. This is what makes one unified hook the genuinely
+best design, not merely the tidy one.
+
+### 1. Unified hook (replaces v1's arrow-only `GetPowerSpeedMult` hook)
+
+- Extract v1's inline stamp into a single `StampProjectilePhantom(RE::Projectile*)`.
+- Install that one thunk on **`UpdateImpl` (vtable slot `0xAB`)** of each in-scope subclass vtable.
+- **Drop the v1 `GetPowerSpeedMult` (`0xB0`) hook** — arrows now stamp via the same `UpdateImpl`
+  path as everything else. (That slot conceptually belonged to AutoFireBow's idiom anyway; v1 only
+  borrowed it as a convenient per-arrow launch signal.)
+- **Why `UpdateImpl`, not `Handle3DLoaded`:** `UpdateImpl` is the exact frame the phantom
+  linear-cast runs, so the phantom is **guaranteed present** (v1's `GetPowerSpeedMult` hook could
+  only caveat that it *might* not be ready). The existing idempotence guard — stamp only when the
+  phantom's top-16 group bits don't already equal the ghost group — makes per-frame entry one cheap
+  compare after the first stamp; no per-frame cost of consequence.
+- **Why per-subclass vtables, not one base-`Projectile` hook:** each subclass carries its own
+  vtable, so hooking each subclass is precisely the lever that **includes** the wanted types and
+  **excludes** runes/walls — by simply not hooking theirs. No type-tag branching in the hot path.
+
+### 2. Scope (which projectile types)
+
+| Type | Hooked? | Notes |
+|------|---------|-------|
+| `ArrowProjectile`  | ✅ | arrows/bolts (was v1) |
+| `MissileProjectile`| ✅ | aimed bolt spells: Firebolt, Ice Spike, Fireball, … (the core spell ask) |
+| `FlameProjectile`  | ✅ | Flames stream — continuous; verify pass-through holds (see risks) |
+| `BeamProjectile`   | ✅ | Lightning beams — continuous; verify |
+| `ConeProjectile`   | ✅ | cone spells — continuous; verify |
+| `GrenadeProjectile`| ❌ deferred | runes / lobbed; different (arc, placed) collision feel — out of scope |
+| `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
+
+Flame/beam/cone are continuous-collision types: the stamp is applied uniformly, but whether each
+actually phases via the phantom-group route is a **per-type in-game verification** item. Types that
+don't phase get documented; fallback for a stubborn type is its `AddImpact` (slot `0xBD`) handler —
+skip the impact when the hit ref is a teammate.
+
+### 3. Whole-party multi-follower (folded in — will remain untested)
+
+A fixed reserved **"ghost" `systemGroup` constant** shared by all current teammates. Membership is
+maintained **lazily from `main.cpp` with no event hooking**, inside the stamp path:
+
+1. Resolve the current teammate set (`IsPlayerTeammate()` over `ProcessLists` high actors).
+2. For each current teammate **not yet enrolled**: save its original systemGroup in a
+   `FormID → originalGroup` map, then write the ghost group onto its char-controller filterInfo.
+3. For each enrolled actor **no longer a teammate**: restore its saved original group, drop it
+   from the map.
+4. Stamp the projectile's phantom with the **ghost group** → it phases through the whole party.
+
+Writes are idempotent (only touch an actor whose group isn't already the ghost group), so the
+maintenance is near-free after the first projectile and self-heals as the party changes. Single
+code path handles 1..N followers identically.
+
+The ghost group must be a value that won't collide with engine-assigned groups (engine groups are
+derived per object); pick a high reserved constant and confirm no clash in the probe log. Precedent
+for custom systemGroups: `adamhynek/activeragdoll`.
+
+### Trade-offs (accepted)
+
+- **Supersedes the verified single-follower path.** v1 only *read* the follower's own group and
+  never modified actors; v2 *writes* a synthetic group onto every teammate. So even the
+  single-follower case becomes mechanism-unverified. Accepted: Mase won't install to test
+  multi-follower, and v1's read-only nearest stamp is retained in this doc as the trivially
+  revertible fallback (restore `StampHook` reading `follower->GetCollisionFilterInfo() >> 16` and
+  stamping that, no teammate writes).
+- **Same-group followers may visually interpenetrate** each other (group filter suppresses
+  intra-group collision). World collision is preserved (world isn't in the group), so no
+  fall-through-floor. Cosmetic, accepted.
+- **A stamped projectile stops ignoring the player** (its own shooter) — unchanged from v1,
+  accepted (player is behind the shot).
+
+### v2 verification (definition of done)
+
+Per in-scope type (arrow, missile, and best-effort flame/beam/cone):
+
+1. Stand one or more teammates between the player and an enemy; cast/fire → projectile passes
+   through **all** intervening teammates and strikes the enemy; no teammate takes damage or aggros.
+2. No follower in line → vanilla collision.
+3. Enemy-cast spells → unaffected (only player-shot projectiles are stamped).
+4. Runes (grenade) → still collide normally (confirm out-of-scope unchanged).
+5. Frame time with a full party present is not visibly degraded.
+
+(Multi-follower and flame/beam/cone pass-through are expected to ship **unverified** — Mase won't
+install to test. Document observed results if/when play data appears.)
 
 ## Architecture
 
