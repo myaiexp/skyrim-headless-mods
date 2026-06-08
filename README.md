@@ -33,9 +33,12 @@ So the whole pipeline is command-line, reproducible, and version-controllable.
 
 1. **Papyrus** (working, this repo's `tools/`) — data edits and logic scripts. Mutagen for
    `.esp`, wine + PapyrusCompiler for `.pex`. Great until you need engine internals.
-2. **SKSE C++** (next, `docs/skse-plugin-plan.md`) — a native DLL with full engine access, for
-   things Papyrus fundamentally can't (e.g. bow draw charge). Cross-compiled Linux → Windows
-   DLL with clang-cl + xwin.
+2. **SKSE C++** (toolchain working, `plugins/`) — a native DLL with full engine access, for
+   things Papyrus fundamentally can't (e.g. bow draw charge). Cross-compiled Linux → Windows DLL
+   with **clang-cl + lld-link + xwin** (no MSVC, no vcpkg); CommonLibSSE-NG via FetchContent.
+   `plugins/RapidBow/` builds a valid, loadable SKSE hello-world DLL today. See
+   `docs/skse-toolchain.md`. Next: RE the bow charge and actually hook it
+   (`docs/skse-plugin-plan.md`).
 
 The RapidBowHold saga proved tier 1's limit: a scripted full-power rapid bow is impossible in
 Papyrus because arrow charge is welded to real input. That's what pushes us to tier 2.

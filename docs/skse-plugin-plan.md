@@ -58,11 +58,19 @@ Verification points (confirm when we actually build — don't assume):
 
 ## Next steps
 
-1. Stand up the cross-compile toolchain (`xwin` + clang-cl + xmake/CMake); build the
-   canonical CommonLibSSE-NG "hello world" plugin headlessly and confirm it loads.
-2. Add a `plugins/RapidBow/` tree to this repo with its own build script (mirroring
-   `mods/<name>/build.sh`).
-3. RE the bow charge; implement option 1; test.
+1. ~~Stand up the cross-compile toolchain (`xwin` + clang-cl + CMake); build the canonical
+   CommonLibSSE-NG "hello world" plugin headlessly and confirm it loads.~~ **DONE** — the
+   toolchain works: `clang-cl` + `lld-link` + `xwin` (no MSVC/vcpkg), CommonLibSSE-NG pulled via
+   FetchContent. See [skse-toolchain.md](skse-toolchain.md). Chose CMake over xmake (CommonLibSSE
+   ships CMake; FetchContent resolved its deps cleanly). Two fixes were needed:
+   `-fdelayed-template-parsing` (MSVC lazy template-body semantics) and PascalCase `.lib`
+   symlinks (lld-link is case-sensitive). Both documented and automated.
+2. ~~Add a `plugins/RapidBow/` tree with its own build script.~~ **DONE** — `plugins/RapidBow/`
+   builds `RapidBow.dll` (valid PE32+, exports `SKSEPlugin_{Load,Query,Version}`, loads under
+   wine). It's a hello-world: it logs on load and hooks nothing yet.
+3. **← NEXT.** RE the bow charge; implement option 1 (force full charge on release); test
+   in-game. Needs: the Address Library DB for 1.6.1170, and identifying the draw-charge →
+   projectile-power function to hook. Reference open-source archery plugins for offsets.
 
 ## References
 

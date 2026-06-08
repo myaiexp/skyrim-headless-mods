@@ -4,3 +4,6 @@ obj/
 
 # Papyrus compiler scratch (wine prefix is external; nothing to track here)
 *.tmp
+
+# SKSE C++ plugin build output (CMake + FetchContent deps; large, regenerated)
+plugins/*/build/
