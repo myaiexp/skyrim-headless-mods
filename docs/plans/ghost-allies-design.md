@@ -83,6 +83,23 @@ Resolving a system-group back to its owning `Actor` (to test `IsPlayerTeammate()
 the teammate set) follows activeragdoll's template — read each actor's group via
 `bhkCharacterController::GetCollisionFilterInfo`.
 
+### Open implementation decisions (resolve in the plan)
+
+These are deliberately left to the implementation plan, not spec defects — but pin them down
+there so they aren't discovered in-game:
+
+- **Projectile-set lifecycle.** Decide the exact event that removes a projectile's group id from
+  the player-projectile set (destructor / deferred-destroy / fallback sweep). A leaked id that
+  Havok later recycles to a non-player projectile would cause a false phase-through.
+- **Layer pre-filter as the cheap first gate.** Use the `COL_LAYER` bits to early-out on any pair
+  that isn't (projectile × actor-body) *before* touching the group sets, to protect the hot path.
+  Make this ordering explicit.
+- **Performance pass criterion.** Pick a concrete, repeatable check (a frame counter in a fixed
+  scene with a follower in the line of fire) so "not degraded" is testable rather than a judgment
+  call.
+- **Probe vs. plugin layout.** Decide whether the proof-point probe is a throwaway under a
+  separate path or a build flag within `plugins/GhostAllies/`.
+
 ## Architecture
 
 - **New, standalone plugin:** `plugins/GhostAllies/`, built with the existing headless
