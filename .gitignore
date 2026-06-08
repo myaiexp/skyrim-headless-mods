@@ -7,3 +7,6 @@ obj/
 
 # SKSE C++ plugin build output (CMake + FetchContent deps; large, regenerated)
 plugins/*/build/
+
+# Working source backups (e.g. pre-cleanup probe builds kept locally)
+*.bak
