@@ -225,57 +225,83 @@ namespace
 		StampHook<T>::func = vtbl.write_vfunc(0xAB, StampHook<T>::thunk);
 	}
 
-	// --- Continuous-stream impact skip (flame/beam/cone) -------------------------
+	// --- Hostile-magic refusal for player teammates (continuous streams etc.) ----
 	//
-	// The systemGroup stamp above gates broadphase body-pair collision, which is what makes
-	// DISCRETE projectiles (arrows, aimed missiles) phase through teammates. But CONTINUOUS
-	// streams (FlameProjectile / BeamProjectile / ConeProjectile) apply their effect via
-	// per-frame hit detection that the broadphase group filter doesn't gate — verified
-	// in-game: the stamp lands on the stream's phantom yet the follower still takes damage.
+	// The systemGroup stamp above gates broadphase body-pair collision, which makes DISCRETE
+	// projectiles (arrows, aimed missiles) phase through teammates. But the player's CONTINUOUS
+	// concentration spell Flames (FlameProjectile) still DAMAGED the follower even with the
+	// stamp on its phantom — and an earlier AddImpact (slot 0xBD) skip hook PROVED in-game it
+	// fired and skipped every flame impact on the follower, yet the follower still took damage.
+	// Conclusion: Flames damage does NOT flow through Projectile::AddImpact. It is applied as a
+	// hostile magic effect through the magic-target system: MagicTarget::AddTarget.
 	//
-	// So for these three subclasses we additionally hook AddImpact (vtable slot 0xBD), the
-	// per-hit entry point every subclass overrides. When the stream is PLAYER-shot and the
-	// impacted ref is a PLAYER TEAMMATE, we return without calling the original — no impact,
-	// no effect/damage applied to the follower. Every other case (non-teammate ref, the
-	// player themself, anything not player-shot) calls the original so enemies and the world
-	// are hit exactly as before. This never affects enemy damage or damage to the player.
+	// So instead we hook MagicTarget::AddTarget (the single entry point every effect application
+	// flows through) and refuse the application when ALL of:
+	//   - the target actor is a player teammate (IsPlayerTeammate), AND
+	//   - the caster is the player (TESObjectREFR* AddTargetData::caster, IsPlayerRef), AND
+	//   - the effect being added is hostile/detrimental (Effect::IsHostile on AddTargetData::effect,
+	//     falling back to the parent MagicItem's IsHostile).
+	// On refusal we return AddTarget's "not added" value (false) without calling the original, so
+	// the effect is dropped — no damage on the follower. Every other case (non-teammate target,
+	// non-player caster, beneficial effect) calls the original unchanged, so enemies still take
+	// damage and the player can still heal/buff their own followers.
 	//
-	// Same per-subclass template rationale as StampHook: each subclass carries its own
-	// original AddImpact, so the original is stored per instantiation.
-	template <class T>
-	struct ImpactHook
-	{
-		static inline const char* label = "stream";
+	// Hook point — vtable, MagicTarget base of Character:
+	//   Actor's polymorphic bases in order are TESObjectREFR (which itself contributes 4 vtable
+	//   sub-objects: TESForm, BSHandleRefObject, BSTEventSink<BSAnimationGraphEvent>,
+	//   IAnimationGraphManagerHolder), then MagicTarget, then ActorValueOwner, etc. So in
+	//   CommonLibSSE-NG's combined VTABLE_Character / VTABLE_Actor arrays the MagicTarget base
+	//   vtable is array index 4 (0-based). AddTarget is slot 1 within MagicTarget's own vtable
+	//   (M/MagicTarget.h: "virtual bool AddTarget(AddTargetData&); // 01"). This matches the
+	//   established NOFF (feelixs/noff-skse) plugin, which hooks the same MagicTarget::AddTarget
+	//   at segment index 4 / vfunc 1 (slot confirmed via Ghidra there) for AE 1.6.x. The
+	//   REL::ID/address resolution is handled by CommonLib's VTABLE_Character VariantID for the
+	//   running runtime (no hardcoded 1.5.97 address). Followers are Character instances, so
+	//   hooking VTABLE_Character[4] covers them; the player is never a teammate so PlayerCharacter
+	//   need not be hooked (and the caster==player gate plus IsPlayerTeammate target gate make a
+	//   stray non-Character teammate harmless — it just isn't covered, never wrongly refused).
+	constexpr std::size_t kMagicTargetVtableIdx = 4;
+	constexpr std::size_t kAddTargetVfuncSlot = 1;
 
-		static void thunk(RE::Projectile* a_this, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_targetLoc,
-			const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
+	// Throttle the non-refused teammate-hit diagnostic so we can confirm the hook is reached for
+	// Flames without flooding the log at the per-tick rate a concentration spell applies effects.
+	std::unordered_map<RE::FormID, std::uint32_t> g_addTargetSeen;
+
+	struct AddTargetHook
+	{
+		static bool thunk(RE::MagicTarget* a_this, RE::MagicTarget::AddTargetData& a_data)
 		{
-			auto& runtime = a_this->GetProjectileRuntimeData();
-			auto  shooter = runtime.shooter.get();
-			if (shooter && shooter->IsPlayerRef()) {
-				auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
-				const bool teammate = actor && actor->IsPlayerTeammate();
-				if (teammate) {
-					// Throttled diagnostic: log only teammate hits (rare relative to the
-					// per-frame enemy/world impacts), so the next in-game test shows whether
-					// AddImpact even fires for the follower hit.
-					SKSE::log::info("{} AddImpact on {} ({:08X}) teammate=true -> skipped",
-						label, a_ref->GetName(), a_ref->GetFormID());
-					return;  // skip the impact: no effect/damage on the teammate
+			auto* target = a_this ? a_this->GetTargetStatsObject() : nullptr;
+			auto* actor = target ? target->As<RE::Actor>() : nullptr;
+			if (actor && actor->IsPlayerTeammate()) {
+				const bool playerCast = a_data.caster && a_data.caster->IsPlayerRef();
+				// Prefer the specific effect being added; fall back to the parent spell.
+				const bool hostile =
+					(a_data.effect && a_data.effect->IsHostile()) ||
+					(a_data.magicItem && a_data.magicItem->IsHostile());
+				if (playerCast && hostile) {
+					SKSE::log::info("AddTarget refused: player hostile effect on teammate {} ({:08X})",
+						actor->GetName(), actor->GetFormID());
+					return false;  // drop the effect: no hostile magic applied to the teammate
+				}
+				// Throttled diagnostic for teammate hits we did NOT refuse, so the next in-game
+				// test can confirm AddTarget is reached for Flames and see why it wasn't refused
+				// (caster not player, or effect not hostile). One line per teammate FormID.
+				if (g_addTargetSeen.emplace(actor->GetFormID(), 0).second) {
+					SKSE::log::info("AddTarget fired on teammate {} ({:08X}) not refused: playerCast={} hostile={}",
+						actor->GetName(), actor->GetFormID(), playerCast, hostile);
 				}
 			}
-			func(a_this, a_ref, a_targetLoc, a_velocity, a_collidable, a_arg6, a_arg7);
+			return func(a_this, a_data);
 		}
 
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	template <class T>
-	void InstallImpactSkip(const char* a_label)
+	void InstallAddTargetRefusal()
 	{
-		ImpactHook<T>::label = a_label;
-		REL::Relocation<std::uintptr_t> vtbl{ T::VTABLE[0] };
-		ImpactHook<T>::func = vtbl.write_vfunc(0xBD, ImpactHook<T>::thunk);
+		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_Character[kMagicTargetVtableIdx] };
+		AddTargetHook::func = vtbl.write_vfunc(kAddTargetVfuncSlot, AddTargetHook::thunk);
 	}
 
 	void InstallHooks()
@@ -294,20 +320,18 @@ namespace
 		InstallStamp<RE::ConeProjectile>("cone");
 		SKSE::log::info("GhostAllies: hooked UpdateImpl (vtable 0xAB) on arrow/missile/flame/beam/cone for systemGroup stamp");
 
-		// Continuous streams need the extra AddImpact (0xBD) skip — the broadphase group
-		// stamp alone doesn't gate their per-frame hit detection. Only flame/beam/cone:
-		// discrete arrows/missiles are fully handled by the stamp and must not be touched.
-		InstallImpactSkip<RE::FlameProjectile>("flame");
-		InstallImpactSkip<RE::BeamProjectile>("beam");
-		InstallImpactSkip<RE::ConeProjectile>("cone");
-		SKSE::log::info("GhostAllies: hooked AddImpact (vtable 0xBD) on flame/beam/cone to skip player-shot impacts on teammates");
+		// The stamp doesn't gate the player's continuous Flames damage (it flows through the
+		// magic-target system, not AddImpact — proven in-game). Refuse player-shot hostile
+		// magic effects on teammates at MagicTarget::AddTarget instead.
+		InstallAddTargetRefusal();
+		SKSE::log::info("GhostAllies: hooked MagicTarget::AddTarget (Character vtable idx 4, vfunc 1) to refuse player hostile effects on teammates");
 	}
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 6, 0 },
+	.Version = REL::Version{ 0, 7, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -318,7 +342,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 6, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 7, 0 }.string());
 
 	InstallHooks();
 
