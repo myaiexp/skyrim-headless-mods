@@ -162,11 +162,11 @@ best design, not merely the tidy one.
 
 | Type | Hooked? | Notes |
 |------|---------|-------|
-| `ArrowProjectile`  | ✅ | arrows/bolts (was v1) |
-| `MissileProjectile`| ✅ | aimed bolt spells: Firebolt, Ice Spike, Fireball, … (the core spell ask) |
-| `FlameProjectile`  | ⚠️ hooked, **does NOT phase** | Tested in-game 2026-06-08: the stamp fires and writes the follower's group onto the flame phantom (`stamped player flame -> follower Lydia … group 891`), **but the follower still takes damage**. FlameProjectile applies its effect via per-frame hit detection that the broadphase systemGroup filter doesn't gate — the stamp is necessary-but-insufficient for continuous streams. Needs the AddImpact/effect-application fallback (deferred). |
-| `BeamProjectile`   | ⚠️ hooked, untested | Lightning beams — continuous; expected to behave like flame (won't phase via the stamp alone). Untested (no spell available). |
-| `ConeProjectile`   | ⚠️ hooked, untested | cone spells — continuous; same expectation as flame. Untested (no spell available). |
+| `ArrowProjectile`  | ✅ **verified in-game** (2026-06-08) | arrows/bolts (was v1); confirmed still phasing after the Task 1 hook move to `UpdateImpl`. |
+| `MissileProjectile`| ✅ **verified in-game** (2026-06-08) | aimed bolt spells — **Firebolt confirmed phasing**. Ice Spike/Fireball same class, expected identical. The core spell ask, working. |
+| `FlameProjectile`  | ⚠️ stamped, **does NOT phase** | Flames, tested 2026-06-08: the stamp fires and writes the follower's group onto the flame phantom (`stamped player flame -> … group 891`), **but the follower still takes damage**. Continuous streams apply their effect via per-frame hit detection the broadphase systemGroup filter doesn't gate — the stamp is necessary-but-insufficient. Covered by the continuous-spell fallback (in progress). |
+| `BeamProjectile`   | ⚠️ stamped, **does NOT phase** | **Sparks confirmed not phasing** (2026-06-08) — same as flame. Covered by the continuous-spell fallback (in progress). |
+| `ConeProjectile`   | ⚠️ stamped, untested | cone spells — continuous; same expectation as flame/beam. Untested (no spell available). Included in the fallback. |
 | `GrenadeProjectile`| ❌ deferred | runes / lobbed; different (arc, placed) collision feel — out of scope |
 | `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
 
