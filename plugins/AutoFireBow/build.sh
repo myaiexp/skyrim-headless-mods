@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build RapidBow.dll headlessly (Linux -> Windows) with clang-cl + xwin.
+# Build AutoFireBow.dll headlessly (Linux -> Windows) with clang-cl + xwin.
 #   ./build.sh            configure + build into build/
 #   ./build.sh --install  also copy the DLL into the live game's SKSE/Plugins
 set -euo pipefail
@@ -17,7 +17,7 @@ cmake -S "$HERE" -B "$BUILD_DIR" -G Ninja \
 
 cmake --build "$BUILD_DIR"
 
-DLL="$BUILD_DIR/RapidBow.dll"
+DLL="$BUILD_DIR/AutoFireBow.dll"
 echo "built: $DLL"
 file "$DLL"
 
@@ -26,6 +26,6 @@ if [[ "${1:-}" == "--install" ]]; then
 	source "$PLUGINS_DIR/../tools/env.sh"
 	DEST="$GAME_DATA/SKSE/Plugins"
 	mkdir -p "$DEST"
-	cp -v "$DLL" "$DEST/RapidBow.dll"
-	echo "installed -> $DEST/RapidBow.dll"
+	cp -v "$DLL" "$DEST/AutoFireBow.dll"
+	echo "installed -> $DEST/AutoFireBow.dll"
 fi

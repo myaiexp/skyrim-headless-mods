@@ -13,7 +13,7 @@ tier — **headless C++ cross-compiled to a Windows DLL on Linux**.
 
 - Game: **Skyrim SE v1.6.1170** (AE; from the crash log). Use **CommonLibSSE-NG** (the
   maintained fork supporting SE/AE/VR with runtime address resolution).
-- Output: `RapidBow.dll` → `Data/SKSE/Plugins/`.
+- Output: `AutoFireBow.dll` → `Data/SKSE/Plugins/`.
 
 ## What the plugin would do (pick one once we can build + RE)
 
@@ -66,8 +66,8 @@ Verification points (confirm when we actually build — don't assume):
    ships CMake; FetchContent resolved its deps cleanly). Two fixes were needed:
    `-fdelayed-template-parsing` (MSVC lazy template-body semantics) and PascalCase `.lib`
    symlinks (lld-link is case-sensitive). Both documented and automated.
-2. ~~Add a `plugins/RapidBow/` tree with its own build script.~~ **DONE** — `plugins/RapidBow/`
-   builds `RapidBow.dll` (valid PE32+, exports `SKSEPlugin_{Load,Query,Version}`, loads under
+2. ~~Add a `plugins/AutoFireBow/` tree with its own build script.~~ **DONE** — `plugins/AutoFireBow/`
+   builds `AutoFireBow.dll` (valid PE32+, exports `SKSEPlugin_{Load,Query,Version}`, loads under
    wine). It's a hello-world: it logs on load and hooks nothing yet.
 3. ~~RE the bow charge; implement option 1 (force full charge on release); test in-game.~~
    **DONE** — verified in-game on 1.6.1170: a quick tap now fires a full-power, full-speed
@@ -104,7 +104,7 @@ flag) or the damage rescale would compound on each `GetSpeed` call.
 AE vtable slot is **0xB0** (SE is 0xAF) — from CommonLibSSE-NG
 `Projectile::GetPowerSpeedMult → RelocateVirtual(0xAF, 0xB0)`; `RELOCATION_ID`/vtable lookups
 resolve against the Address Library DB for 1.6.1170 (installed in-game). Code:
-`plugins/RapidBow/src/main.cpp`.
+`plugins/AutoFireBow/src/main.cpp`.
 
 ## Rapid-fire loop (hold-attack auto-fire) — DONE
 

@@ -5,8 +5,8 @@ Windows, no Visual Studio, no MSVC, no vcpkg. This is the second tier of headles
 (tier 1 = Papyrus, see [toolchain.md](toolchain.md)); it exists because some engine behaviour
 is unreachable from Papyrus (see [findings-papyrus-limits.md](findings-papyrus-limits.md)).
 
-**Status: working, and shipping a real hook.** `plugins/RapidBow/` builds a valid SKSE-shaped
-`RapidBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
+**Status: working, and shipping a real hook.** `plugins/AutoFireBow/` builds a valid SKSE-shaped
+`AutoFireBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
 implements option 1 — a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
 charge for the player (verified in-game on 1.6.1170). See
 [skse-plugin-plan.md](skse-plugin-plan.md) for the charge → power details.
@@ -25,7 +25,7 @@ source by CMake's FetchContent, so there's no vcpkg either.
  CommonLibSSE-NG ──────┤ (FetchContent: built the same way into CommonLibSSE.lib)
  spdlog ───────────────┤ (FetchContent)
                        ▼
-                  lld-link  ──uses xwin's CRT + SDK libs (/libpath)──▶  RapidBow.dll (PE32+)
+                  lld-link  ──uses xwin's CRT + SDK libs (/libpath)──▶  AutoFireBow.dll (PE32+)
 ```
 
 ## Components (and how each was obtained, no root)
@@ -71,15 +71,15 @@ Building MSVC-targeted C++ on Linux with Clang hits two issues that the toolchai
 | `plugins/cross-env.sh`              | Sourced before building. Puts the LLVM cross tools on `PATH`/`LD_LIBRARY_PATH`, exports `XWIN_SDK`, ensures the `.lib` symlinks exist.                           |
 | `plugins/setup-sdk-symlinks.sh`     | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
 | `plugins/cmake/clang-cl-msvc.cmake` | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
-| `plugins/RapidBow/CMakeLists.txt`   | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `RapidBow.dll`.      |
-| `plugins/RapidBow/src/main.cpp`     | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
-| `plugins/RapidBow/build.sh`         | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
+| `plugins/AutoFireBow/CMakeLists.txt`   | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `AutoFireBow.dll`.      |
+| `plugins/AutoFireBow/src/main.cpp`     | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
+| `plugins/AutoFireBow/build.sh`         | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
 
 ## Build it
 
 ```bash
-cd plugins/RapidBow
-./build.sh            # -> build/RapidBow.dll (PE32+, x86-64)
+cd plugins/AutoFireBow
+./build.sh            # -> build/AutoFireBow.dll (PE32+, x86-64)
 ./build.sh --install  # also copy into the game's Data/SKSE/Plugins
 ```
 
@@ -100,8 +100,8 @@ is cached in `build/_deps` and rebuilds are incremental.
 
 ```bash
 source plugins/cross-env.sh
-llvm-readobj --coff-exports plugins/RapidBow/build/RapidBow.dll   # expect SKSEPlugin_{Load,Query,Version}
-file plugins/RapidBow/build/RapidBow.dll                          # expect PE32+ ... (DLL), x86-64
+llvm-readobj --coff-exports plugins/AutoFireBow/build/AutoFireBow.dll   # expect SKSEPlugin_{Load,Query,Version}
+file plugins/AutoFireBow/build/AutoFireBow.dll                          # expect PE32+ ... (DLL), x86-64
 ```
 
 A loadable-DLL smoke test under wine (`LoadLibraryA` + `GetProcAddress` on the exports) confirms

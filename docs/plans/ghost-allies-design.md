@@ -80,7 +80,7 @@ info |= (followerSystemGroup << 16) // adopt the follower's systemGroup
 - The follower's systemGroup is read via `Actor::GetCollisionFilterInfo(uint32&)` (`>> 16`), or
   `Actor::GetCharController()` → `bhkCharacterController::GetCollisionFilterInfo`.
 - Fire point: a per-arrow launch hook where the shooter is known and the phantom exists. The
-  repo already hooks `ArrowProjectile::GetPowerSpeedMult` (RapidBow) with `runtime.shooter`
+  repo already hooks `ArrowProjectile::GetPowerSpeedMult` (AutoFireBow) with `runtime.shooter`
   available; reuse that idiom (null-check `unk0E0`; if the phantom isn't ready there, move to a
   projectile 3D-loaded / first-update hook).
 
@@ -114,9 +114,9 @@ per-frame re-hit suppression. Both add complexity; out of scope for v1.
 
 - **New, standalone plugin:** `plugins/GhostAllies/`, built with the existing headless
   clang-cl + lld-link + xwin + CommonLibSSE-NG (FetchContent) toolchain, mirroring
-  `plugins/RapidBow/`'s CMake/cross-env setup. It loads, ships, and disables independently of
-  RapidBow — chosen over folding into RapidBow to keep each DLL to one responsibility.
-- **Logging:** own `GhostAllies.log` in the SKSE log dir (same pattern as RapidBow), used for the
+  `plugins/AutoFireBow/`'s CMake/cross-env setup. It loads, ships, and disables independently of
+  AutoFireBow — chosen over folding into AutoFireBow to keep each DLL to one responsibility.
+- **Logging:** own `GhostAllies.log` in the SKSE log dir (same pattern as AutoFireBow), used for the
   proof-point below and for verifying the filter decisions in-game.
 
 ## Risks & unknowns

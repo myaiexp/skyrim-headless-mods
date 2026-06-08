@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(RapidBow VERSION 1.0.0 LANGUAGES CXX)
+project(AutoFireBow VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -35,7 +35,7 @@ set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(CommonLibSSE)
 
 # --- The plugin DLL itself.
-add_library(RapidBow SHARED src/main.cpp)
-target_compile_features(RapidBow PRIVATE cxx_std_23)
-target_link_libraries(RapidBow PRIVATE CommonLibSSE::CommonLibSSE)
-set_target_properties(RapidBow PROPERTIES PREFIX "" SUFFIX ".dll")
+add_library(AutoFireBow SHARED src/main.cpp)
+target_compile_features(AutoFireBow PRIVATE cxx_std_23)
+target_link_libraries(AutoFireBow PRIVATE CommonLibSSE::CommonLibSSE)
+set_target_properties(AutoFireBow PROPERTIES PREFIX "" SUFFIX ".dll")

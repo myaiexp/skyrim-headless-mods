@@ -6,7 +6,7 @@
 
 namespace
 {
-	// Send spdlog (what SKSE::log::* uses) to <My Games>/SKSE/RapidBow.log so the
+	// Send spdlog (what SKSE::log::* uses) to <My Games>/SKSE/AutoFireBow.log so the
 	// plugin leaves a visible trace that it loaded and hooked successfully.
 	void SetupLog()
 	{
@@ -14,7 +14,7 @@ namespace
 		if (!logDir) {
 			return;
 		}
-		auto path = *logDir / "RapidBow.log";
+		auto path = *logDir / "AutoFireBow.log";
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
 		auto logger = std::make_shared<spdlog::logger>("global", std::move(sink));
 		logger->set_level(spdlog::level::info);
@@ -163,7 +163,7 @@ namespace
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (player && player->AddAnimationGraphEventSink(BowLoopSink::GetSingleton())) {
 			registered = true;
-			SKSE::log::info("RapidBow: bow rapid-fire loop registered on player");
+			SKSE::log::info("AutoFireBow: bow rapid-fire loop registered on player");
 		}
 	}
 
@@ -206,7 +206,7 @@ namespace
 		// CommonLibSSE-NG Projectile::GetPowerSpeedMult -> RelocateVirtual(0xAF, 0xB0).
 		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ArrowProjectile[0] };
 		PowerSpeedHook::func = vtbl.write_vfunc(0xB0, PowerSpeedHook::thunk);
-		SKSE::log::info("RapidBow: hooked ArrowProjectile::GetPowerSpeedMult (AE vtable 0xB0)");
+		SKSE::log::info("AutoFireBow: hooked ArrowProjectile::GetPowerSpeedMult (AE vtable 0xB0)");
 	}
 
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
@@ -226,7 +226,7 @@ namespace
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
 	.Version = REL::Version{ 1, 11, 0 },
-	.Name = "RapidBow",
+	.Name = "AutoFireBow",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
 	.RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary)
@@ -236,7 +236,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("RapidBow {} loaded — full power+damage + event-driven rapid-fire loop",
+	SKSE::log::info("AutoFireBow {} loaded — full power+damage + event-driven rapid-fire loop",
 		REL::Version{ 1, 11, 0 }.string());
 	InstallHooks();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);

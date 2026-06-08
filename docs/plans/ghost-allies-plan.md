@@ -8,7 +8,7 @@ collision-filter hook, at **player-arrow launch** we copy the target follower's 
 **systemGroup** onto the arrow's phantom collidable (`unk0E0` → `collidable.broadPhaseHandle.collisionFilterInfo`).
 The arrow then ignores that follower exactly as it already ignores its own shooter, sweeping
 through and continuing to the enemy behind. No per-frame hook, no hot path. New plugin
-`plugins/GhostAllies/`, independent of RapidBow.
+`plugins/GhostAllies/`, independent of AutoFireBow.
 
 **Tech Stack:** C++23, CommonLibSSE-NG (FetchContent, AE+SE), spdlog; headless clang-cl + lld-link + xwin cross-build (Linux→Windows DLL); Address Library for version-independent offsets.
 
@@ -19,7 +19,7 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 ## Reference material
 
 - Design: `docs/plans/ghost-allies-design.md` (read first — mechanism, scope, risks, open decisions).
-- Pattern source in-repo: `plugins/RapidBow/{CMakeLists.txt,build.sh,src/main.cpp}` — copy its CMake, `build.sh`, logging setup, vtable-hook idiom (`REL::Relocation::write_vfunc`), and `SKSEPluginInfo`/`SKSEPluginLoad` boilerplate verbatim where applicable.
+- Pattern source in-repo: `plugins/AutoFireBow/{CMakeLists.txt,build.sh,src/main.cpp}` — copy its CMake, `build.sh`, logging setup, vtable-hook idiom (`REL::Relocation::write_vfunc`), and `SKSEPluginInfo`/`SKSEPluginLoad` boilerplate verbatim where applicable.
 - Shared toolchain (do not duplicate): `plugins/cross-env.sh`, `plugins/cmake/clang-cl-msvc.cmake`, `tools/env.sh` (provides `$GAME_DATA` for `--install`).
 - External precedent to mine for the hook + group logic: `adamhynek/higgs` (`src/hooks.cpp` — `CompareFilterInfo` hook, `CollisionFilterComparisonResult{Collide,Ignore,Continue}`), `adamhynek/activeragdoll` (`src/main.cpp` — `CollisionFilterComparisonCallback`, `GetCollisionGroup(info)=info>>16`, per-actor ignore set), `powerof3/PapyrusExtenderSSE` (`GetCollisionFilterInfo`, system-group read).
 
@@ -27,9 +27,9 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 
 | File | Responsibility |
 |------|----------------|
-| `plugins/GhostAllies/CMakeLists.txt` | Build the `GhostAllies.dll` target; same FetchContent deps as RapidBow (spdlog pin, CommonLibSSE-NG pinned tag). |
-| `plugins/GhostAllies/build.sh` | Configure+build via clang-cl toolchain; `--install` copies DLL to `$GAME_DATA/SKSE/Plugins`. Copy of RapidBow's with names changed. |
-| `plugins/GhostAllies/src/main.cpp` | Entire plugin: log setup, the `CompareFilterInfo` hook, the two group sets + their maintenance hooks, and the selectivity decision. Single file is appropriate at this size (RapidBow is one 328-line file); split only if it grows past ~400 lines. |
+| `plugins/GhostAllies/CMakeLists.txt` | Build the `GhostAllies.dll` target; same FetchContent deps as AutoFireBow (spdlog pin, CommonLibSSE-NG pinned tag). |
+| `plugins/GhostAllies/build.sh` | Configure+build via clang-cl toolchain; `--install` copies DLL to `$GAME_DATA/SKSE/Plugins`. Copy of AutoFireBow's with names changed. |
+| `plugins/GhostAllies/src/main.cpp` | Entire plugin: log setup, the `CompareFilterInfo` hook, the two group sets + their maintenance hooks, and the selectivity decision. Single file is appropriate at this size (AutoFireBow is one 328-line file); split only if it grows past ~400 lines. |
 
 ---
 
@@ -41,9 +41,9 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 - Create: `plugins/GhostAllies/src/main.cpp`
 
 **Contracts:**
-- `CMakeLists.txt`: identical structure to `plugins/RapidBow/CMakeLists.txt` with `project(GhostAllies ...)` and target renamed; same spdlog v1.13.0 pin, same CommonLibSSE-NG `GIT_TAG`, `cxx_std_23`, `PREFIX ""`/`SUFFIX ".dll"`.
-- `build.sh`: copy of RapidBow's with `RapidBow`→`GhostAllies`; same `cross-env.sh` source and `--install` path.
-- `main.cpp`: `SetupLog()` writing to `<SKSE log dir>/GhostAllies.log` (RapidBow idiom); `SKSEPluginInfo(.Name="GhostAllies", .RuntimeCompatibility=AddressLibrary, .StructCompatibility=Independent)`; `SKSEPluginLoad` calls `SetupLog()`, `SKSE::Init`, logs `"GhostAllies <ver> loaded"`.
+- `CMakeLists.txt`: identical structure to `plugins/AutoFireBow/CMakeLists.txt` with `project(GhostAllies ...)` and target renamed; same spdlog v1.13.0 pin, same CommonLibSSE-NG `GIT_TAG`, `cxx_std_23`, `PREFIX ""`/`SUFFIX ".dll"`.
+- `build.sh`: copy of AutoFireBow's with `AutoFireBow`→`GhostAllies`; same `cross-env.sh` source and `--install` path.
+- `main.cpp`: `SetupLog()` writing to `<SKSE log dir>/GhostAllies.log` (AutoFireBow idiom); `SKSEPluginInfo(.Name="GhostAllies", .RuntimeCompatibility=AddressLibrary, .StructCompatibility=Independent)`; `SKSEPluginLoad` calls `SetupLog()`, `SKSE::Init`, logs `"GhostAllies <ver> loaded"`.
 
 **Test Cases (verification):**
 - `./plugins/GhostAllies/build.sh` exits 0; `file build/GhostAllies.dll` reports `PE32+ executable (DLL) (console) x86-64, for MS Windows`.
@@ -65,7 +65,7 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 **Contracts:**
 - Install a hook on the engine's per-pair collision-filter decision, `bhkCollisionFilter::CompareFilterInfo`, resolved **version-independently** for **AE 1.6.1170** — never hardcode HIGGS's `0xE2BA10` (that is the 1.5.97 SE address).
   - **Expected primary path — Address Library branch-hook.** `CompareFilterInfo` is *not* exposed as a hookable virtual in CommonLibSSE-NG (verified: `RE/H/hkpCollisionFilter.h` only models `~dtor`/`Init`/`NumShapeKeyHitsLimitBreached`; the collide-comparison filter lives in the `hkpCollidableCollidableFilter` base at offset 0x08 and isn't a modeled slot). So branch-hook the function via an Address Library `REL::ID` resolved for the **AE** build (do not assume the SE id), using a CommonLib trampoline `write_branch`. Document which ID was used and where it came from (e.g. meh321 AE DB / cross-referenced from HIGGS's SE address).
-  - **Only if** a hookable virtual turns out to exist after inspecting the FetchContent'd `RE/B/bhkCollisionFilter.h` / `RE/H/hkpCollisionFilter.h` headers, prefer `REL::Relocation::write_vfunc` (RapidBow idiom) — but do not spend long here; the branch-hook is the realistic route.
+  - **Only if** a hookable virtual turns out to exist after inspecting the FetchContent'd `RE/B/bhkCollisionFilter.h` / `RE/H/hkpCollisionFilter.h` headers, prefer `REL::Relocation::write_vfunc` (AutoFireBow idiom) — but do not spend long here; the branch-hook is the realistic route.
 - Hooked thunk signature mirrors the engine's: receives the filter and the two `uint32` filterInfos, returns the original enum result. For this task it must **always defer to the original** (behavior-neutral) and only log.
 - Add a throttled probe log: decode and log `layer = info & 0x7F` and `group = info >> 16` for a small sample of pairs (rate-limit so it doesn't flood — e.g. first N pairs after load, or 1-in-M), enough to confirm the hook fires and to eyeball real projectile/biped/charcontroller layer + group values.
 
@@ -92,7 +92,7 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 - Modify: `plugins/GhostAllies/src/main.cpp` (remove the Task 2 dual-virtual probe hooks; add the launch stamp)
 
 **Contracts:**
-- **Pick the launch hook.** Reuse RapidBow's proven per-arrow signal, `ArrowProjectile::GetPowerSpeedMult` (`VTABLE_ArrowProjectile[0]`, AE vtable slot `0xB0`), where `GetProjectileRuntimeData().shooter` is available. Gate on shooter `IsPlayerRef()`. **Verify the phantom exists at this point**: `GetProjectileRuntimeData().unk0E0` (the `bhkSimpleShapePhantom`, offset `0x0E0`). If it's reliably null at GetPowerSpeedMult time, fall back to a projectile 3D-loaded / first-`UpdateImpl` hook. Stamp **once** per arrow (guard like RapidBow's `logged` flag).
+- **Pick the launch hook.** Reuse AutoFireBow's proven per-arrow signal, `ArrowProjectile::GetPowerSpeedMult` (`VTABLE_ArrowProjectile[0]`, AE vtable slot `0xB0`), where `GetProjectileRuntimeData().shooter` is available. Gate on shooter `IsPlayerRef()`. **Verify the phantom exists at this point**: `GetProjectileRuntimeData().unk0E0` (the `bhkSimpleShapePhantom`, offset `0x0E0`). If it's reliably null at GetPowerSpeedMult time, fall back to a projectile 3D-loaded / first-`UpdateImpl` hook. Stamp **once** per arrow (guard like AutoFireBow's `logged` flag).
 - **Resolve the follower to ignore (v1 = single):** find the player's current teammate. Iterate the appropriate actor source (e.g. `ProcessLists` high actors, or `PlayerCharacter` follower data) and select an `Actor` with `IsPlayerTeammate()`. If more than one, pick the **nearest to the player**. If none, do nothing (arrow behaves vanilla).
 - **Read the follower's systemGroup:** `Actor::GetCollisionFilterInfo(uint32_t&)` then `>> 16` (or `Actor::GetCharController()` → `bhkCharacterController::GetCollisionFilterInfo`, slot `0x08`).
 - **Stamp the phantom collidable:** reach `unk0E0` → `bhkShapePhantom`'s `hkpShapePhantom` → `collidable.broadPhaseHandle.collisionFilterInfo`, then:
