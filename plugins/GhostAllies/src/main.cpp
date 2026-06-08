@@ -2,7 +2,6 @@
 #include <RE/Skyrim.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
-#include <atomic>
 #include <cstdint>
 
 namespace
@@ -23,105 +22,97 @@ namespace
 		spdlog::set_default_logger(std::move(logger));
 	}
 
-	// Readable names for the COL_LAYER values we care about (RE::COL_LAYER).
-	// Arrows/bolts in flight are kProjectile(6); spells kSpell(7); an NPC body is
-	// kBiped(8) / kCharController(30) / kDeadBip(32) / kBipedNoCC(33).
-	const char* LayerName(std::uint32_t a_layer)
+	// Find the player's teammate (follower) nearest to the player. Returns nullptr if
+	// the player has no active follower. The systemGroup is a single 16-bit value, so a
+	// given arrow can only be made to ignore ONE actor — v1 picks the nearest teammate.
+	RE::Actor* FindNearestFollower(RE::Actor* a_player)
 	{
-		switch (a_layer) {
-		case 1:  return "static";
-		case 4:  return "clutter";
-		case 5:  return "weapon";
-		case 6:  return "PROJECTILE";
-		case 7:  return "SPELL";
-		case 8:  return "biped";
-		case 13: return "terrain";
-		case 17: return "ground";
-		case 30: return "charController";
-		case 32: return "deadBip";
-		case 33: return "bipedNoCC";
-		default: return "?";
+		auto* lists = RE::ProcessLists::GetSingleton();
+		if (!lists) {
+			return nullptr;
 		}
+		const RE::NiPoint3 playerPos = a_player->GetPosition();
+		RE::Actor*         best = nullptr;
+		float              bestDist = 0.0f;
+		for (auto& handle : lists->highActorHandles) {
+			auto actor = handle.get();
+			if (!actor || actor.get() == a_player) {
+				continue;
+			}
+			if (!actor->IsPlayerTeammate()) {
+				continue;
+			}
+			const float dist = actor->GetPosition().GetDistance(playerPos);
+			if (!best || dist < bestDist) {
+				best = actor.get();
+				bestDist = dist;
+			}
+		}
+		return best;
 	}
 
-	// The collisions this plugin cares about: a weapon/projectile/spell or an actor
-	// body. Used to skip the dominant static-world pair spam in the probe.
-	bool IsDynamicLayer(std::uint32_t a_layer)
+	// --- Ghost-allies stamp hook -------------------------------------------------
+	//
+	// Arrows don't collide as broadphase body pairs; each frame Projectile::UpdateImpl
+	// sweeps the projectile's own bhkSimpleShapePhantom (PROJECTILE_RUNTIME_DATA.unk0E0,
+	// offset 0x0E0) via a shape linear-cast. What that cast hits is governed by the
+	// phantom collidable's broadPhaseHandle.collisionFilterInfo. Havok's group filter
+	// skips bodies sharing a non-zero systemGroup (top 16 bits) — which is exactly how an
+	// arrow already ignores its own shooter. Copying a follower's systemGroup onto the
+	// arrow's phantom makes the arrow ignore that follower too: it passes through and
+	// keeps flying to the enemy behind, and the follower takes no hit.
+	//
+	// Hook point: ArrowProjectile::GetPowerSpeedMult (AE vtable slot 0xB0; SE 0xAF), the
+	// same slot RapidBow uses. It fires once per arrow at launch with the shooter known,
+	// so it's a clean place to stamp. We call the original and return it unchanged.
+	//
+	// Per-arrow idempotence: we only stamp when the phantom's systemGroup bits are still
+	// zero (a fresh arrow's phantom carries no group). Once stamped, the group is
+	// non-zero and we skip — no separate guard flag needed.
+	struct StampHook
 	{
-		return a_layer == 5     // weapon
-		    || a_layer == 6     // projectile
-		    || a_layer == 7     // spell
-		    || a_layer == 8     // biped
-		    || a_layer == 30    // charController
-		    || a_layer == 32    // deadBip
-		    || a_layer == 33;   // bipedNoCC
-	}
-
-	// --- Collision-filter probe hooks ---------------------------------------
-	//
-	// The game's collision filter is the bhkCollisionFilter singleton. Via multiple
-	// inheritance it implements several Havok filter interfaces, each a vtable on
-	// VTABLE_bhkCollisionFilter:
-	//   [1] hkpCollidableCollidableFilter::IsCollisionEnabled(collidableA, collidableB)
-	//       — the per-pair filter for DISCRETE broadphase body pairs (slot 0x01).
-	//   [4] hkpRayCollidableFilter::IsCollisionEnabled(rayInput, collidable)
-	//       — the filter for RAYCAST / linear-cast queries (slot 0x01).
-	//
-	// We hook the VIRTUALS directly (version-independent; no address-library guess),
-	// which catches every caller — unlike a single CompareFilterInfo call-site patch,
-	// which (as the first probe proved) only saw the character/ragdoll path and never
-	// any arrow. Hooking both interfaces in one go reveals which path fast arrows
-	// actually take: if PROJECTILE(6) shows up under "cc" they are discrete pairs; if
-	// it shows up under "ray" they are cast-based. The collidable gives us
-	// GetCollisionLayer()/GetOwner() directly, richer than raw filterInfo.
-	//
-	// THIS TASK: behavior-neutral. Always call the original and return its result;
-	// only emit throttled probe logging. A later task adds the pass-through decision.
-
-	// [1] discrete collidable-vs-collidable pairs.
-	struct CollidableFilterHook
-	{
-		static bool thunk(RE::hkpCollidableCollidableFilter* a_this, const RE::hkpCollidable* a_a, const RE::hkpCollidable* a_b)
+		static float thunk(RE::Projectile* a_this)
 		{
-			const bool result = func(a_this, a_a, a_b);
-
-			const std::uint32_t la = a_a ? static_cast<std::uint32_t>(a_a->GetCollisionLayer()) : 0xFF;
-			const std::uint32_t lb = a_b ? static_cast<std::uint32_t>(a_b->GetCollisionLayer()) : 0xFF;
-			if (IsDynamicLayer(la) || IsDynamicLayer(lb)) {
-				static std::atomic<std::uint32_t> n{ 0 };
-				const std::uint32_t               i = n.fetch_add(1, std::memory_order_relaxed);
-				if (i < 200) {
-					SKSE::log::info("cc [{:>3}] A(l={:>2} {:<14}) vs B(l={:>2} {:<14}) -> {}",
-						i, la, LayerName(la), lb, LayerName(lb), result ? "collide" : "ignore");
+			auto& runtime = a_this->GetProjectileRuntimeData();
+			auto  shooter = runtime.shooter.get();
+			if (shooter && shooter->IsPlayerRef() && runtime.unk0E0) {
+				// Reach the underlying hkpShapePhantom's collidable filter info:
+				//   bhkSimpleShapePhantom*  unk0E0                              (0x0E0, Projectile.h)
+				//     ->referencedObject (hkRefPtr<hkReferencedObject>)         (bhkRefObject, 0x10)
+				//       .get() -> hkpShapePhantom*                              (hkpWorldObject subtype)
+				//         ->collidable (hkpLinkedCollidable : hkpCollidable)   (hkpWorldObject, 0x20)
+				//           .broadPhaseHandle (hkpTypedBroadPhaseHandle)       (hkpCollidable, 0x24)
+				//             .collisionFilterInfo (std::uint32_t)             (handle +0x8)
+				//
+				// CommonLibSSE-NG only forward-declares bhkSimpleShapePhantom (no full def),
+				// so we reinterpret_cast unk0E0 to its complete base bhkShapePhantom to reach
+				// the inherited referencedObject. Single inheritance, base at offset 0 → safe.
+				auto* bhkPhantom = reinterpret_cast<RE::bhkShapePhantom*>(runtime.unk0E0);
+				auto* phantom = static_cast<RE::hkpShapePhantom*>(bhkPhantom->referencedObject.get());
+				if (phantom) {
+					std::uint32_t& filterInfo = phantom->collidable.broadPhaseHandle.collisionFilterInfo;
+					if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+						if (auto* follower = FindNearestFollower(player)) {
+							std::uint32_t followerInfo = 0;
+							follower->GetCollisionFilterInfo(followerInfo);
+							const std::uint32_t group = followerInfo >> 16;
+							// Stamp once: skip if the phantom already carries the follower's
+							// group. We compare against the follower group rather than 0, because
+							// a launched arrow may already hold its shooter's systemGroup (that's
+							// how it ignores the shooter) — guarding on ==0 could mean we never
+							// stamp at all. Overwriting also drops shooter-ignore, which is fine
+							// (the player is behind the bow).
+							if (group != 0 && (filterInfo >> 16) != group) {
+								filterInfo &= 0x0000FFFF;
+								filterInfo |= (group << 16);
+								SKSE::log::info("stamped player arrow -> follower {} ({:08X}) group {}",
+									follower->GetName(), follower->GetFormID(), group);
+							}
+						}
+					}
 				}
 			}
-			return result;
-		}
-
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
-
-	// [4] raycast / linear-cast queries. The ray itself carries the caster's layer
-	// in rayInput.filterInfo (offset 0x24); the target is the collidable. A
-	// projectile fired as a cast shows src layer = PROJECTILE even though the ray has
-	// no collidable of its own — so decode both sides.
-	struct RayFilterHook
-	{
-		static bool thunk(RE::hkpRayCollidableFilter* a_this, const RE::hkpWorldRayCastInput* a_rayInput, const RE::hkpCollidable* a_collidable)
-		{
-			const bool result = func(a_this, a_rayInput, a_collidable);
-
-			const std::uint32_t srcLayer = a_rayInput ? (a_rayInput->filterInfo & 0x7F) : 0xFF;
-			const std::uint32_t tgtLayer = a_collidable ? static_cast<std::uint32_t>(a_collidable->GetCollisionLayer()) : 0xFF;
-			if (IsDynamicLayer(srcLayer) || IsDynamicLayer(tgtLayer)) {
-				static std::atomic<std::uint32_t> n{ 0 };
-				const std::uint32_t               i = n.fetch_add(1, std::memory_order_relaxed);
-				if (i < 200) {
-					SKSE::log::info("ray[{:>3}] src(l={:>2} {:<14}) -> target(l={:>2} {:<14}) -> {}",
-						i, srcLayer, LayerName(srcLayer), tgtLayer, LayerName(tgtLayer), result ? "collide" : "ignore");
-				}
-			}
-			return result;
+			return func(a_this);
 		}
 
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -129,23 +120,18 @@ namespace
 
 	void InstallHooks()
 	{
-		// Slot 0x01 = IsCollisionEnabled on each filter interface (slot 0x00 is the
-		// destructor). VTABLE_bhkCollisionFilter[1] / [4] are the collidable-collidable
-		// and ray-collidable sub-object vtables of the bhkCollisionFilter singleton.
-		REL::Relocation<std::uintptr_t> ccVtbl{ RE::VTABLE_bhkCollisionFilter[1] };
-		CollidableFilterHook::func = ccVtbl.write_vfunc(0x1, CollidableFilterHook::thunk);
-
-		REL::Relocation<std::uintptr_t> rayVtbl{ RE::VTABLE_bhkCollisionFilter[4] };
-		RayFilterHook::func = rayVtbl.write_vfunc(0x1, RayFilterHook::thunk);
-
-		SKSE::log::info("GhostAllies: hooked bhkCollisionFilter IsCollisionEnabled vtables [1] collidable + [4] ray");
+		// AE (1.6.x) vtable slot for GetPowerSpeedMult is 0xB0 (SE is 0xAF); see
+		// CommonLibSSE-NG Projectile::GetPowerSpeedMult -> RelocateVirtual(0xAF, 0xB0).
+		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ArrowProjectile[0] };
+		StampHook::func = vtbl.write_vfunc(0xB0, StampHook::thunk);
+		SKSE::log::info("GhostAllies: hooked ArrowProjectile::GetPowerSpeedMult (AE vtable 0xB0) for systemGroup stamp");
 	}
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 3, 0 },
+	.Version = REL::Version{ 0, 4, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -156,7 +142,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 3, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 4, 0 }.string());
 
 	InstallHooks();
 
