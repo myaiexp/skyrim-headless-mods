@@ -81,25 +81,38 @@ namespace
 		{
 			const bool result = func(a_this, a_filterInfoA, a_filterInfoB);
 
-			// filterInfo layout: low 7 bits = collision layer, high 16 bits = system group.
+			// Assumed filterInfo layout: low 7 bits = collision layer, high 16 bits =
+			// system group (the HIGGS/activeragdoll convention). We are NOT fully sure
+			// this decode is right on 1.6.1170, so we also log the RAW filterInfo hex
+			// below — if the layer names look wrong, the raw values let us re-derive the
+			// true bit layout.
 			const std::uint32_t layerA = a_filterInfoA & 0x7F;
 			const std::uint32_t layerB = a_filterInfoB & 0x7F;
 
-			// Only log pairs that involve a PROJECTILE(6) or SPELL(7) layer — i.e. the
-			// collisions this plugin will eventually intercept. The naive "first N of
-			// anything" throttle burned out on ground geometry at load before any arrow
-			// flew; gating on the layer skips that spam and captures real shots.
-			// Projectile pairs are infrequent, but cap anyway so a stuck arrow can't flood.
-			const bool interesting = layerA == 6 || layerA == 7 || layerB == 6 || layerB == 7;
-			if (interesting) {
+			// Capture any pair that (by the assumed decode) involves a weapon/projectile/
+			// spell or an actor body — i.e. the collisions this plugin cares about. Gating
+			// on a SET of dynamic layers (not just projectile) means that even if the
+			// decode is slightly off, an arrow-vs-NPC event is still caught via the actor
+			// side, and the raw hex reveals the projectile's real encoding. This skips the
+			// dominant static-world pair spam that filled the previous naive throttle.
+			auto isDynamic = [](std::uint32_t a_layer) {
+				return a_layer == 5    // weapon
+				    || a_layer == 6    // projectile
+				    || a_layer == 7    // spell
+				    || a_layer == 8    // biped
+				    || a_layer == 30   // charController
+				    || a_layer == 32   // deadBip
+				    || a_layer == 33;  // bipedNoCC
+			};
+			if (isDynamic(layerA) || isDynamic(layerB)) {
 				static std::atomic<std::uint32_t> probeCount{ 0 };
-				constexpr std::uint32_t            kProbeLimit = 200;
+				constexpr std::uint32_t            kProbeLimit = 300;
 				const std::uint32_t                n = probeCount.fetch_add(1, std::memory_order_relaxed);
 				if (n < kProbeLimit) {
 					SKSE::log::info(
-						"probe[{:>3}] A(layer={:>2} {} group={}) vs B(layer={:>2} {} group={}) -> {}",
-						n, layerA, LayerName(layerA), a_filterInfoA >> 16,
-						layerB, LayerName(layerB), a_filterInfoB >> 16,
+						"probe[{:>3}] A(l={:>2} {:<14} g={} raw={:#010x}) vs B(l={:>2} {:<14} g={} raw={:#010x}) -> {}",
+						n, layerA, LayerName(layerA), a_filterInfoA >> 16, a_filterInfoA,
+						layerB, LayerName(layerB), a_filterInfoB >> 16, a_filterInfoB,
 						result ? "collide" : "ignore");
 				}
 			}
@@ -132,7 +145,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 2, 1 },
+	.Version = REL::Version{ 0, 2, 2 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -143,7 +156,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 2, 1 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 2, 2 }.string());
 
 	// Trampoline must be allocated before any write_call/write_branch. One 5-byte
 	// call patch needs little space; 64 bytes is comfortable headroom.
