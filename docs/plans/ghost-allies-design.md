@@ -40,65 +40,75 @@ solves a non-problem.
 
 ## Mechanism
 
-### Why the collision-filter layer (and not the Hit layer)
+> **Pivot (2026-06-08).** The original design targeted the global collision **filter**
+> (`bhkCollisionFilter::CompareFilterInfo` / `IsCollisionEnabled`), on the theory that arrows are
+> filtered as broadphase body pairs. In-game probing (Task 2 proof-point) **disproved that**:
+> arrows are not simulated rigid bodies in the broadphase and never reach the discrete
+> collidable-collidable filter. They collide via a **phantom linear-cast** (CCD sweep) whose cast
+> input carries no projectile-identifying layer at the filter level — so a global-filter decision
+> can't cleanly say "this is a player arrow vs a follower." The filter approach is **abandoned**.
+> The mechanism below is its replacement, and is simpler (no hot-path callback at all). The probe
+> findings that drove the pivot are preserved in `00-docs`/commit history.
 
-The engine resolves a projectile impact in stages: Havok broadphase/narrowphase decides a pair
-*may* collide → a contact point is generated and the projectile's velocity is consumed → the
-engine's **Hit** function processes damage and reactions. The existing friendly-fire mods hook
-that final **Hit** stage, so by the time they run the arrow has *already* collided and stopped —
-structurally incapable of producing continuation. True pass-through must prevent the contact from
-ever being generated, i.e. act at the **collision-filter** stage.
+### How arrows actually collide
 
-### The hook
+Each frame, `Projectile::UpdateImpl` drives the projectile's own **`bhkSimpleShapePhantom`**
+(`Projectile` runtime field `unk0E0`, offset `0x0E0`) and performs a **shape linear-cast** along
+the arrow's movement, collecting contacts. What that cast sweeps through is governed by the
+phantom collidable's `broadPhaseHandle.collisionFilterInfo`. The cast result is delivered to the
+arrow's collision handler (`ArrowProjectile` vtable **slot 190**), which runs `AddImpact` and
+sticks/destroys the arrow.
 
-`bhkCollisionFilter::CompareFilterInfo` — the function Havok calls for **every pair of physics
-bodies, every frame**, to decide whether they may collide. Its result is one of
-`{Collide, Ignore, Continue}`; returning **Ignore** makes the engine treat the pair as
-non-existent. This is the same hook HIGGS (`adamhynek/higgs`), activeragdoll
-(`adamhynek/activeragdoll`), and "I'm Walkin' Here" use to disable player↔NPC body collision —
-a **proven, shipping technique**. We are recombining a known-good hook for a new target pair
-(player projectile × teammate), not pioneering an unproven one.
+Crucially, the engine already makes every arrow **ignore its own shooter** through Havok's
+system-group rule (`hkpGroupFilter::isCollisionEnabled`): bodies in the same non-zero
+**systemGroup** (filterInfo bits 16–31) with a matching subsystem don't-collide pairing are
+skipped. The arrow is launched with exactly that relationship to its shooter.
 
-The callback receives `(bhkCollisionFilter*, filterInfoA, filterInfoB)`. Havok's filterInfo
-packs: collision **layer** in bits 0–6 (`COL_LAYER`; projectile = `kProjectile`, actor bodies on
-biped / char-controller layers) and the actor's **system group** in bits 16–31
-(`filterInfo >> 16`).
+### The mechanism: stamp the follower's systemGroup onto the arrow at launch
 
-### Selectivity logic
+At player-arrow launch, copy the **target follower's systemGroup** onto the arrow's phantom
+collidable, so the arrow treats that follower the same way it treats its own shooter — the cast
+never reports a contact against the follower, so the arrow sweeps **through** and keeps flying,
+still hitting everyone else (different systemGroups → normal collision):
 
-Because the callback is the hottest function in the physics step, the per-pair decision must be
-two cheap set lookups, with all the real work done **outside** the hot path:
+```
+info  = phantom.collidable.broadPhaseHandle.collisionFilterInfo
+info &= 0x0000FFFF                  // keep the arrow's own layer + subsystem bits
+info |= (followerSystemGroup << 16) // adopt the follower's systemGroup
+```
 
-- **Teammate group set** — system-group ids of current hired followers. Rebuilt on follower
-  add/remove and on cell/load events (not per frame).
-- **Player-projectile group set** — system-group ids of in-flight player-fired projectiles.
-  Populated by an arrow-launch hook (the RapidBow plugin already hooks arrow launch for its
-  charge fix, so this pattern is in hand) and cleared when the projectile is destroyed.
+- The follower's systemGroup is read via `Actor::GetCollisionFilterInfo(uint32&)` (`>> 16`), or
+  `Actor::GetCharController()` → `bhkCharacterController::GetCollisionFilterInfo`.
+- Fire point: a per-arrow launch hook where the shooter is known and the phantom exists. The
+  repo already hooks `ArrowProjectile::GetPowerSpeedMult` (RapidBow) with `runtime.shooter`
+  available; reuse that idiom (null-check `unk0E0`; if the phantom isn't ready there, move to a
+  projectile 3D-loaded / first-update hook).
 
-Per-pair callback: if one side's group is in the player-projectile set **and** the other side's
-group is in the teammate set → return **Ignore**; otherwise return **Continue** (defer to vanilla
-filtering, so nothing else changes).
+This is the community-standard idiom for making a projectile pass through a specific actor and
+continue — proven in `vinymayan/Parry-for-all`, `D7ry/EldenParry`, `Soaringwhale` RfaD
+(`_set_proj_collision_layer`), and others.
 
-Resolving a system-group back to its owning `Actor` (to test `IsPlayerTeammate()` when refreshing
-the teammate set) follows activeragdoll's template — read each actor's group via
-`bhkCharacterController::GetCollisionFilterInfo`.
+### Selectivity & scope
 
-### Open implementation decisions (resolve in the plan)
+- **Who to ignore (v1):** the player's single current follower (`IsPlayerTeammate`). With one
+  arrow able to carry only one systemGroup, **single-follower per arrow is a hard constraint** of
+  this mechanism — and it matches the "my companion tanks" use case. If multiple teammates are
+  present, v1 stamps the nearest one; documented limitation.
+- **Only player-fired arrows** are stamped (shooter check in the launch hook). Everything else is
+  untouched.
 
-These are deliberately left to the implementation plan, not spec defects — but pin them down
-there so they aren't discovered in-game:
+### Known trade-offs (accepted for v1)
 
-- **Projectile-set lifecycle.** Decide the exact event that removes a projectile's group id from
-  the player-projectile set (destructor / deferred-destroy / fallback sweep). A leaked id that
-  Havok later recycles to a non-player projectile would cause a false phase-through.
-- **Layer pre-filter as the cheap first gate.** Use the `COL_LAYER` bits to early-out on any pair
-  that isn't (projectile × actor-body) *before* touching the group sets, to protect the hot path.
-  Make this ordering explicit.
-- **Performance pass criterion.** Pick a concrete, repeatable check (a frame counter in a fixed
-  scene with a follower in the line of fire) so "not degraded" is testable rather than a judgment
-  call.
-- **Probe vs. plugin layout.** Decide whether the proof-point probe is a throwaway under a
-  separate path or a build flag within `plugins/GhostAllies/`.
+- The stamped arrow stops ignoring the **player** (its own shooter), since systemGroup is a single
+  value we overwrite — acceptable, the player is behind the bow.
+- The arrow also passes through anything sharing the follower's systemGroup (e.g. that follower's
+  mount/summon) — rare, accepted.
+
+### Multi-follower (deferred to v2)
+
+Either (a) assign all "ghost ally" followers to one shared custom systemGroup and stamp that group
+on player arrows, or (b) hook `ArrowProjectile` slot 190 with a set of follower IDs and manage
+per-frame re-hit suppression. Both add complexity; out of scope for v1.
 
 ## Architecture
 

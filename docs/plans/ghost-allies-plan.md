@@ -2,7 +2,13 @@
 
 **Goal:** A standalone SKSE plugin that lets player-fired arrows/bolts physically pass through hired followers and continue to the enemy behind.
 
-**Architecture:** Hook `bhkCollisionFilter::CompareFilterInfo` (the per-pair Havok collision-filter decision) and return **Ignore** for the pair (player-fired projectile × player-teammate body), so the engine never generates a contact — the arrow flies on. Selectivity is driven by two group-id sets maintained *outside* the hot path (current-teammate groups; in-flight player-projectile groups), so the per-pair callback is two set lookups behind a cheap collision-layer pre-filter. New plugin `plugins/GhostAllies/`, independent of RapidBow.
+**Architecture (revised after the Task 2 proof-point — see design doc "Pivot"):** arrows are *not*
+filtered as broadphase body pairs; they collide via a phantom linear-cast. So instead of a global
+collision-filter hook, at **player-arrow launch** we copy the target follower's Havok
+**systemGroup** onto the arrow's phantom collidable (`unk0E0` → `collidable.broadPhaseHandle.collisionFilterInfo`).
+The arrow then ignores that follower exactly as it already ignores its own shooter, sweeping
+through and continuing to the enemy behind. No per-frame hook, no hot path. New plugin
+`plugins/GhostAllies/`, independent of RapidBow.
 
 **Tech Stack:** C++23, CommonLibSSE-NG (FetchContent, AE+SE), spdlog; headless clang-cl + lld-link + xwin cross-build (Linux→Windows DLL); Address Library for version-independent offsets.
 
@@ -76,56 +82,37 @@
 
 ---
 
-### Task 3: Maintain the teammate and player-projectile group sets (off the hot path) [Mode: Delegated]
+> **Tasks 3 & 4 below replace the original group-set + filter-callback tasks**, which the Task 2
+> proof-point invalidated (arrows don't go through the discrete filter). The new single task
+> implements the launch-time systemGroup stamp. The probe hooks added in Task 2 are removed by it.
+
+### Task 3: Stamp the follower's systemGroup onto the player-arrow phantom at launch [Mode: Delegated]
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
+- Modify: `plugins/GhostAllies/src/main.cpp` (remove the Task 2 dual-virtual probe hooks; add the launch stamp)
 
 **Contracts:**
-- **Group key reconciliation (do this first):** `Projectile::GetCollisionGroup()` returns a `std::uint32_t`, but the design's group is `filterInfo >> 16` (the top 16 bits). Confirm whether the projectile accessor returns the already-shifted group or the full filterInfo, and normalize so the set keys are the **same representation** the Task 4 callback compares (apply `>> 16` consistently on both the projectile side and the actor side). Pick one width/representation and use it everywhere.
-- Two module-level sets of system-group ids in that normalized representation, guarded for the physics-thread reads in Task 4 (the hot path only reads; updates happen on game-thread events):
-  - `g_teammateGroups` — system groups of current hired followers. Rebuilt (not per frame) on follower-change and load events. Resolve each candidate actor's group via `bhkCharacterController::GetCollisionFilterInfo` (per activeragdoll/po3), include the actor only if `Actor::IsPlayerTeammate()`.
-  - `g_playerProjectileGroups` — system groups of in-flight **player-fired** projectiles. Added when a player arrow launches, removed when it is destroyed.
-- **Player-projectile capture:** hook a per-arrow launch point where the shooter is known and the projectile's havok body/collision group already exists (reuse RapidBow's proven signal: `ArrowProjectile::GetPowerSpeedMult`, fired once per arrow with `runtime.shooter` available). On a player-shot arrow, read the projectile's collision group (`Projectile::GetCollisionGroup`, research-cited vtable slot ~0xBB — verify against the header) and insert it.
-- **Projectile-set lifecycle (resolve the open decision):** pick and implement a concrete removal event so a group id cannot leak and later be recycled to a non-player projectile — e.g. hook the projectile's destroy/`~Projectile` path. State the chosen mechanism in a code comment. **Additionally** add a cheap bounded fallback sweep (e.g. drop ids whose projectile handle is no longer valid, run on a low-frequency event) so a single missed removal cannot silently corrupt selectivity — a leaked id here is the one failure mode that wrongly phases a non-player projectile rather than crashing, so the set must stay self-correcting.
-- **Refresh triggers for `g_teammateGroups`:** at minimum `kPostLoadGame`/`kNewGame`, plus a periodic or event-driven rebuild covering follower recruit/dismiss and cell change. Document the chosen trigger set.
+- **Pick the launch hook.** Reuse RapidBow's proven per-arrow signal, `ArrowProjectile::GetPowerSpeedMult` (`VTABLE_ArrowProjectile[0]`, AE vtable slot `0xB0`), where `GetProjectileRuntimeData().shooter` is available. Gate on shooter `IsPlayerRef()`. **Verify the phantom exists at this point**: `GetProjectileRuntimeData().unk0E0` (the `bhkSimpleShapePhantom`, offset `0x0E0`). If it's reliably null at GetPowerSpeedMult time, fall back to a projectile 3D-loaded / first-`UpdateImpl` hook. Stamp **once** per arrow (guard like RapidBow's `logged` flag).
+- **Resolve the follower to ignore (v1 = single):** find the player's current teammate. Iterate the appropriate actor source (e.g. `ProcessLists` high actors, or `PlayerCharacter` follower data) and select an `Actor` with `IsPlayerTeammate()`. If more than one, pick the **nearest to the player**. If none, do nothing (arrow behaves vanilla).
+- **Read the follower's systemGroup:** `Actor::GetCollisionFilterInfo(uint32_t&)` then `>> 16` (or `Actor::GetCharController()` → `bhkCharacterController::GetCollisionFilterInfo`, slot `0x08`).
+- **Stamp the phantom collidable:** reach `unk0E0` → `bhkShapePhantom`'s `hkpShapePhantom` → `collidable.broadPhaseHandle.collisionFilterInfo`, then:
+  ```
+  info &= 0x0000FFFF;                  // keep arrow's own layer + subsystem bits
+  info |= (followerSystemGroup << 16); // adopt the follower's systemGroup
+  ```
+  (Precedents: `vinymayan/Parry-for-all`, `D7ry/EldenParry`, `Soaringwhale` RfaD `_set_proj_collision_layer`.)
+- Keep a low-rate log line on each stamp (`stamped arrow -> follower <name/id>, group <g>`) for verification; removable later.
 
-**Test Cases (verification):**
-- Log set membership on every update (size + the ids).
-- In-game: recruiting a follower adds an id to `g_teammateGroups`; dismissing removes it.
-- In-game: firing a bow adds an id to `g_playerProjectileGroups`; shortly after the arrow lands/despawns the id is removed (no unbounded growth — fire 30+ arrows and confirm the set returns to empty).
-
-**Constraints:**
-- **Critical assumption to validate:** that player-fired projectiles receive a system group that is distinct and stable enough to identify. If projectiles do not get usable distinct groups, the player-vs-enemy distinction breaks (enemy arrows would also phase through your follower) — in that case **stop and report**; the design must be revisited before Task 4.
-- All set *mutation* happens on game-thread events, never inside the filter callback.
-- No per-frame actor scans for the teammate set — event/triggered rebuilds only.
-
-**Commit after passing.**
-
----
-
-### Task 4: Wire selectivity into the filter callback — true pass-through [Mode: Delegated]
-
-**Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
-
-**Contracts:**
-- Replace Task 2's log-only thunk body with the decision:
-  1. **Layer pre-filter (cheap first gate):** decode both infos' layers; if the pair is not (one `kProjectile` × one biped/char-controller actor layer), return the original result immediately (early-out — protects the hot path).
-  2. For a qualifying pair, let `pGroup` = the projectile side's group, `aGroup` = the actor side's group. If `pGroup ∈ g_playerProjectileGroups` **and** `aGroup ∈ g_teammateGroups` → return **Ignore**.
-  3. Otherwise → return the original result (vanilla filtering; nothing else changes).
-- Remove or gate-off the Task 2 sample probe logging (keep a low-rate "phased" log line for verification, removable later).
-
-**Test Cases (verification — this is the v1 definition of done):**
-- Stand a hired follower directly between the player and an enemy; fire arrows → arrows pass through the follower and strike the enemy behind; follower takes **no** damage and does **not** turn hostile. `GhostAllies.log` shows the "phased" line for those shots.
-- No follower in the line of fire → arrows hit enemies and the world exactly as vanilla.
-- Fire at an enemy while a follower stands off to the side (not in line) → normal hit, follower unaffected.
-- Enemy archer firing at your follower → follower is hit normally (enemy projectiles are not in `g_playerProjectileGroups`).
-- Frame time with a follower present in a fight is not visibly degraded (eyeball a frame counter in a fixed test fight; record rough before/after).
+**Test Cases (verification — v1 definition of done):**
+- Stand your follower directly between you and an enemy; fire → **arrows pass through the follower and hit the enemy behind**; follower takes no damage and doesn't aggro. Log shows the stamp line.
+- No follower present → arrows hit the world/enemies exactly as vanilla.
+- Follower off to the side (not in line) → enemy still hit normally; follower unaffected.
+- Enemy archer shooting your follower → follower hit normally (only *player* arrows are stamped).
 
 **Constraints:**
-- Hot-path body: layer early-out, then at most two set lookups; no allocation, no locking beyond a cheap read guard.
-- On any ambiguity in a pair (can't classify projectile vs actor side), return the original result — never Ignore by default.
+- **Stop-and-report gates:** (1) if `unk0E0` is null at the chosen hook and no working fire point exists, report before guessing; (2) if stamping the follower's systemGroup does **not** produce pass-through in-game (e.g. the subsystem don't-collide pairing doesn't apply to the cast as the precedents imply), report — the fallback is the `ArrowProjectile` slot-190 hook (skip impact for the follower hit + stamp on first contact).
+- Only ever stamp **player-fired** arrows. Never modify non-player projectiles.
+- Single-follower per arrow is an accepted v1 limitation (systemGroup is one 16-bit value) — do not attempt multi-follower here.
 
 **Commit after passing.**
 
@@ -133,5 +120,5 @@
 
 ## Execution
 **Skill:** superpowers:subagent-driven-development
-- Mode A tasks: Opus implements directly (Task 1)
-- Mode B tasks: Dispatched to subagents (Tasks 2, 3, 4 — each needs CommonLibSSE-NG/header exploration, RE judgement, and has a real stop-and-report risk gate)
+- Mode A: Opus implements directly (Task 1 — done).
+- Mode B: Dispatched to subagents (Task 2 proof-point — done, drove the pivot; Task 3 launch-stamp — each needs CommonLibSSE-NG/header exploration, RE judgement, and has stop-and-report gates).
