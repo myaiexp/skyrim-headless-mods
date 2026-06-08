@@ -90,21 +90,66 @@ sig-scanned call-site address.
 
 In the hook, for **player-fired** arrows (`runtime.shooter->IsPlayerRef()`) we clamp
 `runtime.power` up to `1.0`, then defer to the original — which recomputes the genuine full-power
-speed multiplier from the now-full charge. So speed and range come from the original formula, and
-the now-full `power` field makes impact damage full too. NPC archers are untouched.
+speed multiplier from the now-full charge. NPC archers are untouched.
+
+**Important correction (found by in-game testing): `power` only drives _speed_, not damage.**
+`Projectile::GetSpeed` reads `power` _live_ each call, so clamping it gives full speed. But arrow
+**damage** is baked at launch into a **separate** field — `PROJECTILE_RUNTIME_DATA::weaponDamage`
+(0x198) — as `fullDamage * drawMult`, and is _not_ recomputed from `power`. So clamping `power`
+alone gave full-speed-but-partial-damage arrows. Fix: in the same hook, also rescale
+`weaponDamage *= 1.0f / naturalPower`. Verified exact — every shot's `weaponDamage` rescales to
+the full-draw value (it's perfectly linear in `power`). Both writes happen once per arrow (guarded
+flag) or the damage rescale would compound on each `GetSpeed` call.
 
 AE vtable slot is **0xB0** (SE is 0xAF) — from CommonLibSSE-NG
 `Projectile::GetPowerSpeedMult → RelocateVirtual(0xAF, 0xB0)`; `RELOCATION_ID`/vtable lookups
 resolve against the Address Library DB for 1.6.1170 (installed in-game). Code:
 `plugins/RapidBow/src/main.cpp`.
 
-### Possible follow-ups (option 1 polish)
+## Rapid-fire loop (hold-attack auto-fire) — DONE
 
-- The fix governs the _fired_ arrow (power/speed/damage). The draw **animation** still plays its
-  normal release; cosmetic only. A _rapid_ full-power fire (the original "RapidBow" intent) would
-  layer an input/cadence tweak on top — separate from this charge fix.
-- `power` is clamped to exactly `1.0`; setting `>1.0` would over-draw (more speed/damage) if ever
-  wanted.
+Layered on top of the full-power hook: **hold the attack button with a bow → auto-loose at full
+draw, re-nock, repeat; release to stop.** Verified in-game on 1.6.1170.
+
+How it works (all on the main thread, **event-driven — no per-frame polling task**):
+
+- A `BSTEventSink<BSAnimationGraphEvent>` on the player watches the bow cycle. On the engine's
+  **`BowDrawn`** event (its own "fully drawn" marker — adapts to any bow speed / perk / enchant,
+  no draw-time assumptions) it schedules a loose; on the resulting **`arrowRelease`** it schedules
+  a re-nock. Each is a **one-shot** `SKSE::GetTaskInterface()->AddTask` (deferred so we don't
+  re-enter the graph mid-dispatch, and **never self-rescheduling**).
+- Loose = `NotifyAnimationGraph("attackRelease")`; re-nock = `NotifyAnimationGraph` of
+  `bowAttackStart` + `BowDrawStart` + `bowDraw`. (Same events the shelved Papyrus loop used.)
+- **Graph-driven release loses an _uncharged_ (0.350) arrow** — the draw charge is welded to the
+  real input-release path, not the graph (confirmed: auto-fired shots logged `natural_power=0.350`
+  while manual ones logged `1.000`). That's fine here: the full-power+damage hook above forces every
+  player arrow to full regardless, so the graph loose still lands full.
+- **Hold detection:** a `BSTEventSink<InputEvent*>` on `BSInputDeviceManager` tracks the
+  `"Right Attack/Block"` / `"Left Attack/Block"` button state. (`AttackBlockHandler::heldRight/
+heldLeft` did **not** reflect hold reliably — first attempt, abandoned.)
+
+### Hard-won lessons (don't re-derive)
+
+- **NEVER use a self-rescheduling `AddTask` for a per-frame loop.** v1.6.0 did `AddTask(LoopTick)`
+  from inside `LoopTick`; SKSE drains the task queue within the frame, so it became an infinite
+  loop → **main-thread hang** (black screen, no input, ambient audio still playing — the classic
+  signature). Drive timed/looping logic from real engine events + one-shot tasks, or a proper
+  per-frame _hook_, never a re-arming task.
+- **A fixed-ms release timer is fragile** — bow draw speed varies with the weapon, the Quick Shot
+  perk, enchants, etc. The robust trigger is the engine's own `BowDrawn` event.
+
+### Possible follow-ups
+
+- **Reclaim ~220ms/shot:** genuine full power saturates ~220ms _before_ `BowDrawn` fires (measured:
+  `natural_power=1.000` at ~1800ms vs `BowDrawn` at ~2065ms). Firing exactly at saturation needs
+  the **live draw charge** (not a named field — would need a probe to locate it in
+  `HighProcessData`). Alternative discussed: a flat ~10% damage bump to compensate DPS — rejected
+  as non-adaptive (re-introduces the bow-speed problem on the damage axis) and power-creep.
+- **Known bug (deferred):** tap, then tap again _before_ the arrow looses → it draws the next arrow
+  but never releases it.
+- `power`/`weaponDamage` are forced to exactly full; scaling `>1.0` would over-draw if ever wanted.
+- The plugin still carries verbose probe logging + `AnimProbeSink` naming from development — worth
+  trimming/renaming.
 
 ## References
 
