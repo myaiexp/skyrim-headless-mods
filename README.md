@@ -29,6 +29,7 @@ So the whole pipeline is command-line, reproducible, and version-controllable.
 | `docs/workflow.md` | Build / install / **iterate** — including the non-obvious gotchas that waste hours. |
 | `docs/findings-papyrus-limits.md` | **What Papyrus can't do** — the bow-charge wall, with evidence. Read before trying anything input/engine-coupled. |
 | `docs/skse-plugin-plan.md` | **Next phase:** headless **SKSE C++** (CommonLibSSE-NG cross-compiled on Linux) for engine-level control Papyrus can't reach. |
+| `docs/autofirebow-nexus-page.md` | **Release messaging** for AutoFireBow — what to bring up on the Nexus page and why (draft outline, not final copy). |
 
 ## Two tiers of headless modding
 
