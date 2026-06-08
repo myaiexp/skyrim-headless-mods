@@ -18,9 +18,15 @@ ghost-allies-design.md` → "## v2 design") and consumes the former "spells" ite
   which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
   already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
   decision below).
-- **Per-type fallback if a continuous type won't phase.** If v2 in-game results ever show
-  flame/beam/cone *don't* phase via the systemGroup stamp (continuous collision), implement the
-  per-type `AddImpact` (slot `0xBD`) skip for teammate hits as the documented fallback.
+- **Continuous spells (flame/beam/cone) don't phase via the stamp — needs a different fallback.**
+  Confirmed in-game 2026-06-08: a FlameProjectile *is* stamped (the phantom exists, the follower's
+  group is written onto it) but the follower still takes damage — continuous streams apply their
+  effect through per-frame hit detection that the broadphase systemGroup filter doesn't gate.
+  Beam/cone expected to match (untested, no spell). Fallback to try: hook `AddImpact` (slot `0xBD`)
+  on those subclasses and skip teammate hits — but the stream's damage may not even flow through
+  `AddImpact`, in which case the real fix is hooking the magic-effect/hit application and skipping
+  teammates (the "no friendly fire" approach — pragmatic for streams, which visually touch anyway).
+  Discrete projectiles (arrows, aimed missile spells) are unaffected — they phase via the stamp.
 
 **Dropped, not deferred:** two-way phasing (follower-fired projectiles through the player).
 Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real

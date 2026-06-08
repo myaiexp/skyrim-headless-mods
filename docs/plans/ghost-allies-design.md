@@ -164,9 +164,9 @@ best design, not merely the tidy one.
 |------|---------|-------|
 | `ArrowProjectile`  | ✅ | arrows/bolts (was v1) |
 | `MissileProjectile`| ✅ | aimed bolt spells: Firebolt, Ice Spike, Fireball, … (the core spell ask) |
-| `FlameProjectile`  | ✅ | Flames stream — continuous; verify pass-through holds (see risks) |
-| `BeamProjectile`   | ✅ | Lightning beams — continuous; verify |
-| `ConeProjectile`   | ✅ | cone spells — continuous; verify |
+| `FlameProjectile`  | ⚠️ hooked, **does NOT phase** | Tested in-game 2026-06-08: the stamp fires and writes the follower's group onto the flame phantom (`stamped player flame -> follower Lydia … group 891`), **but the follower still takes damage**. FlameProjectile applies its effect via per-frame hit detection that the broadphase systemGroup filter doesn't gate — the stamp is necessary-but-insufficient for continuous streams. Needs the AddImpact/effect-application fallback (deferred). |
+| `BeamProjectile`   | ⚠️ hooked, untested | Lightning beams — continuous; expected to behave like flame (won't phase via the stamp alone). Untested (no spell available). |
+| `ConeProjectile`   | ⚠️ hooked, untested | cone spells — continuous; same expectation as flame. Untested (no spell available). |
 | `GrenadeProjectile`| ❌ deferred | runes / lobbed; different (arc, placed) collision feel — out of scope |
 | `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
 
