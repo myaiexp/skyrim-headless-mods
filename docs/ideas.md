@@ -18,15 +18,17 @@ ghost-allies-design.md` → "## v2 design") and consumes the former "spells" ite
   which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
   already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
   decision below).
-- **Continuous spells (flame/beam/cone) don't phase via the stamp — needs a different fallback.**
-  Confirmed in-game 2026-06-08: a FlameProjectile *is* stamped (the phantom exists, the follower's
-  group is written onto it) but the follower still takes damage — continuous streams apply their
-  effect through per-frame hit detection that the broadphase systemGroup filter doesn't gate.
-  Beam/cone expected to match (untested, no spell). Fallback to try: hook `AddImpact` (slot `0xBD`)
-  on those subclasses and skip teammate hits — but the stream's damage may not even flow through
-  `AddImpact`, in which case the real fix is hooking the magic-effect/hit application and skipping
-  teammates (the "no friendly fire" approach — pragmatic for streams, which visually touch anyway).
-  Discrete projectiles (arrows, aimed missile spells) are unaffected — they phase via the stamp.
+- **~~Continuous spells (flame/beam/cone) don't phase via the stamp~~ — RESOLVED 2026-06-08.**
+  Fixed at the magic layer in v2 Task 5: hook `MagicTarget::AddTarget` and refuse player hostile
+  effects on teammates (Flames/Sparks verified dealing no friendly damage). `AddImpact` (0xBD) was
+  tried first and disproven (it fired/skipped but damage persisted — streams don't damage via
+  AddImpact). See `docs/plans/ghost-allies-design.md` §2b.
+- **Cosmetic: continuous-stream visual clips a teammate's shield/weapon collidable.** The ghost-group
+  write only stamps the **char-controller**, so a stream's *visual* can still stop on the follower's
+  equipped shield/weapon or ragdoll collision body (no damage — that's refused at AddTarget). Fixing
+  would require walking each teammate's 3D to stamp every equipment/ragdoll rigid body and redoing it
+  on equip changes — judged not worth it for a cosmetic clip. Revisit only if it looks bad enough in
+  normal play to matter.
 
 **Dropped, not deferred:** two-way phasing (follower-fired projectiles through the player).
 Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real

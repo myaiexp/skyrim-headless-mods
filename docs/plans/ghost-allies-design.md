@@ -1,11 +1,15 @@
 # GhostAllies — design
 
-**Status:** v1 ✅ shipped & verified in-game (2026-06-08) — arrows pass through the nearest follower
-via launch-time systemGroup stamp. **v2 ✅ built (2026-06-08, Tasks 1–3), not yet verified in-game**
-— extends the effect to spell projectiles and folds in whole-party multi-follower (see "## v2
-design" below). v2 builds to PE32+; the whole-party path + the actor char-controller group write
-(`bhkCharacterController` vtable slot 0x09) ship **unverified** by the user's choice. Pivoted away
-from the original collision-filter approach (see "Pivot" below).
+**Status:** v1 ✅ shipped (arrows through nearest follower). **v2 ✅ shipped & verified in-game
+(2026-06-08, v0.7.0).** Verified: arrows + Firebolt (missile) physically pass through; whole-party
+ghost-group enroll/restore works (`bhkCharacterController` slot 0x09 write, no crash); the player's
+continuous spells (Flames/Sparks) deal **no friendly damage** to teammates. Two mechanisms:
+(1) the **systemGroup stamp** = true pass-through for discrete projectiles (arrows, aimed missiles);
+(2) a **`MagicTarget::AddTarget` refusal** = no hostile-magic damage to teammates, which covers the
+continuous streams the stamp can't (their damage flows through the magic layer, not collision).
+Known cosmetic limitation: a continuous stream's *visual* may still clip a teammate's shield/weapon
+collidable (only the char-controller is ghosted) — no gameplay effect. See "## v2 design". Pivoted
+away from the original collision-filter approach (see "Pivot" below).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)
@@ -164,16 +168,42 @@ best design, not merely the tidy one.
 |------|---------|-------|
 | `ArrowProjectile`  | ✅ **verified in-game** (2026-06-08) | arrows/bolts (was v1); confirmed still phasing after the Task 1 hook move to `UpdateImpl`. |
 | `MissileProjectile`| ✅ **verified in-game** (2026-06-08) | aimed bolt spells — **Firebolt confirmed phasing**. Ice Spike/Fireball same class, expected identical. The core spell ask, working. |
-| `FlameProjectile`  | ⚠️ stamped, **does NOT phase** | Flames, tested 2026-06-08: the stamp fires and writes the follower's group onto the flame phantom (`stamped player flame -> … group 891`), **but the follower still takes damage**. Continuous streams apply their effect via per-frame hit detection the broadphase systemGroup filter doesn't gate — the stamp is necessary-but-insufficient. Covered by the continuous-spell fallback (in progress). |
-| `BeamProjectile`   | ⚠️ stamped, **does NOT phase** | **Sparks confirmed not phasing** (2026-06-08) — same as flame. Covered by the continuous-spell fallback (in progress). |
-| `ConeProjectile`   | ⚠️ stamped, untested | cone spells — continuous; same expectation as flame/beam. Untested (no spell available). Included in the fallback. |
+| `FlameProjectile`  | ✅ **no friendly damage** (verified) | Flames: stamp doesn't gate it (continuous), but the `MagicTarget::AddTarget` refusal (Task 5) drops the damage — verified in-game (`AddTarget refusing player hostile effects on teammate Lydia`). No true visual pass-through (a stream visually touches); cosmetic shield-clip possible. |
+| `BeamProjectile`   | ✅ **no friendly damage** (verified) | Sparks: same as flame — handled by the AddTarget refusal, not the stamp. |
+| `ConeProjectile`   | ✅ no friendly damage (by mechanism) | cone spells — continuous; covered by the same AddTarget refusal. Untested (no spell available) but identical path to flame/beam. |
 | `GrenadeProjectile`| ❌ deferred | runes / lobbed; different (arc, placed) collision feel — out of scope |
 | `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
 
-Flame/beam/cone are continuous-collision types: the stamp is applied uniformly, but whether each
-actually phases via the phantom-group route is a **per-type in-game verification** item. Types that
-don't phase get documented; fallback for a stubborn type is its `AddImpact` (slot `0xBD`) handler —
-skip the impact when the hit ref is a teammate.
+### 2b. Continuous spells — solved at the magic layer (Tasks 4–5, verified)
+
+Flame/beam/cone are continuous-collision streams. In-game the stamp **fires on them** (the phantom
+exists, the group is written) **but the follower still takes damage** — their damage isn't gated by
+the broadphase collision filter at all. The debugging path that pinned this:
+
+1. **Task 4 (rejected): `AddImpact` (slot `0xBD`) skip.** Hooked per-subclass to skip impacts whose
+   ref is a teammate. The log **proved it fired and skipped every flame impact on the follower, yet
+   she still took damage** — so the stream's damage does **not** flow through `Projectile::AddImpact`.
+   This hook was removed.
+2. **Task 5 (works): `MagicTarget::AddTarget` refusal.** Continuous-spell damage is applied as a
+   hostile magic effect through the magic-target system. Hook `MagicTarget::AddTarget`
+   (`VTABLE_Character[4]`, vfunc `1` — matches `feelixs/noff-skse` precedent and the
+   `M/MagicTarget.h` `// 01` slot) and **return `false` without the original** when the target is a
+   player teammate AND the caster is the player AND the effect is hostile (`Effect::IsHostile`,
+   `MagicItem::IsHostile` fallback). Beneficial effects, enemies, and non-player casters are
+   untouched — heals/buffs on followers and all enemy damage still work. Verified in-game: Flames
+   and Sparks deal no damage to the follower.
+
+The two mechanisms are complementary: the **stamp** gives discrete projectiles *true pass-through*
+(the arrow/bolt continues to the enemy behind); the **AddTarget refusal** is the damage backstop
+for everything the stamp can't physically phase (continuous streams, and incidentally any other
+player hostile magic that reaches a teammate).
+
+**Known cosmetic limitation (not worth chasing):** a continuous stream's *visual* can still stop on
+a teammate's equipped **shield/weapon or ragdoll** collidable, because the ghost-group write only
+stamps the **char-controller**, not the actor's other collision bodies. No gameplay effect (damage
+is refused regardless). A fix would mean walking each teammate's 3D to stamp every equipment/ragdoll
+rigid body and redoing it on equip changes — disproportionate for a cosmetic clip. Deferred
+(`docs/ideas.md`).
 
 ### 3. Whole-party multi-follower (folded in — will remain untested)
 
