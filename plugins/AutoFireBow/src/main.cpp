@@ -202,11 +202,15 @@ namespace
 
 	void InstallHooks()
 	{
-		// AE (1.6.x) vtable slot for GetPowerSpeedMult is 0xB0 (SE is 0xAF); see
-		// CommonLibSSE-NG Projectile::GetPowerSpeedMult -> RelocateVirtual(0xAF, 0xB0).
+		// GetPowerSpeedMult's vtable slot differs by runtime: SE/VR 0xAF, AE 0xB0 — the
+		// exact mapping CommonLibSSE-NG itself uses for Projectile::GetPowerSpeedMult
+		// (RelocateVirtual(0xAF, 0xB0)). REL::Relocate picks per the live runtime, so one
+		// NG-built DLL hooks the correct slot on SE, AE, and VR. AE is tested; SE/VR
+		// untested (no runtime here) but use CommonLib's own authoritative index.
+		const auto idx = REL::Relocate<std::size_t>(0xAF, 0xB0);
 		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ArrowProjectile[0] };
-		PowerSpeedHook::func = vtbl.write_vfunc(0xB0, PowerSpeedHook::thunk);
-		SKSE::log::info("AutoFireBow: hooked ArrowProjectile::GetPowerSpeedMult (AE vtable 0xB0)");
+		PowerSpeedHook::func = vtbl.write_vfunc(idx, PowerSpeedHook::thunk);
+		SKSE::log::info("AutoFireBow: hooked ArrowProjectile::GetPowerSpeedMult (vtable slot {:#x})", idx);
 	}
 
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
