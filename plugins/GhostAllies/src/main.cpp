@@ -101,20 +101,24 @@ namespace
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	// [4] raycast / linear-cast queries (only the target collidable is a body).
+	// [4] raycast / linear-cast queries. The ray itself carries the caster's layer
+	// in rayInput.filterInfo (offset 0x24); the target is the collidable. A
+	// projectile fired as a cast shows src layer = PROJECTILE even though the ray has
+	// no collidable of its own — so decode both sides.
 	struct RayFilterHook
 	{
-		static bool thunk(RE::hkpRayCollidableFilter* a_this, const void* a_rayInput, const RE::hkpCollidable* a_collidable)
+		static bool thunk(RE::hkpRayCollidableFilter* a_this, const RE::hkpWorldRayCastInput* a_rayInput, const RE::hkpCollidable* a_collidable)
 		{
 			const bool result = func(a_this, a_rayInput, a_collidable);
 
-			const std::uint32_t l = a_collidable ? static_cast<std::uint32_t>(a_collidable->GetCollisionLayer()) : 0xFF;
-			if (IsDynamicLayer(l)) {
+			const std::uint32_t srcLayer = a_rayInput ? (a_rayInput->filterInfo & 0x7F) : 0xFF;
+			const std::uint32_t tgtLayer = a_collidable ? static_cast<std::uint32_t>(a_collidable->GetCollisionLayer()) : 0xFF;
+			if (IsDynamicLayer(srcLayer) || IsDynamicLayer(tgtLayer)) {
 				static std::atomic<std::uint32_t> n{ 0 };
 				const std::uint32_t               i = n.fetch_add(1, std::memory_order_relaxed);
 				if (i < 200) {
-					SKSE::log::info("ray[{:>3}] target(l={:>2} {:<14}) -> {}",
-						i, l, LayerName(l), result ? "collide" : "ignore");
+					SKSE::log::info("ray[{:>3}] src(l={:>2} {:<14}) -> target(l={:>2} {:<14}) -> {}",
+						i, srcLayer, LayerName(srcLayer), tgtLayer, LayerName(tgtLayer), result ? "collide" : "ignore");
 				}
 			}
 			return result;
