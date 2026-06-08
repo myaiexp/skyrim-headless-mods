@@ -151,10 +151,19 @@ namespace
 
 	void InstallHooks()
 	{
-		// Task 1: arrows only, via the unified UpdateImpl hook (replaces v1's
-		// GetPowerSpeedMult 0xB0 hook). Task 2 adds the spell-projectile subclasses.
+		// One unified UpdateImpl (0xAB) stamp hook per in-scope projectile subclass, all
+		// routing to StampProjectilePhantom. Arrows (was v1's GetPowerSpeedMult hook) plus
+		// the aimed spell projectiles. Runes (GrenadeProjectile) and wall spells
+		// (BarrierProjectile) are deliberately NOT hooked — out of scope (docs/ideas.md).
+		// Flame/beam/cone are continuous-collision types: the stamp is applied uniformly,
+		// but whether each actually phases via the group route is a per-type in-game
+		// question (the per-type label below makes the log distinguish them).
 		InstallStamp<RE::ArrowProjectile>("arrow");
-		SKSE::log::info("GhostAllies: hooked ArrowProjectile::UpdateImpl (vtable 0xAB) for systemGroup stamp");
+		InstallStamp<RE::MissileProjectile>("missile");
+		InstallStamp<RE::FlameProjectile>("flame");
+		InstallStamp<RE::BeamProjectile>("beam");
+		InstallStamp<RE::ConeProjectile>("cone");
+		SKSE::log::info("GhostAllies: hooked UpdateImpl (vtable 0xAB) on arrow/missile/flame/beam/cone for systemGroup stamp");
 	}
 }
 
