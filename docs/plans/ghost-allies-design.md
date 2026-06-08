@@ -145,6 +145,37 @@ stable, stop and reassess before investing in the selectivity logic.
 4. Fire at an enemy with a follower *not* in the line: normal hit, no behavior change.
 5. Frame time with a follower present is not visibly degraded.
 
+## Continuing from here (v2 entry points)
+
+All v1 logic is one file: `plugins/GhostAllies/src/main.cpp`. The whole effect is `StampHook::thunk`
+(hooked on `ArrowProjectile::GetPowerSpeedMult`, `VTABLE_ArrowProjectile[0]` slot `0xB0`) +
+`FindNearestFollower`. Build/iterate with `./plugins/GhostAllies/build.sh --install`, restart the
+game, check `<SKSE log dir>/GhostAllies.log` for `stamped player arrow -> follower …`. (Note: the
+sibling bow plugin was renamed RapidBow → **AutoFireBow**; in-code comments still say "RapidBow" —
+harmless, same idioms.)
+
+The three deferred features (`docs/ideas.md`) and how each plugs in:
+
+- **Multi-follower.** A single arrow's systemGroup can only match one actor, so true "pass through
+  all followers" needs a different tack: assign every current teammate a **shared custom
+  systemGroup** (write it onto each follower's char-controller filterInfo on follower-change/load),
+  then stamp that one shared group on player arrows. Verify the subsystem don't-collide pairing
+  still triggers pass-through when several actors share the group (untested — was proven only for
+  single-actor stamping).
+- **Spells.** Magic projectiles are `MissileProjectile`, **not** `ArrowProjectile`, and have no
+  draw power, so there is **no `GetPowerSpeedMult` to hook** — the v1 launch hook does not exist for
+  them. Pick a different per-missile launch fire point (e.g. a `MissileProjectile` 3D-loaded / first
+  `UpdateImpl` hook), then reuse the exact same phantom-stamp code (`unk0E0` →
+  `collisionFilterInfo`). Collision handler for missiles, if needed, is `VTABLE_MissileProjectile[0]`
+  slot `190`.
+- **MCM / config.** No `.esp` needed; mirror the AutoFireBow plan (`docs/ideas.md`) — INI read by the
+  DLL (SimpleIni ships with CommonLib) for arrows/spells/which-categories toggles.
+
+Fallback if the stamp ever regresses (e.g. a game update changes the cast filter semantics): hook
+`ArrowProjectile` slot `190` (`OnArrowCollision`), and on a hit whose only target is the follower,
+`return;` without the original to skip the impact, stamping the phantom on first contact. Proven in
+`vinymayan/Parry-for-all`, `D7ry/EldenParry`.
+
 ## Precedent (reference implementations)
 
 - `adamhynek/higgs` — `src/hooks.cpp`: hooks `bhkCollisionFilter::CompareFilterInfo`;
