@@ -53,27 +53,55 @@ namespace
 	// THIS TASK: behavior-neutral. Always call the original and return its
 	// result unchanged; only emit throttled probe logging. A later task adds the
 	// real pass-through decision.
+	// Readable names for the COL_LAYER values we care about (RE::COL_LAYER).
+	// Arrows/bolts in flight are kProjectile(6); spells kSpell(7); an NPC body is
+	// kBiped(8) / kCharController(30) / kDeadBip(32) / kBipedNoCC(33). The rest are
+	// labelled where common so the probe log reads at a glance.
+	const char* LayerName(std::uint32_t a_layer)
+	{
+		switch (a_layer) {
+		case 1:  return "static";
+		case 4:  return "clutter";
+		case 5:  return "weapon";
+		case 6:  return "PROJECTILE";
+		case 7:  return "SPELL";
+		case 8:  return "biped";
+		case 13: return "terrain";
+		case 17: return "ground";
+		case 30: return "charController";
+		case 32: return "deadBip";
+		case 33: return "bipedNoCC";
+		default: return "?";
+		}
+	}
+
 	struct CompareFilterInfoHook
 	{
 		static bool thunk(RE::bhkCollisionFilter* a_this, std::uint32_t a_filterInfoA, std::uint32_t a_filterInfoB)
 		{
 			const bool result = func(a_this, a_filterInfoA, a_filterInfoB);
 
-			// Throttle HARD: this is the hottest function in the physics step.
-			// Log only the first N pairs after load. fetch_add is wait-free; once
-			// past the cap we do nothing but the original call + return.
-			static std::atomic<std::uint32_t> probeCount{ 0 };
-			constexpr std::uint32_t            kProbeLimit = 40;
-			const std::uint32_t                n = probeCount.fetch_add(1, std::memory_order_relaxed);
-			if (n < kProbeLimit) {
-				// filterInfo layout: low 7 bits = collision layer, high 16 bits = system group.
-				const std::uint32_t layerA = a_filterInfoA & 0x7F;
-				const std::uint32_t groupA = a_filterInfoA >> 16;
-				const std::uint32_t layerB = a_filterInfoB & 0x7F;
-				const std::uint32_t groupB = a_filterInfoB >> 16;
-				SKSE::log::info(
-					"probe[{:>2}] CompareFilterInfo: A(layer={:>2} group={}) vs B(layer={:>2} group={}) -> {}",
-					n, layerA, groupA, layerB, groupB, result ? "collide" : "ignore");
+			// filterInfo layout: low 7 bits = collision layer, high 16 bits = system group.
+			const std::uint32_t layerA = a_filterInfoA & 0x7F;
+			const std::uint32_t layerB = a_filterInfoB & 0x7F;
+
+			// Only log pairs that involve a PROJECTILE(6) or SPELL(7) layer — i.e. the
+			// collisions this plugin will eventually intercept. The naive "first N of
+			// anything" throttle burned out on ground geometry at load before any arrow
+			// flew; gating on the layer skips that spam and captures real shots.
+			// Projectile pairs are infrequent, but cap anyway so a stuck arrow can't flood.
+			const bool interesting = layerA == 6 || layerA == 7 || layerB == 6 || layerB == 7;
+			if (interesting) {
+				static std::atomic<std::uint32_t> probeCount{ 0 };
+				constexpr std::uint32_t            kProbeLimit = 200;
+				const std::uint32_t                n = probeCount.fetch_add(1, std::memory_order_relaxed);
+				if (n < kProbeLimit) {
+					SKSE::log::info(
+						"probe[{:>3}] A(layer={:>2} {} group={}) vs B(layer={:>2} {} group={}) -> {}",
+						n, layerA, LayerName(layerA), a_filterInfoA >> 16,
+						layerB, LayerName(layerB), a_filterInfoB >> 16,
+						result ? "collide" : "ignore");
+				}
 			}
 
 			return result;
@@ -104,7 +132,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 2, 0 },
+	.Version = REL::Version{ 0, 2, 1 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -115,7 +143,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 2, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 2, 1 }.string());
 
 	// Trampoline must be allocated before any write_call/write_branch. One 5-byte
 	// call patch needs little space; 64 bytes is comfortable headroom.
