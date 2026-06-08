@@ -263,8 +263,8 @@ namespace
 	constexpr std::size_t kMagicTargetVtableIdx = 4;
 	constexpr std::size_t kAddTargetVfuncSlot = 1;
 
-	// Throttle the non-refused teammate-hit diagnostic so we can confirm the hook is reached for
-	// Flames without flooding the log at the per-tick rate a concentration spell applies effects.
+	// Teammates we've already logged a refusal for — a concentration spell calls AddTarget every
+	// tick, so we log the first refusal per teammate and stay quiet after (no per-tick flooding).
 	std::unordered_map<RE::FormID, std::uint32_t> g_addTargetSeen;
 
 	struct AddTargetHook
@@ -280,16 +280,13 @@ namespace
 					(a_data.effect && a_data.effect->IsHostile()) ||
 					(a_data.magicItem && a_data.magicItem->IsHostile());
 				if (playerCast && hostile) {
-					SKSE::log::info("AddTarget refused: player hostile effect on teammate {} ({:08X})",
-						actor->GetName(), actor->GetFormID());
+					// Throttle: a concentration spell calls AddTarget every tick, so log only
+					// the first refusal per teammate (enough to confirm the hook is working).
+					if (g_addTargetSeen.emplace(actor->GetFormID(), 0).second) {
+						SKSE::log::info("AddTarget refusing player hostile effects on teammate {} ({:08X})",
+							actor->GetName(), actor->GetFormID());
+					}
 					return false;  // drop the effect: no hostile magic applied to the teammate
-				}
-				// Throttled diagnostic for teammate hits we did NOT refuse, so the next in-game
-				// test can confirm AddTarget is reached for Flames and see why it wasn't refused
-				// (caster not player, or effect not hostile). One line per teammate FormID.
-				if (g_addTargetSeen.emplace(actor->GetFormID(), 0).second) {
-					SKSE::log::info("AddTarget fired on teammate {} ({:08X}) not refused: playerCast={} hostile={}",
-						actor->GetName(), actor->GetFormID(), playerCast, hostile);
 				}
 			}
 			return func(a_this, a_data);
