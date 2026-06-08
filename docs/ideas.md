@@ -2,25 +2,29 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
-## 2026-06-08 — GhostAllies (arrows phase through followers)
+## 2026-06-08 — GhostAllies (projectiles phase through followers)
 
-Deferred out of v1 (see `docs/plans/ghost-allies-design.md`). v1 ships player-fired arrows
-phasing through hired followers only; these extend it:
+State: **v1 shipped** (player arrows through nearest follower). **v2 designed** (`docs/plans/
+ghost-allies-design.md` → "## v2 design") and consumes the former "spells" item plus most of
+"broaden target set" via whole-party multi-follower. Still deferred after v2:
 
-- **Spells / magic projectiles through followers.** The original ask included spells. Magic uses
-  a different projectile path than arrows; the same `CompareFilterInfo` hook should cover spell
-  projectiles if they carry the projectile collision layer, but it needs its own verification.
-  Aimed-spell archers / battlemages benefit.
-- **Broaden the "phase through" target set.** Beyond hired teammates: player summons (atronachs,
-  reanimated thralls), and optionally any non-hostile actor. Each is a different engine flag;
-  decide per-category.
-- **MCM configuration.** Toggles for: arrows on/off, spells on/off, and which actor categories to
-  phase through (teammates / summons / all non-hostiles). The selectivity sets in the design are
-  already category-keyed, so this is mostly surfacing them as config.
+- **Runes + wall spells.** `GrenadeProjectile` (runes / lobbed) and `BarrierProjectile` (wall
+  spells) are explicitly out of v2 scope — different (arc / placed) collision feel. Add later by
+  extending the same unified `UpdateImpl` stamp to those subclass vtables.
+- **Broaden the "phase through" target set beyond teammates.** Player summons (atronachs,
+  reanimated thralls) and optionally any non-hostile actor. v2 keys off `IsPlayerTeammate()`; each
+  extra category is a different engine flag — fold them into the same "ghost group" membership set.
+- **MCM / INI configuration.** Toggles for: arrows on/off, spells on/off, per-projectile-type, and
+  which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
+  already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
+  decision below).
+- **Per-type fallback if a continuous type won't phase.** If v2 in-game results ever show
+  flame/beam/cone *don't* phase via the systemGroup stamp (continuous collision), implement the
+  per-type `AddImpact` (slot `0xBD`) skip for teammate hits as the documented fallback.
 
-**Dropped, not deferred:** two-way phasing (follower-fired arrows through the player). Followers
-rarely friendly-fire the player, so it solves a non-problem. Only revisit if real gameplay shows
-follower arrows blocking/hitting the player often enough to matter.
+**Dropped, not deferred:** two-way phasing (follower-fired projectiles through the player).
+Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real
+gameplay shows follower projectiles blocking/hitting the player often enough to matter.
 
 ## 2026-06-08 — AutoFireBow config (deferred)
 
