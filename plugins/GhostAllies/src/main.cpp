@@ -225,6 +225,59 @@ namespace
 		StampHook<T>::func = vtbl.write_vfunc(0xAB, StampHook<T>::thunk);
 	}
 
+	// --- Continuous-stream impact skip (flame/beam/cone) -------------------------
+	//
+	// The systemGroup stamp above gates broadphase body-pair collision, which is what makes
+	// DISCRETE projectiles (arrows, aimed missiles) phase through teammates. But CONTINUOUS
+	// streams (FlameProjectile / BeamProjectile / ConeProjectile) apply their effect via
+	// per-frame hit detection that the broadphase group filter doesn't gate — verified
+	// in-game: the stamp lands on the stream's phantom yet the follower still takes damage.
+	//
+	// So for these three subclasses we additionally hook AddImpact (vtable slot 0xBD), the
+	// per-hit entry point every subclass overrides. When the stream is PLAYER-shot and the
+	// impacted ref is a PLAYER TEAMMATE, we return without calling the original — no impact,
+	// no effect/damage applied to the follower. Every other case (non-teammate ref, the
+	// player themself, anything not player-shot) calls the original so enemies and the world
+	// are hit exactly as before. This never affects enemy damage or damage to the player.
+	//
+	// Same per-subclass template rationale as StampHook: each subclass carries its own
+	// original AddImpact, so the original is stored per instantiation.
+	template <class T>
+	struct ImpactHook
+	{
+		static inline const char* label = "stream";
+
+		static void thunk(RE::Projectile* a_this, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_targetLoc,
+			const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
+		{
+			auto& runtime = a_this->GetProjectileRuntimeData();
+			auto  shooter = runtime.shooter.get();
+			if (shooter && shooter->IsPlayerRef()) {
+				auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
+				const bool teammate = actor && actor->IsPlayerTeammate();
+				if (teammate) {
+					// Throttled diagnostic: log only teammate hits (rare relative to the
+					// per-frame enemy/world impacts), so the next in-game test shows whether
+					// AddImpact even fires for the follower hit.
+					SKSE::log::info("{} AddImpact on {} ({:08X}) teammate=true -> skipped",
+						label, a_ref->GetName(), a_ref->GetFormID());
+					return;  // skip the impact: no effect/damage on the teammate
+				}
+			}
+			func(a_this, a_ref, a_targetLoc, a_velocity, a_collidable, a_arg6, a_arg7);
+		}
+
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	template <class T>
+	void InstallImpactSkip(const char* a_label)
+	{
+		ImpactHook<T>::label = a_label;
+		REL::Relocation<std::uintptr_t> vtbl{ T::VTABLE[0] };
+		ImpactHook<T>::func = vtbl.write_vfunc(0xBD, ImpactHook<T>::thunk);
+	}
+
 	void InstallHooks()
 	{
 		// One unified UpdateImpl (0xAB) stamp hook per in-scope projectile subclass, all
@@ -240,13 +293,21 @@ namespace
 		InstallStamp<RE::BeamProjectile>("beam");
 		InstallStamp<RE::ConeProjectile>("cone");
 		SKSE::log::info("GhostAllies: hooked UpdateImpl (vtable 0xAB) on arrow/missile/flame/beam/cone for systemGroup stamp");
+
+		// Continuous streams need the extra AddImpact (0xBD) skip — the broadphase group
+		// stamp alone doesn't gate their per-frame hit detection. Only flame/beam/cone:
+		// discrete arrows/missiles are fully handled by the stamp and must not be touched.
+		InstallImpactSkip<RE::FlameProjectile>("flame");
+		InstallImpactSkip<RE::BeamProjectile>("beam");
+		InstallImpactSkip<RE::ConeProjectile>("cone");
+		SKSE::log::info("GhostAllies: hooked AddImpact (vtable 0xBD) on flame/beam/cone to skip player-shot impacts on teammates");
 	}
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 5, 0 },
+	.Version = REL::Version{ 0, 6, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -257,7 +318,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 5, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 6, 0 }.string());
 
 	InstallHooks();
 
