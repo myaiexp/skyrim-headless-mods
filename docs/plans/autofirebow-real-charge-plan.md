@@ -82,10 +82,19 @@ written down. Behavioral proof is Task 1 (in-game).
   `ScheduleRedraw()`. We are measuring whether the held button redraws on its own.
 - **Remove `PowerSpeedHook`** (the struct, its `InstallHooks` vtable write, and the call) so the
   logged power is the engine's honest value, not the clamped `1.0`.
-- **Logging** (restore from `src/main.cpp.probe-logging.bak` patterns): in a small read-only hook
-  or the existing graph sink, log each player arrow's `runtime.power` ("natural_power") at loose,
-  and log every `bowDraw` / `BowDrawn` / `arrowRelease` tag with a timestamp, so we can see whether
-  a new draw cycle starts while the button is held.
+- **Logging — lift wholesale from `src/main.cpp.probe-logging.bak`** (it already has the exact
+  instrumentation; don't reconstruct). Bring across onto the *current* `main.cpp` base:
+  - `AnimProbeSink` — logs every bow/arrow/attack/draw/release graph tag with the live attack-state
+    (`AttackStateName`), so a new draw cycle starting while held is directly visible.
+  - `MsSinceDrawStart` + `g_drawStart` anchor (reset on `bowDraw`) — ms-since-nock timing, which is
+    how we'll read whether/when a re-draw and the next `BowDrawn` occur.
+  - The per-cycle `>>> RELEASE natural_power={:.3f} weaponDamage X->Y +Nms attackState=...` line —
+    this is the honest-power read-out (logs the engine's `runtime.power` *before* any rewrite).
+  - `AttackStateName` helper + the `<cctype>/<chrono>/<string>` includes it needs.
+  - **Do NOT carry over the `.bak`'s regressions:** keep the current base's runtime-aware vtable
+    slot (`REL::Relocate<std::size_t>(0xAF, 0xB0)`, not the `.bak`'s hardcoded `0xB0`) and the
+    `AutoFireBow` name/log path (the `.bak` still says `RapidBow` → `RapidBow.log`). We're lifting
+    the *probe logging*, not reverting the file.
 
 **Contracts:**
 - The loop still arms on `bowDraw`, fires once per cycle on `BowDrawn`. Only the *loose mechanism*
@@ -159,8 +168,9 @@ commit body once Mase reports).
 **Files:**
 - Modify: `plugins/AutoFireBow/src/main.cpp` (final comment/header pass — the file header still
   describes "force full charge … clamp"; rewrite to describe the real-input-release design).
-- Delete: `plugins/AutoFireBow/src/main.cpp.probe-logging.bak` (superseded) — **only if Mase
-  confirms** it's no longer a useful reference.
+- Delete: `plugins/AutoFireBow/src/main.cpp.probe-logging.bak` — it was the probe-logging source
+  lifted in Task 1 and has served its purpose once the spike ships. Delete **only if Mase confirms**
+  he doesn't want to keep it as a reusable instrumentation reference for future archery RE.
 - Modify: `docs/autofirebow-nexus-page.md` — change the one-liner and "what's genuinely new" from
   "every tap forced to full power via an engine hook / clamp" to the honest "hold to
   auto-fire **genuinely-charged** shots, script-free, no animation framework." Drop the
