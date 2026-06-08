@@ -141,12 +141,26 @@ heldLeft` did **not** reflect hold reliably — first attempt, abandoned.)
 ### Possible follow-ups
 
 - **Reclaim ~220ms/shot:** genuine full power saturates ~220ms _before_ `BowDrawn` fires (measured:
-  `natural_power=1.000` at ~1800ms vs `BowDrawn` at ~2065ms). Firing exactly at saturation needs
-  the **live draw charge** (not a named field — would need a probe to locate it in
-  `HighProcessData`). Alternative discussed: a flat ~10% damage bump to compensate DPS — rejected
-  as non-adaptive (re-introduces the bow-speed problem on the damage axis) and power-creep.
-- **Known bug (deferred):** tap, then tap again _before_ the arrow looses → it draws the next arrow
-  but never releases it.
+  `natural_power=1.000` at ~1800ms vs `BowDrawn` at ~2065ms). Two ways to recover that DPS, both
+  open (not decided):
+  - **Fire at saturation** — needs the **live draw charge** (not a named field; a probe would have
+    to locate it in `HighProcessData`). Exact, no power-creep, genuinely faster cadence.
+  - **Flat damage bump (~10%)** to compensate for the lost cadence. Trivial (rescale target
+    `×1.1`). Likely _adaptive_ after all: saturation and `BowDrawn` are both points in the draw
+    animation and scale together with draw speed, so the gap is ~a constant fraction → a flat % is
+    bow-independent. Caveat: it's mild power-creep (>100% of a real full draw). The ~220ms/shot
+    deficit is **real vs skilled manual play** — a player releases at saturation by muscle memory
+    (consistent, not reaction-time-limited), so the loop firing at `BowDrawn` is genuinely slower.
+- **Next feature — visibility-gated auto-release (TDM integration):** while looping, don't loose if
+  the current target isn't actually visible (e.g. behind cover) — hold the draw and only release
+  once line-of-sight is clear, so the loop stops wasting arrows into walls. Hook: query **True
+  Directional Movement**'s API (`TrueDirectionalMovementAPI`) for the player's locked target, then
+  gate `ScheduleRelease()` on a line-of-sight check (engine `Actor::HasLineOfSight`/detection, or
+  TDM's own visibility). Falls back to normal behaviour when no target is locked / TDM absent.
+- **Known bug (NOT ours — likely vanilla):** tap, then tap again _before_ the arrow looses → bow
+  draws but won't release. Predates the loop (seen in the v1.5.0 one-tap tests, before any redraw
+  injection existed) and the hook only touches the fired projectile, so this is a vanilla Skyrim
+  bow-input quirk, not mod-introduced. Left as-is.
 - `power`/`weaponDamage` are forced to exactly full; scaling `>1.0` would over-draw if ever wanted.
 - The plugin still carries verbose probe logging + `AnimProbeSink` naming from development — worth
   trimming/renaming.

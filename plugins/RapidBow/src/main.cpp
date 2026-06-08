@@ -166,8 +166,11 @@ namespace
 						ScheduleRelease();  // loose at genuine full draw (hook forces full power+damage)
 					}
 				} else if (std::strcmp(tag, "arrowRelease") == 0) {
-					if (AttackHeld()) {
-						ScheduleRedraw();  // continue the loop: re-nock for the next shot
+					// Continue the loop ONLY after our own auto-loose (g_firedThisCycle), never
+					// after a manual shot — otherwise a quick re-tap during the follow-through
+					// briefly reads as "held" and injects an unwanted draw (stuck-drawn bug).
+					if (g_firedThisCycle && AttackHeld()) {
+						ScheduleRedraw();  // re-nock for the next shot
 					}
 				}
 				if (IsRelevant(tag)) {
@@ -306,7 +309,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 1, 10, 0 },
+	.Version = REL::Version{ 1, 11, 0 },
 	.Name = "RapidBow",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -318,7 +321,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SetupLog();
 	SKSE::Init(a_skse);
 	SKSE::log::info("RapidBow {} loaded — full power+damage + event-driven rapid-fire loop",
-		REL::Version{ 1, 10, 0 }.string());
+		REL::Version{ 1, 11, 0 }.string());
 	InstallHooks();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 	return true;
