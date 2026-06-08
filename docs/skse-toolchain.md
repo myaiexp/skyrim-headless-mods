@@ -5,10 +5,11 @@ Windows, no Visual Studio, no MSVC, no vcpkg. This is the second tier of headles
 (tier 1 = Papyrus, see [toolchain.md](toolchain.md)); it exists because some engine behaviour
 is unreachable from Papyrus (see [findings-papyrus-limits.md](findings-papyrus-limits.md)).
 
-**Status: working.** `plugins/RapidBow/` builds a valid SKSE-shaped `RapidBow.dll` against
-CommonLibSSE-NG, fully cross-compiled, and it loads (entry points resolve under wine). It's a
-hello-world — it doesn't hook anything yet. The next step is RE'ing the bow charge
-([skse-plugin-plan.md](skse-plugin-plan.md)).
+**Status: working, and shipping a real hook.** `plugins/RapidBow/` builds a valid SKSE-shaped
+`RapidBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
+implements option 1 — a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
+charge for the player (verified in-game on 1.6.1170). See
+[skse-plugin-plan.md](skse-plugin-plan.md) for the charge → power details.
 
 ## The idea
 
@@ -71,7 +72,7 @@ Building MSVC-targeted C++ on Linux with Clang hits two issues that the toolchai
 | `plugins/setup-sdk-symlinks.sh`     | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
 | `plugins/cmake/clang-cl-msvc.cmake` | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
 | `plugins/RapidBow/CMakeLists.txt`   | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `RapidBow.dll`.      |
-| `plugins/RapidBow/src/main.cpp`     | The hello-world plugin (declarative `SKSEPluginInfo` + `SKSEPluginLoad`).                                                                                        |
+| `plugins/RapidBow/src/main.cpp`     | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
 | `plugins/RapidBow/build.sh`         | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
 
 ## Build it
