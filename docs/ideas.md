@@ -28,6 +28,9 @@ Make the mod configurable instead of always-on. Settings worth exposing:
 - **Master on/off**, plus a configurable **toggle hotkey**.
 - **Auto-fire** on/off independently of **full-power clamp** on/off — they're separate mechanisms
   in the code (`BowLoopSink` vs `PowerSpeedHook`), so some users will want one without the other.
+  **Contingent:** the real-charge spike (`docs/plans/autofirebow-real-charge-design.md`) aims to
+  *delete* `PowerSpeedHook` outright. If it lands, there's no clamp left to toggle — auto-fire just
+  looses honestly-charged shots, and this split collapses to a single auto-fire on/off.
 - *(maybe)* min delay between auto-shots — a cadence cap.
 
 Gating is cheap: a few `bool` globals checked in `PowerSpeedHook::thunk` and the `BowDrawn` handler.
