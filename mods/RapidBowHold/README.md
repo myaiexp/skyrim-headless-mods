@@ -1,8 +1,18 @@
 # RapidBowHold
 
-Hold the attack button with a bow or crossbow equipped → it auto-fires **full-strength**
-shots in a loop, at the bow's natural full-draw cadence, for as long as you hold. Release to
-stop. No custom animations; reacts to the game's own animation events.
+> **Status: proof-of-concept, shelved.** This mod validated the entire headless Papyrus
+> toolchain end-to-end (it builds, installs, runs, and was debugged purely from the Papyrus
+> log). But it cannot meet its own goal: a scripted release fires an **uncharged (weak)** arrow,
+> because arrow power is welded to real attack input and is unreachable from Papyrus. Full
+> story + evidence: [`../../docs/findings-papyrus-limits.md`](../../docs/findings-papyrus-limits.md).
+> The real fix is a native SKSE C++ plugin: [`../../docs/skse-plugin-plan.md`](../../docs/skse-plugin-plan.md).
+>
+> Kept as a reference example of the Papyrus build pipeline (control hooks, animation events,
+> save-bake gotchas). The `.psc` here is the last working *loop* version (full-power was never
+> achievable).
+
+Hold the attack button with a bow or crossbow equipped → it auto-fires shots in a loop at the
+bow's full-draw cadence. Reacts to the game's own animation events; no custom animations.
 
 - **Requires:** SKSE.
 - **Plugin:** `RapidBowHoldQuest.esp` (one Start-Game-Enabled quest hosting the script).

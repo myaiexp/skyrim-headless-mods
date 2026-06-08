@@ -23,9 +23,22 @@ So the whole pipeline is command-line, reproducible, and version-controllable.
 | `tools/papyrus-sources/` | The vanilla + SKSE Papyrus **source** trees the compiler needs for type resolution. |
 | `tools/compile-papyrus.sh` | Generic `.psc` → `.pex` wrapper around the compiler + sources. |
 | `tools/env.sh` | Machine paths (dotnet, game install, wine prefix). Edit to match your setup. |
-| `mods/RapidBowHold/` | First mod: hold the attack button with a bow to auto-fire full-strength shots. |
-| `docs/toolchain.md` | How the headless toolchain works, end to end. |
+| `mods/RapidBowHold/` | First mod (Papyrus). Proof-of-concept that validated the toolchain — but hit a hard engine limit (see below). |
+| `docs/toolchain.md` | How the headless Papyrus toolchain works, end to end. |
 | `docs/workflow.md` | Build / install / **iterate** — including the non-obvious gotchas that waste hours. |
+| `docs/findings-papyrus-limits.md` | **What Papyrus can't do** — the bow-charge wall, with evidence. Read before trying anything input/engine-coupled. |
+| `docs/skse-plugin-plan.md` | **Next phase:** headless **SKSE C++** (CommonLibSSE-NG cross-compiled on Linux) for engine-level control Papyrus can't reach. |
+
+## Two tiers of headless modding
+
+1. **Papyrus** (working, this repo's `tools/`) — data edits and logic scripts. Mutagen for
+   `.esp`, wine + PapyrusCompiler for `.pex`. Great until you need engine internals.
+2. **SKSE C++** (next, `docs/skse-plugin-plan.md`) — a native DLL with full engine access, for
+   things Papyrus fundamentally can't (e.g. bow draw charge). Cross-compiled Linux → Windows
+   DLL with clang-cl + xwin.
+
+The RapidBowHold saga proved tier 1's limit: a scripted full-power rapid bow is impossible in
+Papyrus because arrow charge is welded to real input. That's what pushes us to tier 2.
 
 ## Prerequisites (one-time, no root)
 
