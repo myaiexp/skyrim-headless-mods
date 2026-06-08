@@ -1,9 +1,11 @@
 # GhostAllies — design
 
 **Status:** v1 ✅ shipped & verified in-game (2026-06-08) — arrows pass through the nearest follower
-via launch-time systemGroup stamp. **v2 designed (2026-06-08, approved), not yet built** — extends
-the effect to spell projectiles and folds in whole-party multi-follower (see "## v2 design" below).
-Pivoted away from the original collision-filter approach (see "Pivot" below).
+via launch-time systemGroup stamp. **v2 ✅ built (2026-06-08, Tasks 1–3), not yet verified in-game**
+— extends the effect to spell projectiles and folds in whole-party multi-follower (see "## v2
+design" below). v2 builds to PE32+; the whole-party path + the actor char-controller group write
+(`bhkCharacterController` vtable slot 0x09) ship **unverified** by the user's choice. Pivoted away
+from the original collision-filter approach (see "Pivot" below).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)
