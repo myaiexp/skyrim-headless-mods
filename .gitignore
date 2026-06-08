@@ -1,0 +1,6 @@
+# .NET build output (restored from NuGet on first build)
+bin/
+obj/
+
+# Papyrus compiler scratch (wine prefix is external; nothing to track here)
+*.tmp
