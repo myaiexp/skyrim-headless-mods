@@ -118,6 +118,14 @@ per-frame re-hit suppression. Both add complexity; out of scope for v1. (v2 belo
 **Status:** approved 2026-06-08, not yet built. Supersedes v1's arrow-only, single-nearest,
 read-only stamp. v1's mechanism stays documented as the trivially-revertible fallback (below).
 
+> **Doc precedence.** The `## Architecture` and `## Precedent` sections below remain current and
+> apply to v2. The `## Risks & unknowns`, `## Proof-point`, the v1 `## Verification`, and
+> `## Continuing from here` sections **predate this v2 design** — they describe either the abandoned
+> pre-pivot `CompareFilterInfo` approach or v1's original forward-pointers, and are retained only as
+> historical record / fallback context. **Where anything below conflicts with this v2 section, v2
+> governs** (e.g. the live hook is `UpdateImpl` 0xAB per-subclass, *not* `CompareFilterInfo`; the
+> AddImpact fallback slot is **0xBD**, matching `MissileProjectile.h`, not the older "190").
+
 ### Goal
 
 Extend the phase-through effect from arrows to **spell projectiles**, and from the single nearest
@@ -224,6 +232,10 @@ install to test. Document observed results if/when play data appears.)
 
 ## Risks & unknowns
 
+> ⚠️ **Pre-pivot / historical.** This table is built around the abandoned `CompareFilterInfo`
+> hook and a per-pair "two-set membership" hot path — neither exists in v1 or v2. Superseded by the
+> `## v2 design` trade-offs/verification above. Retained for record only.
+
 | Risk | Mitigation |
 |------|------------|
 | **AE address for `CompareFilterInfo`** — HIGGS's `0xE2BA10` is the 1.5.97 SE address; the 1.6.1170 address must be resolved via Address Library. This is the make-or-break dependency; everything hangs off it. | Resolve and verify it **first**, via the proof-point below, before building anything else. |
@@ -231,6 +243,10 @@ install to test. Document observed results if/when play data appears.)
 | **System-group → Actor resolution** correctness when refreshing the teammate set. | Follow the activeragdoll template; refresh only on follower-change / load events, never per frame. |
 
 ## Proof-point (first milestone, before committing to full build)
+
+> ⚠️ **Pre-pivot / historical.** This milestone gated the abandoned `CompareFilterInfo` approach
+> and was already completed (it drove the pivot). Not part of v1 or v2 implementation. Retained for
+> record only.
 
 A throwaway probe plugin that hooks `CompareFilterInfo` at the **resolved AE address** and only
 logs that it fires (and a sample of the filterInfo pairs). If it lights up and is stable, the AE
@@ -247,6 +263,12 @@ stable, stop and reassess before investing in the selectivity logic.
 5. Frame time with a follower present is not visibly degraded.
 
 ## Continuing from here (v2 entry points)
+
+> ⚠️ **Superseded by `## v2 design` above.** These were v1's original forward-pointers toward a
+> future v2; v2 is now designed and governs. Known conflicts: v2 uses one unified `UpdateImpl`
+> (0xAB) per-subclass hook (not a separate per-missile fire point), adopts the shared-custom-group
+> multi-follower route, and the AddImpact fallback slot is **0xBD** (this section's "190" is stale).
+> Retained for the still-useful build/iterate notes and precedent links.
 
 All v1 logic is one file: `plugins/GhostAllies/src/main.cpp`. The whole effect is `StampHook::thunk`
 (hooked on `ArrowProjectile::GetPowerSpeedMult`, `VTABLE_ArrowProjectile[0]` slot `0xB0`) +
