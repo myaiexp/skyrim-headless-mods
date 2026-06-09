@@ -68,15 +68,38 @@ calibrate. Frame-diffing to locate it fails too: the main menu has an **animated
 background, so two frames differ across a huge area, not just the cursor. → Use **semantic** signals
 (does a menu item highlight / a submenu open / a screen change), not cursor-spotting.
 
-## 9. libei keyboard routes to the game; libei pointer does not (yet)
+## 9. RESOLVED — libei *relative* pointer drives Skyrim; *absolute* is inert by design
 
-Via `gamescope-0-ei`: the handshake succeeds, `Esc` (evdev `1`) **closed the Load submenu** — so
-libei keyboard genuinely reaches Skyrim and evdev keycodes are correct. But pointer didn't land:
-- Absolute (`ei_device_pointer_motion_absolute`) — gamescope advertises an **unbounded** region
-  (`~2^31 × 2^31`), so pixel coords map to a near-zero fraction of a 2-billion-unit plane; abs
-  coords don't correspond to screen pixels without a scaling factor we haven't derived.
-- Relative (`ei_device_pointer_motion`) + click — reset-to-corner then move, then click on
-  CONTINUE: **no state change**. Keyboard through the same channel works, so the channel is fine;
-  pointer events just aren't effectively reaching Skyrim's menu.
-→ Open problem (see status.md). Keyboard is the working control method for menus; the original
-world-map confirmation box is almost certainly keyboard-dismissable (Enter/Tab/Esc).
+Settled empirically (2026-06-09, reproduced in the headless menu). Both halves are now proven:
+
+**Absolute (`ei_device_pointer_motion_absolute`) does nothing — and the old "scaling" theory was wrong.**
+gamescope's abs region is `INT32_MAX × INT32_MAX` (literally named `"Mr. Worldwide"`, offset 0) but
+it is **decorative** — gamescope does *not* normalise against it. On `POINTER_MOTION_ABSOLUTE` it
+passes the value **verbatim** to `wlserver_mousewarp(x,y)` (assign → clamp to focused surface), so
+the correct abs value is just the raw output pixel. There was never a scaling factor to derive. The
+real blocker: gamescope's absolute warp emits only an **absolute** Wayland pointer event, *never*
+`relative-pointer-v1`. Skyrim runs **raw/relative mouse even in menus**, so it ignores absolute
+motion entirely. Proof: warping onto `LOAD` (`abs 1200 554`) left the highlight on `CONTINUE` —
+zero effect. (Source: gamescope 3.16.23 `InputEmulation.cpp` / `wlserver.cpp`.)
+
+**Relative (`ei_device_pointer_motion`) works end-to-end.** `wlserver_mousemotion` emits
+`relative-pointer-v1` unconditionally, which raw-mode Skyrim consumes. Proven chain in the main menu:
+`rel` deltas moved the cursor up from its park spot → hover **highlighted** CREATIONS then LOAD →
+`click` **opened the Load screen** (save list rendered). The earlier "relative did nothing" was a
+misread: the cursor had moved but parked **off the bottom-right edge** (positive deltas accumulate and
+clamp there), so it looked like no cursor at all.
+
+**Two corrections to older notes:**
+- The menu cursor is the **arrow sprite** and is *always present* — it does **not** idle-fade
+  (supersedes finding #8's "hidden cursor"). It only *looks* absent when relative deltas have parked
+  it off the bottom-right edge; nudge `rel` up-left and it reappears.
+- **Cursor position persists across separate `eidriver` invocations** — gamescope keeps cursor state
+  between libei sessions (`stop_emulating` doesn't reset it). So `rel`-position in one call then
+  `click` in the next lands correctly; you don't have to do move+click in one process.
+
+→ **Consequence for the API:** "click at pixel (x,y)" cannot ride raw libei *absolute*. To get
+absolute-coordinate ergonomics you must build them on **relative** motion — closed-loop visual
+servoing (screenshot → locate the arrow sprite → relative-move by the pixel delta → converge → click)
+is the robust route; open-loop corner-reset + measured-sensitivity is the simpler but driftier
+alternative. Measured sensitivity is ~0.6–0.9 px per relative unit and not perfectly uniform, which is
+why closed-loop beats open-loop. Keyboard remains the deterministic path for anything menus expose to it.
