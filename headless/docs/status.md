@@ -51,6 +51,28 @@ a menu**: testing `OneClickMap` means **clicking a discovered map marker** to fa
 the mouse can do. That's the real reason the pointer path mattered. (The fast-travel confirmation box
 OneClickMap removes is itself keyboard-dismissable, but that was never the blocker.)
 
+### Next goal — script the probe so Claude isn't in the per-attempt loop
+
+Once a probe sequence is known-good, bake it into a **single deterministic script** so re-running a
+test doesn't need Claude doing the slow, token-heavy move → screenshot → read → click loop each time
+(a ~20-shot loop is ~25–30k tokens + ~1.5s/shot of latency). Two parts:
+
+1. **Deterministic replay** of the fixed steps — launch → wait-for-menu → `click 1175 505` (Continue)
+   → `tap enter` (Yes) → wait-for-load → `tap m` → … . Keyboard and fixed *menu* clicks are stable
+   across runs (menus don't pan).
+2. **In-script perception** for the variable + verify steps, done with **ImageMagick/Python-CV inside
+   the script — NOT Claude reading frames** (zero tokens, fast):
+   - **Locate the marker glyph by template match** — its pixel is *not* fixed (map pan/zoom shifts it,
+     findings #10), so match the white glyph, then nudge+click (no-home recipe).
+   - **Detect the fast-travel confirm box** — the actual OneClickMap assertion (skipped = mod working;
+     present = not). Template/OCR on "Fast travel to".
+   - **Assert arrival** — HUD compass back / map closed / known signature → emit a one-line `PASS`/`FAIL`.
+
+Net: the loop runs headless and emits **text only**; Claude (or a cron) reads one verdict line, not 20
+screenshots. The perception primitives can be **prototyped against the frames already captured this
+session** (`/tmp/map.png`, the confirm-box and arrival shots) with **no game running** — that's the
+risky part (does template-match find the marker reliably?), and it's de-riskable off-machine.
+
 ### SKSE ground-truth (endgame, unchanged)
 
 For anything an in-process plugin can reach, skip the cursor entirely and activate the menu widget via
