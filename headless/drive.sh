@@ -1,0 +1,49 @@
+#!/bin/bash
+# Inject input into the headless gamescope via libei (src/eidriver), addressing
+# its gamescope-0-ei socket. Isolated to that session — never touches your seat.
+#
+# Keyboard works (evdev keycodes). Pointer (rel/abs/click) reaches gamescope but
+# does NOT yet land in Skyrim's menus — see docs/status.md. Use keyboard for menus.
+#
+# Usage:
+#   ./drive.sh tap <key>            press+release one key      (e.g. ./drive.sh tap enter)
+#   ./drive.sh seq <key> <key> ...  tap several keys in order  (e.g. ./drive.sh seq down down enter)
+#   ./drive.sh key <key> <0|1>      hold(1)/release(0) one key
+#   ./drive.sh click                left click at current pos  (pointer WIP)
+#   ./drive.sh rel <dx> <dy>        relative pointer move      (pointer WIP)
+#   ./drive.sh abs <x> <y>          absolute pointer move      (pointer WIP)
+#   ./drive.sh raw <eidriver args>  pass through verbatim
+#
+# Key names -> Linux evdev keycodes (KEY_* from input-event-codes.h):
+set -euo pipefail
+HERE="$(dirname "$(readlink -f "$0")")"
+EIDRIVER="$HERE/src/eidriver"
+SOCK="${EIS_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0-ei}"
+
+[ -x "$EIDRIVER" ] || { echo "build it first: $HERE/src/build.sh" >&2; exit 1; }
+[ -S "$SOCK" ]     || { echo "no EIS socket at $SOCK (is the headless session up?)" >&2; exit 1; }
+
+keycode() {
+    case "$1" in
+        esc|escape) echo 1 ;;  enter|return) echo 28 ;;  tab) echo 15 ;;  space) echo 57 ;;
+        backspace) echo 14 ;;  up) echo 103 ;;  down) echo 108 ;;  left) echo 105 ;;  right) echo 106 ;;
+        pageup) echo 104 ;;    pagedown) echo 109 ;;  home) echo 102 ;;  end) echo 107 ;;
+        tilde|console|grave) echo 41 ;;  # ` — opens the dev console in-game
+        e) echo 18 ;;  r) echo 19 ;;  m) echo 50 ;;  w) echo 17 ;;  a) echo 30 ;;  s) echo 31 ;;  d) echo 32 ;;
+        f) echo 33 ;;  y) echo 21 ;;  n) echo 49 ;;  j) echo 36 ;;  i) echo 23 ;;
+        *) echo "unknown key: $1" >&2; exit 2 ;;
+    esac
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+    tap)   "$EIDRIVER" "$SOCK" tap "$(keycode "$1")" ;;
+    seq)   args=(); for k in "$@"; do args+=(tap "$(keycode "$k")" sleep 120); done
+           "$EIDRIVER" "$SOCK" "${args[@]}" ;;
+    key)   "$EIDRIVER" "$SOCK" key "$(keycode "$1")" "$2" ;;
+    click) "$EIDRIVER" "$SOCK" click ;;
+    rel)   "$EIDRIVER" "$SOCK" rel "$1" "$2" ;;
+    abs)   "$EIDRIVER" "$SOCK" abs "$1" "$2" ;;
+    raw)   "$EIDRIVER" "$SOCK" "$@" ;;
+    *) echo "usage: $0 {tap|seq|key|click|rel|abs|raw} ..." >&2; exit 1 ;;
+esac

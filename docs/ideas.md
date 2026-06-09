@@ -77,3 +77,19 @@ the toggle **hotkey** wired into the existing `AttackInputSink`. Zero new user d
   comments ask for a real in-game menu.
 - *SKSE Menu Framework (ImGui)* — pure C++, no esp/SkyUI/Papyrus, menu rendered from the DLL;
   architecturally the cleanest fit, but niche UX and small install base. Skipped for familiarity.
+
+## 2026-06-09 — headless driver (testing harness)
+
+New top-level `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screenshot it
+(SIGUSR2→AVIF), inject isolated input via **libei**. Full rationale + dead-ends + status live in
+`headless/docs/{design,findings,status}.md` — this is just the index pointer.
+
+Open work (detail in `headless/docs/status.md`):
+- **libei pointer doesn't land in-game** (keyboard does). Chase: gamescope's unbounded abs-region
+  scaling; confirm pointer/button caps on the bound device; start_emulating/frame timing; whether
+  Skyrim needs the pointer "entered" before it reacts.
+- **End-to-end keyboard run**: nav → Load → save → in-game → `M` map → dismiss the confirmation box
+  (likely solves the `OneClickMap` chore without a mouse).
+- **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
+  player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
+  hands. Removes pixel-reading and the OS-input problem entirely.

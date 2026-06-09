@@ -2,7 +2,8 @@
 
 Making Skyrim Special Edition mods **headlessly on Linux** — no SSEEdit, no Creation Kit, no GUI tooling at all. Plugins are authored in code, scripts are compiled from the command line, and everything is debuggable from the Papyrus log.
 
-This repo holds a reusable toolchain plus the mods built with it.
+This repo holds a reusable toolchain, the mods built with it, and a **headless driver** that
+runs the game invisibly to test them (see `headless/`).
 
 ## Why
 
@@ -17,6 +18,7 @@ So the whole pipeline is command-line, reproducible, and version-controllable.
 
 | Path | What |
 |------|------|
+| `headless/` | **Drive Skyrim with no monitor, no hands.** Runs the game invisibly in headless `gamescope`, screenshots it (SIGUSR2→AVIF), and injects isolated input via **libei** — a test loop for the mods here. Keyboard control + screenshots work; mouse-click is WIP. See `headless/README.md`. |
 | `tools/EspGen/` | Mutagen program that generates a "script-host" `.esp` (one Start-Game-Enabled quest hosting a Papyrus script). Reusable for any pure-logic script mod. |
 | `tools/BsaExtract/` | Mutagen program to extract files from a `.bsa` (used to pull `controlmap.txt`, etc.). |
 | `tools/papyrus-compiler/` | `PapyrusCompiler.exe` + DLLs, run via wine. Self-contained. |
