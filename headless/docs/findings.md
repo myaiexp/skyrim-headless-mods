@@ -97,9 +97,23 @@ clamp there), so it looked like no cursor at all.
   between libei sessions (`stop_emulating` doesn't reset it). So `rel`-position in one call then
   `click` in the next lands correctly; you don't have to do move+click in one process.
 
-→ **Consequence for the API:** "click at pixel (x,y)" cannot ride raw libei *absolute*. To get
-absolute-coordinate ergonomics you must build them on **relative** motion — closed-loop visual
-servoing (screenshot → locate the arrow sprite → relative-move by the pixel delta → converge → click)
-is the robust route; open-loop corner-reset + measured-sensitivity is the simpler but driftier
-alternative. Measured sensitivity is ~0.6–0.9 px per relative unit and not perfectly uniform, which is
-why closed-loop beats open-loop. Keyboard remains the deterministic path for anything menus expose to it.
+→ **Consequence for the API:** "click at pixel (x,y)" cannot ride raw libei *absolute*, but it rides
+**relative** trivially. Sensitivity was **measured exactly 1:1** — `rel D` moves the cursor `D`
+pixels, linear, isotropic, no acceleration (swept 200/400/600 on both axes, landed dead-on; my earlier
+"~0.6–0.9, non-uniform" guess was eyeball noise off scaled screenshots). So **open-loop is exact** and
+closed-loop servoing is unnecessary overhead here. Absolute positioning = clamp-to-corner (known
+origin (0,0)) + one relative delta. **Implemented** as `moveto`/`clickat` in `eidriver.c`, exposed as
+`drive.sh abs <x> <y>` and `drive.sh click <x> <y>`. Verified end-to-end: blind `click 1195 556`
+opened the Load screen. Keyboard remains the deterministic path for anything menus expose to it.
+
+### 9b. Skyrim caps a single oversized relative delta — move in modest steps
+
+Hit while implementing the above. `moveto` first homed with one giant `rel(-8192,-8192)` to slam the
+cursor to (0,0). The *visible/hover* cursor went to the right place (the target item highlighted), but
+**clicks silently missed** — opened nothing. A *modest* home (`rel(-1400,-800)`, or repeated
+`rel(-1500,-1000)`) clicked correctly every time. So Skyrim's raw-input integration **caps/rejects a
+single relative delta above ~1400-ish**: gamescope's compositor cursor (which drives the highlight)
+still moves 1:1 and clamps fine, but Skyrim's *internal* cursor — the click hit-test point — under-moves
+and desyncs from it. → Fix: never send one big delta. `eidriver` now chunks every move into
+≤1000-px steps with a short pump between (`rel_step`), so home-overshoot and long `moveto`s stay in the
+safe regime. (This also means a future >~1400-wide resolution won't silently re-break clicks.)

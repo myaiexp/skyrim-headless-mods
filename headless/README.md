@@ -10,8 +10,8 @@ It's a **testing tool for this repo's mods** (e.g. `OneClickMap`'s world-map con
 the exact thing that motivated this). Long-term it pairs with the SKSE C++ tier: gamescope for
 *eyes*, and eventually an in-process SKSE plugin for *hands + ground-truth state*.
 
-> Status in one line: **invisible render + screenshots + isolated keyboard input all work.**
-> Mouse positioning/click does not yet land in-game. See `docs/status.md`.
+> Status in one line: **invisible render + screenshots + isolated keyboard *and* mouse all work.**
+> Absolute `click <x> <y>` lands in-game (built on relative motion). See `docs/status.md`.
 
 ## How it works (the short version)
 
@@ -31,9 +31,9 @@ failed) are in [`docs/findings.md`](docs/findings.md) — **read that before cha
 |------|------|
 | `launch.sh` | Start Skyrim+SKSE in a headless gamescope (the `SteamAppId` fix is baked in). |
 | `shot.sh` | `SIGUSR2` → newest gamescope AVIF → PNG (optional crop/scale). |
-| `drive.sh` | Friendly wrapper over `src/eidriver` (`tap enter`, `seq down down enter`, `click`, `rel`, `abs`). |
+| `drive.sh` | Friendly wrapper over `src/eidriver` (`tap enter`, `seq down down enter`, `click x y`, `abs x y`, `rel`). |
 | `stop.sh` | Kill the session cleanly. |
-| `src/eidriver.c` | The libei input client. Keyboard ✅, pointer ⚠️ (see status). |
+| `src/eidriver.c` | The libei input client. Keyboard ✅, mouse ✅ (absolute click via relative). |
 | `src/build.sh` | `gcc` + `pkg-config libei-1.0`. No sudo. |
 | `docs/design.md` | Architecture + why each piece. |
 | `docs/findings.md` | Every wall we hit and the reason. |
@@ -47,6 +47,7 @@ src/build.sh                       # compile the libei input client (once)
 ./launch.sh                        # start Skyrim headless; wait ~1-2 min for the menu
 ./shot.sh /tmp/sky.png             # capture the current frame
 ./drive.sh seq down down enter     # keyboard-navigate the menu (CONTINUE->NEW->LOAD, then activate)
+./drive.sh click 1195 556          # OR mouse: click a pixel directly (absolute, lands in-game)
 ./shot.sh /tmp/sky2.png            # see the result
 ./stop.sh                          # tear it down
 ```

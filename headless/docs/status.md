@@ -12,7 +12,8 @@ _As of the session that built this dir (2026-06-09)._
 | Isolation (no seat leak) | ✅ | XTEST into the headless inner `:1` left the real `:0` pointer unmoved. |
 | **Keyboard input (libei)** | ✅ | `Esc` closed the Load submenu; `Down`×2 (via XTEST earlier) moved highlight CONTINUE→NEW→LOAD; `Enter` opened the Load screen. Deterministic. |
 | **Mouse — relative move + click** | ✅ | `rel` deltas moved the cursor onto `LOAD`, hover highlighted it, `click` opened the Load screen (save list). Full chain works. |
-| **Mouse — absolute positioning** | ❌ by design | `abs` is inert: Skyrim ignores absolute pointer motion (raw-mouse mode). Not fixable at the libei level — see below. |
+| **Mouse — absolute click `(x,y)`** | ✅ | `drive.sh click 1195 556` opened the Load screen blind; `drive.sh abs x y` positions. Built on relative (corner-home + delta), mapped exactly 1:1. |
+| **Raw libei absolute (`abs`/`pointer_motion_absolute`)** | ❌ by design | Inert — Skyrim ignores it (raw-mouse mode). Don't use; use the synthesized `moveto`/`clickat` instead. |
 
 ## Pointer: resolved (findings #9)
 
@@ -26,22 +27,28 @@ The pointer channel works — via **relative** motion, not absolute.
   bottom-right edge when positive `rel` deltas pile up. Cursor state **persists between `eidriver`
   invocations**.
 
-### Next step — absolute-coordinate ergonomics on top of relative
+### Absolute `click <x> <y>` — DONE (open-loop, exact)
 
-To get a `click <px> <py>` API (what we actually want), build it on relative motion:
+Shipped. Sensitivity measured **exactly 1:1** (linear, isotropic, no acceleration), so open-loop is
+exact — no visual servoing needed. Implemented in `eidriver.c` as `home`/`moveto`/`clickat`, exposed
+via `drive.sh abs <x> <y>` (position) and `drive.sh click <x> <y>` (position + click). Mechanism:
+clamp-to-corner for a known origin, then a relative delta = the target pixel. **Gotcha baked in:**
+Skyrim caps a single oversized relative delta and silently desyncs the click target (findings #9b), so
+every move is chunked into ≤1000-px steps. Verified: blind `click 1195 556` → Load screen.
 
-1. **Closed-loop visual servoing (recommended).** Screenshot → locate the arrow sprite (bright,
-   consistent shape on dark bg — template match) → compute pixel delta to target → send `rel` scaled
-   by measured sensitivity (~0.6–0.9 px/unit) → re-shot and converge (1–3 iterations) → `click`.
-   Self-correcting, immune to the non-uniform sensitivity that sank open-loop before.
-2. **Open-loop corner-reset (simpler, driftier).** Slam a large `rel` to a corner (deterministic
-   clamp = known origin), then move by `(target − corner) / sensitivity`. One-time calibration; drifts.
-3. **SKSE ground-truth (endgame).** For anything an in-process plugin can reach, skip the cursor
-   entirely and activate the menu widget via engine call — see below.
+Remaining pointer niceties (optional): a `click <save-substring>` that pairs OCR/template with the
+click; drag support for sliders (button-down → `moveto` → button-up — the in-process position tracking
+already supports it). Note: bottom-bar `Select`/`Back` prompts are keyboard/controller hints, **not**
+mouse-clickable — use Tab/Esc for those.
 
-Note: for **menus**, keyboard already navigates deterministically (arrows/Enter/Esc/Tab), so pointer
-precision is only needed where keyboard can't reach. The motivating `OneClickMap` confirmation box is
-very likely keyboard-dismissable.
+For **menus**, keyboard still navigates deterministically (arrows/Enter/Esc/Tab), so pointer precision
+is only needed where keyboard can't reach. The motivating `OneClickMap` confirmation box is very likely
+keyboard-dismissable.
+
+### SKSE ground-truth (endgame, unchanged)
+
+For anything an in-process plugin can reach, skip the cursor entirely and activate the menu widget via
+engine call — gamescope stays the eyes, SKSE becomes deterministic hands + truth.
 
 ## Next steps (beyond the pointer)
 
