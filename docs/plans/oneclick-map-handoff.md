@@ -60,9 +60,36 @@ blast radius). We could not locate that instruction:
 through a function pointer/vtable — invisible to an `E8`-only scan) or lives in a helper we have
 not identified. This is the open question.
 
-## Two viable paths forward (pick one)
+## Three paths forward (pick one)
 
-### Path A — return-address probe → `write_call` (recommended, deterministic)
+**Framing:** every crash came from suppressing the box *pre-render* (the global `QueueMessage`
+entry-detour). Paths A/B keep pre-render suppression (no flash, harder/riskier). Path C abandons
+suppression — let the box render and auto-confirm it — which uses only crash-proof primitives at
+the cost of a likely ~1-frame flash. **Path C is the recommended starting point for a Nexus
+release** (cannot crash, no DRM-hidden address hunt); Paths A/B are the no-flash purist options.
+
+### Path C — auto-confirm the rendered box (Mase's idea — simplest, cannot crash)
+Stop trying to suppress the box; let it appear and programmatically click "Yes." This never touches
+`QueueMessage`, so the entry-detour crash class is gone entirely. Building blocks (all verified to
+exist, all crash-proof — event sinks and vtable hooks, no prologue relocation):
+- `RE::MenuOpenCloseEvent` sink (pure `BSTEventSink` registration, zero code hooking) → fires when
+  `RE::MessageBoxMenu` (`MENU_NAME = "MessageBoxMenu"`) opens. Gate to fast-travel: correlate with
+  a just-happened travelable map click — e.g. set a flag from the proven-safe format-call
+  `write_call<5>` at `52208/53095 + OFFSET_3(0x342,0x3A6,0x3D9)` (fires only on a fast-travel prompt
+  build), or check `MapMenu` state.
+- Drive the trip with the already-proven primitive: `FastTravelConfirmCallback::Run(kUnk1)`.
+- **Open piece to RE (the only real work):** how to press "Yes" — `MessageBoxMenu`'s header does NOT
+  expose its callback (`RE/M/MessageBoxMenu.h`: only `Accept`@vtbl1, `ProcessMessage`@vtbl4, and an
+  8-byte runtime blob). So either (a) find how to reach the live box's `FastTravelConfirmCallback`
+  to call `Run(kUnk1)` directly, or (b) inject the "Yes" button selection into
+  `MessageBoxMenu::ProcessMessage` (safe vtable hook on `MessageBoxMenu::VTABLE`, gated). Look at how
+  other mods auto-answer message boxes; check `RE::IMessageBoxCallback`, the message-box-data path,
+  and whether the active `MessageBoxData` is reachable from `RE::UI`/the menu.
+- **Tradeoff:** the open-event fires at render time, so expect a ~1-frame box flicker before
+  auto-travel (the "janky-but-harmless" look many Nexus mods have). Acceptable for release; if the
+  flash is objectionable, fall back to Path A for true pre-render suppression.
+
+### Path A — return-address probe → `write_call` (no flash, deterministic)
 A one-off diagnostic build that hooks `QueueMessage`'s entry (`write_branch<5>`) and, in the thunk,
 when `a_this->callback`'s vtable is `FastTravelConfirmCallback`, logs the **caller's return
 address** (`_ReturnAddress()` / `__builtin_return_address(0)`) minus `REL::Module::get().base()` =
