@@ -86,16 +86,16 @@ namespace
 		return out;
 	}
 
-	// Drive the actual fast travel for a confirmed target, then dismiss the map. Calling the
-	// callback's own Run(kUnk1) is the proven travel-drive primitive (kUnk1 == "Yes / travel"),
-	// and the kHide message closes MapMenu afterwards. Same idiom PapyrusExtender uses, but here
-	// we invoke it INSTEAD of showing the box rather than after the user answered it.
+	// Drive the actual fast travel for a confirmed target. Run(kUnk1) is the "Yes / travel" answer
+	// (per PapyrusExtender's ChangeFastTravelTarget, which keys confirmed travel off kUnk1); it
+	// initiates the trip AND closes the map itself, exactly as pressing Yes does in vanilla.
+	//
+	// NB: we do NOT send our own kHide here. An extra kHide tears MapMenu down through the close
+	// path before the queued fast-travel executes, dropping the trip (observed in-game: map closed,
+	// no travel). The proven precedent only hides the menu on its CANCEL path, never on travel.
 	void DriveTravel(RE::FastTravelConfirmCallback* a_callback)
 	{
 		a_callback->Run(RE::IMessageBoxCallback::Message::kUnk1);
-		if (auto* uiQueue = RE::UIMessageQueue::GetSingleton()) {
-			uiQueue->AddMessage(RE::MapMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kHide, nullptr);
-		}
 	}
 
 	// --- The suppression hook: MessageBoxData::QueueMessage entry detour -----------------------
@@ -123,7 +123,7 @@ namespace
 					const MarkerRead cursor = ReadCursorMarker(cursorRefr);
 
 					if (cursor.travelable) {
-						// SUPPRESS-AND-ACT: drive the trip, hide the menu, and never queue the box.
+						// SUPPRESS-AND-ACT: drive the trip and never queue the box (Run closes the map).
 						SKSE::log::info(
 							"travelable click intercepted; suppressing confirm box and driving travel (target formID={:08X})",
 							cursor.formID);
@@ -149,10 +149,21 @@ namespace
 
 	void InstallHooks()
 	{
-		// Detour MessageBoxData::QueueMessage at its entry. write_branch<5> relocates the original
-		// prologue into the trampoline and returns its address as `func`, so the original box-queue
-		// path remains callable for the pass-through case. The trampoline reserve covers the rel32
-		// branch plus the relocated prologue.
+		// Detour MessageBoxData::QueueMessage at its ENTRY. This DOES intercept the fast-travel
+		// confirm box, so the travelable branch above works (instant travel, no box) — verified
+		// in-game.
+		//
+		// !!! KNOWN LIMITATION — CRASHES on the first NON-fast-travel message box. !!!
+		// `func` is meant to be the original QueueMessage for the pass-through path, but CommonLibSSE-NG's
+		// write_branch<5> does NOT relocate a function prologue: it decodes the bytes at a_src AS an
+		// existing `call/jmp rel32` and returns that. At a function ENTRY (a real prologue, not a
+		// branch) the returned `func` is a wild pointer, so the pass-through `func(a_this)` below jumps
+		// into unmapped memory and crashes the game on the first box that isn't a travelable
+		// fast-travel confirm (marker management, "can't fast travel", exit confirms, etc.).
+		//
+		// This build is therefore a STOPGAP: instant travel works, everything else eventually crashes.
+		// The proper fix needs a real call-site `write_call` (NG-safe) or a prologue-relocating
+		// entry-detour — see docs/plans/oneclick-map-handoff.md. DO NOT ship to Nexus as-is.
 		SKSE::AllocTrampoline(64);
 		REL::Relocation<std::uintptr_t> queueMessage{ RELOCATION_ID(51422, 52271) };
 		QueueMessageHook::func =
