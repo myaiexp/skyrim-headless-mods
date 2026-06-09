@@ -2,10 +2,7 @@
 #include <RE/Skyrim.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
-#include <cctype>
-#include <chrono>
 #include <cstring>
-#include <string>
 
 namespace
 {
@@ -25,55 +22,18 @@ namespace
 		spdlog::set_default_logger(std::move(logger));
 	}
 
-	// PROBE: short label for the player's current attack state, so the log reads clearly.
-	// Bow sequence: kBowDraw(8) -> kBowAttached(9) -> kBowDrawn(10) -> kBowReleasing(11)
-	// -> kBowReleased(12) -> kBowNextAttack(13) -> kBowFollowThrough(14).
-	const char* AttackStateName(RE::ATTACK_STATE_ENUM a_state)
-	{
-		using S = RE::ATTACK_STATE_ENUM;
-		switch (a_state) {
-		case S::kNone:             return "None";
-		case S::kDraw:             return "Draw";
-		case S::kSwing:            return "Swing";
-		case S::kHit:              return "Hit";
-		case S::kNextAttack:       return "NextAttack";
-		case S::kFollowThrough:    return "FollowThrough";
-		case S::kBash:             return "Bash";
-		case S::kBowDraw:          return "BowDraw(8)";
-		case S::kBowAttached:      return "BowAttached(9)";
-		case S::kBowDrawn:         return "BowDrawn(10)";
-		case S::kBowReleasing:     return "BowReleasing(11)";
-		case S::kBowReleased:      return "BowReleased(12)";
-		case S::kBowNextAttack:    return "BowNextAttack(13)";
-		case S::kBowFollowThrough: return "BowFollowThrough(14)";
-		default:                   return "?";
-		}
-	}
+	// Auto-fired arrows loose at full draw (honest natural_power ~1.0), so each shot matches a
+	// manual full-draw arrow. But the auto-fire CADENCE is slower than skilled manual play, so
+	// sustained DPS lags. Compensate with a flat damage bump on auto arrows only (manual shots
+	// stay vanilla). Tune to close the DPS gap; ~10% is the starting point.
+	constexpr float kAutoDamageMult = 1.10f;
 
-	RE::ATTACK_STATE_ENUM PlayerAttackState()
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		return player ? player->AsActorState()->GetAttackState() : RE::ATTACK_STATE_ENUM::kNone;
-	}
+	// Set when we auto-loose; consumed once by the next arrow's GetPowerSpeedMult hook to apply
+	// kAutoDamageMult. A flat multiply isn't idempotent, so it's cleared on first application to
+	// avoid compounding across the arrow's repeated speed queries.
+	bool g_boostNextArrow = false;
 
-	// PROBE timing anchor: set when "bowDraw" fires (nock start, once per cycle). Lets a
-	// release log report the natural power at "+N ms since nock", locating the genuine
-	// full-power instant relative to the BowDrawn event.
-	std::chrono::steady_clock::time_point g_drawStart{};
-	bool                                  g_drawStartValid = false;
-
-	long long MsSinceDrawStart()
-	{
-		if (!g_drawStartValid) {
-			return -1;
-		}
-		auto delta = std::chrono::steady_clock::now() - g_drawStart;
-		return std::chrono::duration_cast<std::chrono::milliseconds>(delta).count();
-	}
-
-	// Per-draw-cycle guard so the loop auto-looses at most once per BowDrawn (reset at
-	// nock). The loop keys off the engine's own BowDrawn event, so it's robust to any
-	// bow speed / perk / enchantment — no draw-time assumptions.
+	// Per-draw-cycle guard so the loop auto-looses at most once per cycle (reset at nock).
 	bool g_firedThisCycle = false;
 
 	// Whether the attack control is currently held, tracked from raw input events (the
@@ -122,34 +82,49 @@ namespace
 		RE::free(be);
 	}
 
-	// PROBE (observe-only): read the launched arrow's honest draw charge and log it — no
-	// rewrite. The old clamp (runtime.power = 1.0; weaponDamage *= 1/natural) is GONE; this
-	// hook now only reports the engine's genuine value so we can see whether the synthetic
-	// input-release actually charges the shot (~1.0) or not (~0.35).
+	// Fire the auto-loose once per draw cycle, at full draw. Deferred so we never re-enter the
+	// input pipeline mid-dispatch. The synthetic release looses on the genuinely-charged draw
+	// AND desyncs button state from the still-held physical button, so the engine re-presses
+	// itself and the next draw starts on its own — re-nock free.
+	void LooseNow()
+	{
+		g_firedThisCycle = true;
+		g_boostNextArrow = true;  // tag the arrow this loose produces for the DPS-compensation bump
+		if (auto* task = SKSE::GetTaskInterface()) {
+			task->AddTask([]() { SendSyntheticAttack(false); });
+		}
+	}
+
+	// Applies the DPS-compensation damage bump to auto-fired arrows, and logs every player
+	// arrow's honest charge. There is NO power clamp — auto arrows loose at genuine full draw
+	// (natural_power ~1.0); we only multiply weaponDamage by kAutoDamageMult, and only on the
+	// arrow our auto-loose tagged (g_boostNextArrow). Manual arrows pass through untouched.
 	//
-	// The engine never exposes a clean "current draw" float; it bakes the draw-time fraction
-	// into the launched arrow's `power` (PROJECTILE_RUNTIME_DATA, 0.0–1.0). Both arrow *speed*
-	// (via Projectile::GetSpeed -> GetPowerSpeedMult) and impact *damage* read that field.
-	// GetPowerSpeedMult is virtual, so we hook the ArrowProjectile vtable to observe it.
-	//
-	// `logged` (reset on bowDraw) gates the readout to once per draw cycle, not per GetSpeed
-	// call. The >>> RELEASE line records natural_power + weaponDamage + ms-since-nock + state.
-	struct ChargeProbeHook
+	// Site: arrow speed/damage both read PROJECTILE_RUNTIME_DATA; modifying weaponDamage here
+	// reaches impact damage (the old clamp used this same hook). GetPowerSpeedMult is virtual,
+	// so we hook the ArrowProjectile vtable. The boost is gated by g_boostNextArrow + cleared
+	// on first apply (flat multiply isn't idempotent); `logged` gates the readout once/cycle.
+	// Applies the DPS-compensation damage bump to auto-fired arrows only. The boost is gated by
+	// g_boostNextArrow (set at auto-loose) and cleared on first application — verified safe: the
+	// engine calls GetPowerSpeedMult ~2x per arrow at launch, so the immediate clear prevents the
+	// second call from compounding, and each shot gets a fresh arrow pointer (no stale targeting).
+	// Manual arrows pass through untouched. NOTE: runtime.power reads 1.0 here regardless of draw,
+	// so it is NOT logged as "charge" — the meaningful value is the weaponDamage delta.
+	struct AutoArrowHook
 	{
 		static float thunk(RE::Projectile* a_this)
 		{
 			auto& runtime = a_this->GetProjectileRuntimeData();
 			auto  shooter = runtime.shooter.get();
-			if (shooter && shooter->IsPlayerRef() && !logged) {
-				logged = true;
-				const float natural = runtime.power;  // 0x188: draw mult, drives speed (read live)
-				SKSE::log::info(">>> RELEASE  natural_power={:.3f}  weaponDamage={:.1f}  +{}ms  attackState={}",
-					natural, runtime.weaponDamage, MsSinceDrawStart(), AttackStateName(PlayerAttackState()));
+			if (shooter && shooter->IsPlayerRef() && g_boostNextArrow) {
+				g_boostNextArrow = false;
+				const float before = runtime.weaponDamage;
+				runtime.weaponDamage *= kAutoDamageMult;  // 0x198: DPS-compensation bump (auto only)
+				SKSE::log::info("AutoFireBow: auto arrow damage {:.1f} -> {:.1f} (x{:.2f})",
+					before, runtime.weaponDamage, kAutoDamageMult);
 			}
 			return func(a_this);
 		}
-
-		static inline bool logged = false;
 
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -176,47 +151,15 @@ namespace
 				return RE::BSEventNotifyControl::kContinue;
 			}
 			if (std::strcmp(tag, "bowDraw") == 0) {
-				// Nock start: anchor the draw timer, re-arm the per-cycle fire guard and the
-				// once-per-cycle charge readout.
-				g_drawStart = std::chrono::steady_clock::now();
-				g_drawStartValid = true;
+				// Nock start: re-arm the per-cycle fire guard.
 				g_firedThisCycle = false;
-				ChargeProbeHook::logged = false;
 			} else if (std::strcmp(tag, "BowDrawn") == 0) {
-				SKSE::log::info("    BowDrawn at +{}ms since nock  attackHeld={}", MsSinceDrawStart(), AttackHeld());
+				// Auto-loose at genuine full draw while held; re-nocks for free.
 				if (AttackHeld() && !g_firedThisCycle) {
-					g_firedThisCycle = true;
-					// PROBE loose: synthetic input-release on the genuinely-charged draw the
-					// held button built. Deferred so we never re-enter the input pipeline
-					// mid-dispatch. No projectile clamp — ChargeProbeHook reads the honest power.
-					if (auto* task = SKSE::GetTaskInterface()) {
-						task->AddTask([]() { SendSyntheticAttack(false); });
-					}
+					LooseNow();
 				}
-			} else if (std::strcmp(tag, "arrowRelease") == 0) {
-				// PROBE: log only — inject nothing for re-nock. We are measuring whether a
-				// new draw cycle starts on its own while the button stays held.
-				SKSE::log::info("    arrowRelease  attackHeld={}  state={}", AttackHeld(), AttackStateName(PlayerAttackState()));
-			}
-			if (IsRelevant(tag)) {
-				SKSE::log::info("anim: {:<22} state={}", tag, AttackStateName(PlayerAttackState()));
 			}
 			return RE::BSEventNotifyControl::kContinue;
-		}
-
-	private:
-		static bool IsRelevant(std::string a_tag)
-		{
-			for (auto& c : a_tag) {
-				c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-			}
-			static const char* kKeys[] = { "bow", "arrow", "attack", "draw", "release", "shoot", "weap" };
-			for (const auto* key : kKeys) {
-				if (a_tag.find(key) != std::string::npos) {
-					return true;
-				}
-			}
-			return false;
 		}
 	};
 
@@ -283,8 +226,8 @@ namespace
 		// untested (no runtime here) but use CommonLib's own authoritative index.
 		const auto idx = REL::Relocate<std::size_t>(0xAF, 0xB0);
 		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ArrowProjectile[0] };
-		ChargeProbeHook::func = vtbl.write_vfunc(idx, ChargeProbeHook::thunk);
-		SKSE::log::info("AutoFireBow: charge-probe hook on ArrowProjectile::GetPowerSpeedMult (vtable slot {:#x})", idx);
+		AutoArrowHook::func = vtbl.write_vfunc(idx, AutoArrowHook::thunk);
+		SKSE::log::info("AutoFireBow: auto-arrow hook on ArrowProjectile::GetPowerSpeedMult (vtable slot {:#x})", idx);
 	}
 
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
@@ -303,7 +246,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 1, 11, 0 },
+	.Version = REL::Version{ 2, 0, 0 },
 	.Name = "AutoFireBow",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -314,8 +257,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("AutoFireBow {} loaded — PROBE: synthetic input-release loose, no clamp, charge readout",
-		REL::Version{ 1, 11, 0 }.string());
+	SKSE::log::info("AutoFireBow {} loaded — hold-to-auto-fire full-draw shots + {:.0f}% auto-arrow damage bump",
+		REL::Version{ 2, 0, 0 }.string(), (kAutoDamageMult - 1.0f) * 100.0f);
 	InstallHooks();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 	return true;
