@@ -3,7 +3,8 @@
 **Status:** approved 2026-06-09, not yet built.
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain.
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE.
-**Working name:** `OneClickMap` (provisional, rename freely).
+**Name:** `OneClickMap` — **locked** (drives `plugins/OneClickMap/`, `CMakeLists.txt` target,
+`build.sh`, and `OneClickMap.log`; renaming later means touching all four, so pin it at step 0).
 
 ## Goal
 
@@ -101,15 +102,29 @@ The one piece research did **not** pin down: how popup #4 (Move/Leave/Remove) is
 code, so we can invoke it for the "not travelable + marker exists" branch — including the
 undiscovered-**location** case where vanilla would instead show popup #3.
 
-First milestone, before committing to the full build: a probe that **identifies and fires
-popup #4's trigger** from the hook (find the callback class / the MapMenu path that raises the
-move/leave/remove box, mirroring how `FastTravelConfirmCallback` was found). If #4 can be
-raised cleanly on demand, the rest is well-trodden (travel + `PlaceMarker` are both proven).
+First milestone, before committing to the full build, a probe that proves **all three reads
+fire correctly at the hook site**, since a fast-travel mis-fire is as damaging as a missing #4:
+
+1. The **cursor-target REFR** is reliably obtainable at the hook (the `MapMenu` runtime
+   `mapMarker` handle resolves), and its **travelable** flag reads correctly
+   (`ExtraMapMarker` → `kCanTravelTo`) — distinguishing discovered from undiscovered.
+2. **`playerMapMarker`** correctly reports marker-exists / not.
+3. **Popup #4's trigger** can be identified and fired on demand (find the callback class / the
+   MapMenu path that raises the move/leave/remove box, mirroring how `FastTravelConfirmCallback`
+   was found).
+
+If all three hold, the rest is well-trodden (travel + `PlaceMarker` are both proven).
 
 **Fallback if #4 can't be invoked cleanly:** for the *undiscovered-location + marker-exists*
 case only, fall through to vanilla (popup #3, "Place marker? Yes/No"). Empty-terrain +
 marker-exists already shows #4 natively, so the common case still works; only the changed
 box #3 would revert. Documented deviation, not a blocker.
+
+Note the control-flow shape this implies: the main approach **suppresses** the default box on
+every branch, but this fallback (and any "let vanilla handle it" case) requires the hook to
+also be able to **pass through to the original** cleanly for one specific branch. The plan
+should treat "suppress" and "call original" as two distinct, both-supported hook outcomes
+rather than assuming every path suppresses.
 
 ## Architecture
 
