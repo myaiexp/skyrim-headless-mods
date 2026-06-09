@@ -51,27 +51,44 @@ a menu**: testing `OneClickMap` means **clicking a discovered map marker** to fa
 the mouse can do. That's the real reason the pointer path mattered. (The fast-travel confirmation box
 OneClickMap removes is itself keyboard-dismissable, but that was never the blocker.)
 
-### Next goal — script the probe so Claude isn't in the per-attempt loop
+### Next goal — a recording/replay harness (deterministic input macro)
 
-Once a probe sequence is known-good, bake it into a **single deterministic script** so re-running a
-test doesn't need Claude doing the slow, token-heavy move → screenshot → read → click loop each time
-(a ~20-shot loop is ~25–30k tokens + ~1.5s/shot of latency). Two parts:
+Record the exact step sequence Claude worked out **once**, then replay it deterministically so Claude
+isn't in the slow, token-heavy move → screenshot → read → click loop on every attempt. The path to the
+"click the map marker" point is **fully static**: same save + same input sequence ⇒ same game state
+every run, so the map opens identically and the marker sits at the **same pixel** — hardcoded coords
+are fine, no per-run perception needed. (CV/template-match is *not* required; only worth it if state
+ever drifts between runs.)
 
-1. **Deterministic replay** of the fixed steps — launch → wait-for-menu → `click 1175 505` (Continue)
-   → `tap enter` (Yes) → wait-for-load → `tap m` → … . Keyboard and fixed *menu* clicks are stable
-   across runs (menus don't pan).
-2. **In-script perception** for the variable + verify steps, done with **ImageMagick/Python-CV inside
-   the script — NOT Claude reading frames** (zero tokens, fast):
-   - **Locate the marker glyph by template match** — its pixel is *not* fixed (map pan/zoom shifts it,
-     findings #10), so match the white glyph, then nudge+click (no-home recipe).
-   - **Detect the fast-travel confirm box** — the actual OneClickMap assertion (skipped = mod working;
-     present = not). Template/OCR on "Fast travel to".
-   - **Assert arrival** — HUD compass back / map closed / known signature → emit a one-line `PASS`/`FAIL`.
+**A recording** = an ordered list of timed steps — the literal `drive.sh`/eidriver commands plus
+`sleep`/`wait-for` — with optional **labels/checkpoints**. Example shape:
 
-Net: the loop runs headless and emits **text only**; Claude (or a cron) reads one verdict line, not 20
-screenshots. The perception primitives can be **prototyped against the frames already captured this
-session** (`/tmp/map.png`, the confirm-box and arrival shots) with **no game running** — that's the
-risky part (does template-match find the marker reliably?), and it's de-riskable off-machine.
+```
+launch                      # or assume running
+wait menu                   # poll SkyrimSE.exe + a stable menu frame
+click 1175 505              # Continue
+tap enter                   # "Continue from last save?" -> Yes
+wait load                   # poll until in-game (HUD present)
+tap m            @map        # checkpoint label
+rel <dx> <dy>               # map-open cursor -> Dustman's Cairn marker (fixed delta; no home on map)
+click            @marker     # checkpoint: the step under test
+tap enter                   # "Fast travel?" -> Yes
+shot /tmp/result.png        # hand back the final frame
+```
+
+**A runner** replays it and supports the crash-debug loop:
+- run all, or `--to <label>` then **pause** (the game stays live at that input step);
+- `--continue` to resume sending the remaining steps from the pause (step through after a crash);
+- on finish/crash, capture the last screenshot **and tail the logs** — Papyrus (`Papyrus.0.log`) and
+  `SKSE/crash-*.log` — so a new crash hands back logs, not just a picture.
+
+Loop: replay → reproduce the crash deterministically → read crash/Papyrus logs → tweak the mod (in the
+*making* repo) / add probes / move the stop point → replay again.
+
+**Build notes:** the runner + the menu/keyboard steps can be written **with no game running**; only the
+**map step's exact `rel` delta** needs one clean live run to lock in (this session's map run was messy
+— homes + a stray Custom-Destination — so don't copy those coords; capture them fresh on a clean pass).
+On the map, use **no-home relative moves** from the map-open cursor, never the corner-home (findings #10).
 
 ### SKSE ground-truth (endgame, unchanged)
 
