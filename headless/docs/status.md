@@ -41,9 +41,10 @@ click; drag support for sliders (button-down → `moveto` → button-up — the 
 already supports it). Note: bottom-bar `Select`/`Back` prompts are keyboard/controller hints, **not**
 mouse-clickable — use Tab/Esc for those.
 
-For **menus**, keyboard still navigates deterministically (arrows/Enter/Esc/Tab), so pointer precision
-is only needed where keyboard can't reach. The motivating `OneClickMap` confirmation box is very likely
-keyboard-dismissable.
+For **menus**, keyboard navigates deterministically (arrows/Enter/Esc/Tab) — but the **world map is not
+a menu**: testing `OneClickMap` means **clicking a discovered map marker** to fast-travel, which only
+the mouse can do. That's the real reason the pointer path mattered. (The fast-travel confirmation box
+OneClickMap removes is itself keyboard-dismissable, but that was never the blocker.)
 
 ### SKSE ground-truth (endgame, unchanged)
 

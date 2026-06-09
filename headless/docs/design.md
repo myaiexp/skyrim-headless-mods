@@ -5,8 +5,11 @@
 Run Skyrim SE so that an automated agent can operate it the way a human tester would —
 load in, look at the screen, press a few things, confirm the outcome — **without** the game
 appearing on a monitor and **without** stealing the real keyboard/mouse. The motivating chore:
-verifying mods like `OneClickMap` (the world-map confirmation box) without a person babysitting
-the game through every iteration.
+testing `OneClickMap`, which makes a click on a world-map marker fast-travel **instantly** instead
+of popping a confirmation box. Verifying it means **clicking a discovered map marker** and checking
+it travels with no popup — which inherently needs a working in-game **mouse** (keyboard can't select
+an arbitrary marker on the map). That requirement is exactly why the pointer path had to be solved;
+the confirmation box itself is keyboard-dismissable and was never the blocker.
 
 Two halves: **eyes** (see the game state) and **hands** (send input). They're solved
 separately and that separation is the key design decision.

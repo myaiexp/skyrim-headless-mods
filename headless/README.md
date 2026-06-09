@@ -6,9 +6,11 @@ is a tight test loop: instead of a human launching the game, loading a save, cli
 things, and reporting back, this harness lets an agent do it directly — load in, screenshot,
 read the actual game state, press keys, confirm the result.
 
-It's a **testing tool for this repo's mods** (e.g. `OneClickMap`'s world-map confirmation box —
-the exact thing that motivated this). Long-term it pairs with the SKSE C++ tier: gamescope for
-*eyes*, and eventually an in-process SKSE plugin for *hands + ground-truth state*.
+It's a **testing tool for this repo's mods** — the motivating case is `OneClickMap`, which makes a
+world-map marker click fast-travel instantly (no confirmation popup). Testing it means **clicking a
+discovered map marker**, so a working in-game **mouse** is the hard requirement (keyboard can't pick
+an arbitrary marker). Long-term it pairs with the SKSE C++ tier: gamescope for *eyes*, and eventually
+an in-process SKSE plugin for *hands + ground-truth state*.
 
 > Status in one line: **invisible render + screenshots + isolated keyboard *and* mouse all work.**
 > Absolute `click <x> <y>` lands in-game (built on relative motion). See `docs/status.md`.
