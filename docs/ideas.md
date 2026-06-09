@@ -34,6 +34,24 @@ ghost-allies-design.md` → "## v2 design") and consumes the former "spells" ite
 Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real
 gameplay shows follower projectiles blocking/hitting the player often enough to matter.
 
+## 2026-06-09 — OneClickMap (skip world-map popups)
+
+State: **v1 designed** (`docs/plans/oneclick-map-design.md`), not yet built. v1 is unconditional,
+no config. Deferred:
+
+- **Modifier-key escape hatch.** v1 permanently trades away two vanilla options: "Place Marker" on
+  a *discovered* location (you always travel instead), and "Place marker? Yes/No" on an undiscovered
+  location when a marker already exists (you get Move/Leave/Remove instead). Both were accepted, but
+  a held modifier (e.g. Shift-click) could restore the old behavior on demand — Shift-click a
+  discovered marker to place a marker on it; Shift-click an undiscovered location to place/relocate
+  there directly. Adds a key-state check in the hook branch.
+- **MCM / INI configuration.** Per-behavior toggles: instant-travel on/off, instant-place on/off,
+  and whether to remap box #3 (undiscovered-location + marker-exists → management menu) or leave it
+  vanilla. Mirror the AutoFireBow INI decision below (SimpleIni in the DLL, no esp/Papyrus).
+- **Confirm-on-condition.** Optional re-introduction of a confirm only for long-distance travel, or
+  only when carrying a quest-relevant timer — niche, revisit only if play shows accidental travel is
+  a real annoyance.
+
 ## 2026-06-08 — AutoFireBow config (deferred)
 
 Make the mod configurable instead of always-on. Settings worth exposing:
