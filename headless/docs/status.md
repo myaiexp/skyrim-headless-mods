@@ -41,6 +41,11 @@ click; drag support for sliders (button-down → `moveto` → button-up — the 
 already supports it). Note: bottom-bar `Select`/`Back` prompts are keyboard/controller hints, **not**
 mouse-clickable — use Tab/Esc for those.
 
+**World map is different from menus** (findings #10): it pans at screen edges, so the corner-home in
+`abs`/`clickat` mis-clicks there. Map recipe (verified — fast-traveled to Dustman's Cairn): bare `rel`
+nudges (no home, stay off edges) → confirm the marker name tooltip → bare `click` → `tap enter` (Yes).
+This is the OneClickMap test loop; the automated version wants template-matched marker pixels.
+
 For **menus**, keyboard navigates deterministically (arrows/Enter/Esc/Tab) — but the **world map is not
 a menu**: testing `OneClickMap` means **clicking a discovered map marker** to fast-travel, which only
 the mouse can do. That's the real reason the pointer path mattered. (The fast-travel confirmation box

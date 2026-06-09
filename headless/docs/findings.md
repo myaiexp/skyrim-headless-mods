@@ -117,3 +117,27 @@ still moves 1:1 and clamps fine, but Skyrim's *internal* cursor — the click hi
 and desyncs from it. → Fix: never send one big delta. `eidriver` now chunks every move into
 ≤1000-px steps with a short pump between (`rel_step`), so home-overshoot and long `moveto`s stay in the
 safe regime. (This also means a future >~1400-wide resolution won't silently re-break clicks.)
+
+## 10. The world map pans at screen edges — don't home/corner there
+
+Hit while testing the OneClickMap loop (load → `M` → click a discovered marker → fast-travel). On the
+**map**, a cursor at/near a screen edge **pans the map view** (it's a click-drag-able pannable surface,
+not a fixed menu). So the absolute primitive's clamp-to-corner home (`abs`/`clickat`, which slam to
+(0,0)) is **destructive on the map**: it pans the view, so the target pixel no longer points at the
+marker, and the click lands on bare terrain → Skyrim places a *"Custom Destination"* flag instead of
+selecting the location. (Menus are unaffected — they don't pan.)
+
+→ **Map interaction recipe (verified, traveled to Dustman's Cairn):**
+1. Position with **bare relative nudges** (`drive.sh rel dx dy`) — *no* home, and keep clear of the
+   screen edges so the view doesn't pan. The cursor's on-screen position persists between invocations,
+   so nudge → screenshot → nudge again works.
+2. **Verify with the marker's name tooltip.** Hovering a discovered marker pops its name + status
+   (e.g. "Dustman's Cairn / Cleared"); discovered = white/grey glyph, undiscovered = black. The tooltip
+   showing means the cursor is within the marker's snap tolerance.
+3. **Click with a bare `drive.sh click`** (no x,y → no home → no pan). With the snap active, the click
+   selects that marker → fast-travel confirm box → `tap enter` (Yes).
+
+For the automated OneClickMap test, the durable version is template-matching the white marker glyphs to
+get their pixels (markers are ~12px; eyeballing won't scale), then this same no-home nudge+click. A
+`moveto`-on-map variant would need a non-edge origin (e.g. re-open the map to recenter the cursor on
+the player) instead of the corner home.
