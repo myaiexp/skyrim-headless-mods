@@ -3,7 +3,9 @@
 Making Skyrim Special Edition mods **headlessly on Linux** — no SSEEdit, no Creation Kit, no GUI tooling at all. Plugins are authored in code, scripts are compiled from the command line, and everything is debuggable from the Papyrus log.
 
 This repo holds a reusable toolchain, the mods built with it, and a **headless driver** that
-runs the game invisibly to test them (see `headless/`).
+runs the game invisibly to test them (see `headless/`). The flagship working mod is
+**[GhostAllies](plugins/GhostAllies/)** — player arrows and aimed spells pass harmlessly through
+your whole party — built on the SKSE C++ tier and verified in-game.
 
 ## Why
 
@@ -58,7 +60,7 @@ Papyrus because arrow charge is welded to real input. That's what pushes us to t
 ## Quick start
 
 ```bash
-# Build the example mod (esp + pex) into mods/RapidBowHold/build/
+# Build the example Papyrus mod (esp + pex) into mods/RapidBowHold/build/ — tier-1 toolchain demo
 ./mods/RapidBowHold/build.sh
 
 # Build and install into the live game + activate the plugin
