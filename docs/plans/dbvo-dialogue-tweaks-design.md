@@ -7,7 +7,7 @@ A small set of swf/Papyrus/SKSE tweaks to DBVO's dialogue pacing. Built in phase
 | ------ | ------------------------------------------------------------- | --------------------- | ------------------------------ |
 | **v1** | **Manual player-line skip** (E / left-click)                  | swf only              | **this design — building now** |
 | v2     | Configurable response gap + speed (pad ms + wpm), MCM sliders | swf + Papyrus + MCM   | deferred (scoped, see README)  |
-| v3     | Cut the player voice audio on skip                            | SKSE C++ (`plugins/`) | deferred                       |
+| v3     | Cut in-flight voice audio: player line on skip + NPC line on new-topic | SKSE C++ (`plugins/`) | deferred (swf can't reach it)  |
 
 This doc fully specifies **v1**; v2/v3 are roadmap only (tracked in `docs/ideas.md`).
 
@@ -102,9 +102,22 @@ self-skip, dialogue logic intact. Overlap audio is expected and noted, not a fai
 - **v2 — configurable gap + speed + MCM.** Parameterize `startTopicClickedTimer`'s `wordCount × 200 ms
 (300 wpm) + 1400 ms pad`: expose `padMs` and `wpm` via MCM sliders, transported swf↔Papyrus. Full
   scope in `mods/DBVODialogueTweaks/README.md`. Shares the v1 swf rebuild.
-- **v3 — audio cut on skip.** SKSE C++ plugin (sibling to `plugins/`): hook/track the player's
-  `SpeakSound` instance and stop it when v1's skip fires, removing the overlap. Possibly also the
-  README's exact-`.fuz`-duration NPC-reply scheduling (eliminates the wpm guess entirely).
+- **v3 — audio cut (SKSE).** SKSE C++ plugin (sibling to `plugins/`). Two related in-flight-audio
+  problems the swf provably cannot reach, both needing the audio/voice layer:
+  - **(a) player-line tail on skip** — hook/track the player's `SpeakSound` instance and stop it when
+    v1's skip fires, removing the overlap.
+  - **(b) NPC line not interrupted when selecting a new topic** (investigated 2026-06-10, in-game).
+    Symptom: while an NPC reply is playing, selecting a new topic makes the player's new line play
+    *over* the still-running NPC voice (vanilla would cut the NPC line and start the new exchange).
+    **Root cause:** DBVO defers the engine's `TopicClicked` behind its timer, so the engine is never
+    told to advance/cut the current NPC line at selection time; the player line (`SpeakSound`) fires
+    immediately → overlap. **Why it's not swf-fixable:** the swf has only two line-control levers, and
+    both fail — `GameDelegate.call("SkipText")` does **not** stop the NPC voice audio in this AE setup
+    (confirmed: the normal click-skip advances the menu/subtitle but the NPC voice keeps playing), and
+    `TopicClicked` would cut the NPC line only by *immediately* starting the next NPC reply, overlapping
+    the player line and breaking DBVO's timing. A `SkipText`-on-select swf attempt was built and tested
+    → no effect (reverted). So interrupting the NPC voice needs the SKSE audio layer, same tier as (a).
+  - Possibly also the README's exact-`.fuz`-duration NPC-reply scheduling (eliminates the wpm guess).
 
 ## Why this shape
 
