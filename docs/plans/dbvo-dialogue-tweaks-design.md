@@ -37,12 +37,19 @@ not the v1 base.)
 In `DialogueMenu.as` (decompiled AS2), clicking a topic runs:
 
 ```
-onSelectionClick → eMenuState = TOPIC_CLICKED; timerBool = true
-                 → initDBVO()              // SendModEvent "PlayDBVOTopic" → player speaks
-                 → startTopicClickedTimer() // this.timer = setTimeout(this,"topicClicked", delay)
+onSelectionClick → eMenuState = TOPIC_CLICKED   // only if prior state was TOPIC_LIST_SHOWN
+                 → timerBool = true
+                 → initDBVO()                   // SendModEvent "PlayDBVOTopic" → DBVO Papyrus plays the line
+... DBVO Papyrus resolves the voice pack, then calls back into the swf ...
+startTopicClickedTimer(voicePackID)             // this.timer = setTimeout(this,"topicClicked", delay)
 ... delay elapses ...
 topicClicked()   → GameDelegate.call("TopicClicked", [topicIndex])  // NPC replies / menu advances
 ```
+
+Note the two entry points: `onSelectionClick` only calls `initDBVO()` (fires the `PlayDBVOTopic` mod
+event). `startTopicClickedTimer(voicePackID)` is a **separate** call invoked by DBVO's Papyrus
+round-trip — that's where `this.timer` is actually armed, so the debounce timestamp belongs there, not
+in `onSelectionClick`.
 
 During the `delay` window the menu is in `TOPIC_CLICKED`. Input is **ignored**: clicks reach
 `onMouseDown → onItemSelect`, but `onItemSelect` only acts when `bAllowProgress` is true, and nothing
