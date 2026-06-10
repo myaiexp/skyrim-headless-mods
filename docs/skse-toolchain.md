@@ -2,14 +2,14 @@
 
 How a native **SKSE plugin** (a Windows `.dll`) gets built here entirely on Linux — no
 Windows, no Visual Studio, no MSVC, no vcpkg. This is the second tier of headless modding
-(tier 1 = Papyrus, see [toolchain.md](toolchain.md)); it exists because some engine behaviour
-is unreachable from Papyrus (see [findings-papyrus-limits.md](findings-papyrus-limits.md)).
+(tier 1 = Papyrus, see [papyrus-toolchain.md](papyrus-toolchain.md)); it exists because some engine behaviour
+is unreachable from Papyrus (see [papyrus-limits.md](papyrus-limits.md)).
 
 **Status: working, and shipping a real hook.** `plugins/AutoFireBow/` builds a valid SKSE-shaped
 `AutoFireBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
 implements option 1 — a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
 charge for the player (verified in-game on 1.6.1170). See
-[skse-plugin-plan.md](skse-plugin-plan.md) for the charge → power details.
+[skse-tier-bringup.md](skse-tier-bringup.md) for the charge → power details.
 
 ## The idea
 
@@ -66,14 +66,14 @@ Building MSVC-targeted C++ on Linux with Clang hits two issues that the toolchai
 
 ## Files
 
-| Path                                | Role                                                                                                                                                             |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plugins/cross-env.sh`              | Sourced before building. Puts the LLVM cross tools on `PATH`/`LD_LIBRARY_PATH`, exports `XWIN_SDK`, ensures the `.lib` symlinks exist.                           |
-| `plugins/setup-sdk-symlinks.sh`     | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
-| `plugins/cmake/clang-cl-msvc.cmake` | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
-| `plugins/AutoFireBow/CMakeLists.txt`   | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `AutoFireBow.dll`.      |
-| `plugins/AutoFireBow/src/main.cpp`     | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
-| `plugins/AutoFireBow/build.sh`         | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
+| Path                                 | Role                                                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins/cross-env.sh`               | Sourced before building. Puts the LLVM cross tools on `PATH`/`LD_LIBRARY_PATH`, exports `XWIN_SDK`, ensures the `.lib` symlinks exist.                           |
+| `plugins/setup-sdk-symlinks.sh`      | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
+| `plugins/cmake/clang-cl-msvc.cmake`  | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
+| `plugins/AutoFireBow/CMakeLists.txt` | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `AutoFireBow.dll`.   |
+| `plugins/AutoFireBow/src/main.cpp`   | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
+| `plugins/AutoFireBow/build.sh`       | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
 
 ## Build it
 

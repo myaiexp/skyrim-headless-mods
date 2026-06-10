@@ -4,7 +4,7 @@ Scriptname RapidBowHoldScript extends Quest
   PROOF-OF-CONCEPT / SHELVED. This is the last working *loop* version: it fires on the
   full-draw event, waits a beat for the release to process, then commands the next draw. It
   loops correctly, but the arrows are UNCHARGED (weak) -- animation events are cosmetic and
-  cannot drive the engine's bow charge. See docs/findings-papyrus-limits.md. Kept as a
+  cannot drive the engine's bow charge. See docs/papyrus-limits.md. Kept as a
   reference for the Papyrus pipeline (control hooks + animation events + save-bake behavior).
 
   Requires SKSE. }

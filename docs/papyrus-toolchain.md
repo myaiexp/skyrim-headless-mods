@@ -1,4 +1,4 @@
-# The headless toolchain
+# The headless Papyrus toolchain (tier 1)
 
 How a Skyrim SE mod gets built here without any GUI tools. Two independent halves: the
 **plugin** (`.esp`) and the **script** (`.pex`).
@@ -6,7 +6,7 @@ How a Skyrim SE mod gets built here without any GUI tools. Two independent halve
 ## 1. The plugin — Mutagen (`tools/EspGen`)
 
 A `.esp`/`.esm`/`.esl` is a binary record file. For a pure-logic script mod you need exactly
-one record: a **Quest** that is *Start Game Enabled* and has a Papyrus script attached (via
+one record: a **Quest** that is _Start Game Enabled_ and has a Papyrus script attached (via
 the quest's `VMAD` subrecord), with no properties, no aliases, no masters. The script does
 everything itself (`Game.GetPlayer()` etc.).
 
@@ -36,7 +36,7 @@ tools/compile-papyrus.sh <ScriptName> <src-dir> <out-dir>
 
 ### The source-tree requirement (the non-obvious part)
 
-To compile *any* script, the compiler must resolve the **entire transitive type graph** of
+To compile _any_ script, the compiler must resolve the **entire transitive type graph** of
 everything the script references. `extends Quest` + a call to `Actor.GetEquippedWeapon()`
 drags in `Actor` → `GlobalVariable`, `Package`, `Idle`, `Light`, `Projectile`, … — most of
 the game's script API. So you need the full vanilla source tree, **plus** SKSE's augmented

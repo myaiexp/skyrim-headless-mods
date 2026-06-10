@@ -4,11 +4,11 @@
 > toolchain end-to-end (it builds, installs, runs, and was debugged purely from the Papyrus
 > log). But it cannot meet its own goal: a scripted release fires an **uncharged (weak)** arrow,
 > because arrow power is welded to real attack input and is unreachable from Papyrus. Full
-> story + evidence: [`../../docs/findings-papyrus-limits.md`](../../docs/findings-papyrus-limits.md).
-> The real fix is a native SKSE C++ plugin: [`../../docs/skse-plugin-plan.md`](../../docs/skse-plugin-plan.md).
+> story + evidence: [`../../docs/papyrus-limits.md`](../../docs/papyrus-limits.md).
+> The real fix is a native SKSE C++ plugin: [`../../docs/skse-tier-bringup.md`](../../docs/skse-tier-bringup.md).
 >
 > Kept as a reference example of the Papyrus build pipeline (control hooks, animation events,
-> save-bake gotchas). The `.psc` here is the last working *loop* version (full-power was never
+> save-bake gotchas). The `.psc` here is the last working _loop_ version (full-power was never
 > achievable).
 
 Hold the attack button with a bow or crossbow equipped → it auto-fires shots in a loop at the
@@ -39,7 +39,7 @@ Guards block firing in menus, dialogue, while sitting/mounted, etc.
 ```
 
 After `--install`: **fully restart Skyrim**, then console (`~`):
-`stopquest RapidBowHoldQuest` / `startquest RapidBowHoldQuest`. See `../../docs/workflow.md`.
+`stopquest RapidBowHoldQuest` / `startquest RapidBowHoldQuest`. See `../../docs/papyrus-workflow.md`.
 
 ## Status / notes
 

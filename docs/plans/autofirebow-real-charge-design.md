@@ -13,9 +13,9 @@ doesn't take.
 Bow arrow power (speed, damage, range) comes from the engine's **draw charge**, and charge is
 **welded to the real input-release path** — not to animation-graph events. Established twice:
 
-- Papyrus saga (`docs/findings-papyrus-limits.md`): `Debug.SendAnimationEvent("attackRelease")`,
+- Papyrus saga (`docs/papyrus-limits.md`): `Debug.SendAnimationEvent("attackRelease")`,
   scripted draw, `Weapon.Fire`, and "script only the release" all loose **uncharged** arrows.
-- SKSE loop (`docs/skse-plugin-plan.md:109-130`): the current loop looses via
+- SKSE loop (`docs/skse-tier-bringup.md:109-130`): the current loop looses via
   `NotifyAnimationGraph("attackRelease")` and logs `natural_power = 0.350` (uncharged) on
   auto-fired shots vs `1.000` on real manual ones.
 
@@ -29,7 +29,7 @@ one without the other.
 
 ## Approach — synthesize real input-release, not a graph event
 
-The physical attack button is already held while the loop runs, so the engine is *already* doing a
+The physical attack button is already held while the loop runs, so the engine is _already_ doing a
 **real, charged draw** each cycle (that is why `BowDrawn` fires for real). The only fake step is the
 **release**. So:
 
@@ -47,24 +47,24 @@ uncharged" caveat both vanish because we are back on the engine's real path.
 ### Note (2026-06-08): the redraw "unknown" is resolved; the real risk is deeper
 
 The originally-flagged unknown — "does a held button auto-redraw after a loose?" — is **answered:
-no** (Mase confirmed from play). It can't, by the engine's input model: holding LMB *is* the draw
-and releasing *is* the loose; they're the same axis, so a held button never produces the
+no** (Mase confirmed from play). It can't, by the engine's input model: holding LMB _is_ the draw
+and releasing _is_ the loose; they're the same axis, so a held button never produces the
 button-**up** that looses, nor the fresh button-**down** that would redraw. So re-nock always needs
 a synthetic press; there's nothing to probe there.
 
-The **real** make-or-break is one level down: **will the engine honor *synthetic* button events for
+The **real** make-or-break is one level down: **will the engine honor _synthetic_ button events for
 the charge path at all, or is charge welded to physical device state?** The findings doc already
 concluded charge is welded to "the real input-release path." If the attack handler **polls device
 state** rather than consuming queued events, **no injection variant works** — that's the genuine
-gamble (a "hail mary," in Mase's words). Probe step 1 is really testing *this*, not redraw.
+gamble (a "hail mary," in Mase's words). Probe step 1 is really testing _this_, not redraw.
 
 **Preferred fallback if injection doesn't charge — direct-engine loose (promising, not a long
-shot).** When the button is held past `BowDrawn`, the bow is *genuinely fully charged and waiting*
+shot).** When the button is held past `BowDrawn`, the bow is _genuinely fully charged and waiting_
 in engine state; the physical release just triggers a launch that **consumes** that charge. The
-graph `attackRelease` triggers a launch too, but a charge-*ignorant* one (→ 0.350). So the honest
+graph `attackRelease` triggers a launch too, but a charge-_ignorant_ one (→ 0.350). So the honest
 fix may not need fake input at all: find and call the engine's **real charge-consuming loose path**
 directly (the `HighProcessData` attack-release that the physical up invokes) while the real charge
-sits there, then kick a fresh draw the same way. Precedent: *Manual Crossbow Reload* drives bow
+sits there, then kick a fresh draw the same way. Precedent: _Manual Crossbow Reload_ drives bow
 draw via direct engine calls. This is the first fallback below and is arguably the stronger primary
 — but we stick with the input route first per plan; pivot here if step 1 reads 0.350.
 
@@ -89,7 +89,7 @@ In rough order of preference — each is a separate probe, not a guaranteed step
   loose a charged arrow (the `HighProcessData` attack-release path), passing the charge the real draw
   already built. Skips the input pipeline entirely.
 - **Set-charge-then-loose** — locate the live draw-charge value in `HighProcessData`, write it to
-  full (or its real current value), then trigger the loose. Precedent: *Manual Crossbow Reload*
+  full (or its real current value), then trigger the loose. Precedent: _Manual Crossbow Reload_
   rewrites bow draw mechanics via SKSE.
 - **Full press/hold/release synthesis** — fabricate the entire input sequence rather than relying on
   the physical hold, if partial injection proves to confuse the state machine.
@@ -104,12 +104,12 @@ In rough order of preference — each is a separate probe, not a guaranteed step
 - **Construct/route of a synthetic `ButtonEvent`** must be verified against CommonLibSSE-NG
   (`InputEvent`/`ButtonEvent` ctors, and where to enqueue — `BSInputDeviceManager` vs player
   controls). Confirm the API before relying on it.
-- **Vanilla double-tap bug** (tap, re-tap before loose → bow won't release; `skse-plugin-plan.md:160`)
+- **Vanilla double-tap bug** (tap, re-tap before loose → bow won't release; `skse-tier-bringup.md:160`)
   is pre-existing and out of scope; don't conflate any new stuck-draw with it.
 
 ## Success criteria
 
-- Auto-fired arrows are **genuinely charged** (`natural_power ≈ 1.0` logged) with **no
+- Auto-fired arrows are **genuinely charged** (`natural_power ≈ 1.0` logged) with \*\*no
   `power`/`weaponDamage` clamp anywhere in the codebase.
 - Hold-to-auto-fire still works: looses repeatedly while held, stops on release, no hang.
 - Manual single shots behave 100% vanilla.
@@ -119,5 +119,5 @@ In rough order of preference — each is a separate probe, not a guaranteed step
 ## Out of scope (this spike)
 
 - INI/hotkey config (`docs/ideas.md` — still deferred).
-- Fire-at-saturation cadence reclaim and TDM visibility-gating (`skse-plugin-plan.md` follow-ups) —
+- Fire-at-saturation cadence reclaim and TDM visibility-gating (`skse-tier-bringup.md` follow-ups) —
   revisit only after honest charge works.

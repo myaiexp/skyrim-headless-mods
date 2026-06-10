@@ -10,7 +10,9 @@ class DialogueMenu extends MovieClip
    var eMenuState;
    var iAllowProgressTimerID;
    var timer;
+   var skipArmedAt;
    static var ALLOW_PROGRESS_DELAY = 750;
+   static var SKIP_DEBOUNCE_MS = 250;
    static var iMouseDownExecutionCount = 0;
    static var SHOW_GREETING = 0;
    static var TOPIC_LIST_SHOWN = 1;
@@ -157,6 +159,11 @@ class DialogueMenu extends MovieClip
    }
    function onItemSelect(event)
    {
+      if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timer != undefined)
+      {
+         this.trySkipPlayerLine();
+         return undefined;
+      }
       if(this.bAllowProgress && event.keyboardOrMouse != 0)
       {
          if(this.eMenuState == DialogueMenu.TOPIC_LIST_SHOWN)
@@ -261,12 +268,22 @@ class DialogueMenu extends MovieClip
          _loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;
          _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * 60 / 300 * 1000) + 1400;
          this.timer = setTimeout(this,"topicClicked",_loc4_);
+         this.skipArmedAt = getTimer();
       }
    }
    function topicClicked()
    {
       this.timerBool = false;
       gfx.io.GameDelegate.call("TopicClicked",[this.TopicList.selectedEntry.topicIndex]);
+   }
+   function trySkipPlayerLine()
+   {
+      if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timerBool && this.timer != undefined && getTimer() - this.skipArmedAt >= DialogueMenu.SKIP_DEBOUNCE_MS)
+      {
+         clearTimeout(this.timer);
+         this.timer = undefined;
+         this.topicClicked();
+      }
    }
    function onFadeOutCompletion()
    {

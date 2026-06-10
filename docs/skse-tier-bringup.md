@@ -1,7 +1,7 @@
-# SKSE C++ plugin — plan (next phase)
+# SKSE C++ tier — bring-up (done; historical reference)
 
 The native runtime that _can_ do what Papyrus can't (see
-[findings-papyrus-limits.md](findings-papyrus-limits.md)). An SKSE plugin is a Windows DLL
+[papyrus-limits.md](papyrus-limits.md)). An SKSE plugin is a Windows DLL
 loaded by SKSE with full engine access — it can read/write the bow charge, hook the projectile
 launch, or inject input. Precedent: _Manual Crossbow Reload_ is an SKSE plugin that rewrites
 bow draw mechanics, so this class of change is proven possible.

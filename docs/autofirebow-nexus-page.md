@@ -1,7 +1,7 @@
 # AutoFireBow — Nexus page concept
 
 **Status: draft outline, not final copy.** The mod is still being iterated on; this captures
-*what to communicate* on the release page and *why*, so the messaging we worked out isn't lost.
+_what to communicate_ on the release page and _why_, so the messaging we worked out isn't lost.
 Turn into prose at release time. Honesty over hype throughout — overclaiming is what gets a first
 mod torn apart in the comments.
 

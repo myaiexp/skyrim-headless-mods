@@ -1,6 +1,6 @@
-# Build / install / iterate
+# Papyrus build / install / iterate
 
-The build is easy. The *iterate* loop has two gotchas that will eat hours if you don't know
+The build is easy. The _iterate_ loop has two gotchas that will eat hours if you don't know
 them — both learned the hard way.
 
 ## Build
@@ -11,6 +11,7 @@ them — both learned the hard way.
 ```
 
 `--install` does three things to the live game:
+
 1. copies `<Mod>.esp` into `Data/`
 2. copies `Scripts/<Script>.pex` into `Data/Scripts/`
 3. ensures the plugin is **active** in `Plugins.txt`
@@ -28,7 +29,7 @@ it. Replacing the `.pex` on disk does nothing until the game **process fully exi
 relaunches**. Returning to the main menu is not enough; neither is reloading a save.
 
 Proven the hard way: new `.pex` on disk + quest re-initialized in the same session = the
-*old* code still ran (zero new log output).
+_old_ code still ran (zero new log output).
 
 So every script change: **build → `--install` → quit Skyrim to desktop → relaunch.**
 
