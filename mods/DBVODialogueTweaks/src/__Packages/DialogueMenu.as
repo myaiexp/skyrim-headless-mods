@@ -159,7 +159,7 @@ class DialogueMenu extends MovieClip
    }
    function onItemSelect(event)
    {
-      if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timer != undefined)
+      if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timerBool && this.timer != undefined)
       {
          this.trySkipPlayerLine();
          return undefined;
