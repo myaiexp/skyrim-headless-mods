@@ -13,9 +13,22 @@ path?* — is **answered: yes.**
   fans out to `PlayerControls` each frame). Replaces the old cosmetic `NotifyAnimationGraph` loose.
   `AttackInputSink` is guarded with `g_injectingSynthetic` so our fake event doesn't move the real
   held-state. (`main.cpp` — `SendSyntheticAttack`.)
-- **Re-nock is free.** The synthetic release desyncs the engine's button state from the still-held
-  physical button → the engine re-presses itself → next draw starts on its own. No re-nock injection.
-  Verified in-game: sustained auto-fire loops cleanly while held, stops on release.
+- **Re-nock needs an explicit synthetic press.** *(Corrected 2026-06-10 — the original "re-nock is
+  free, the engine re-presses itself" claim below was a false positive.)* The "sustained loop" this
+  session verified was actually a **stale duplicate plugin, `RapidBow.dll`** (the pre-rename build,
+  never removed from the live game), silently doing the re-nock via `NotifyAnimationGraph`. With both
+  DLLs loaded they shared the same vtable slot + anim sinks; removing the duplicate exposed that
+  AutoFireBow alone looses **once and stops**. The design doc was right all along: a held button never
+  self-redraws. Fixed by injecting a synthetic **press** (`SendSyntheticAttack(true)`) to start the
+  next draw, fired from `AutoArrowHook` at the auto arrow's launch (not chained at loose — a press
+  before the launch completes trips the vanilla double-tap stuck-bow state). **Gotcha:** the engine's
+  nock event is capital-**`BowDraw`** (RapidBow injected lowercase `bowDraw` itself, so its guard
+  re-arm matched; the input-driven redraw emits the engine's casing). Verified in-game: sustained
+  loop, stops on release.
+
+  *Original (incorrect) note, kept for the record:* ~~The synthetic release desyncs the engine's
+  button state from the still-held physical button → the engine re-presses itself → next draw starts
+  on its own. No re-nock injection.~~
 - **Old `PowerSpeedHook` clamp is gone.** No `runtime.power = 1.0`, no `weaponDamage *= 1/natural`.
 - **Auto arrows get a flat damage bump** (`kAutoDamageMult`, currently `1.10`) via the
   `AutoArrowHook` on `ArrowProjectile::GetPowerSpeedMult`, gated by `g_boostNextArrow` (set at

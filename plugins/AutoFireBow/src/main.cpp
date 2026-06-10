@@ -83,15 +83,24 @@ namespace
 	}
 
 	// Fire the auto-loose once per draw cycle, at full draw. Deferred so we never re-enter the
-	// input pipeline mid-dispatch. The synthetic release looses on the genuinely-charged draw
-	// AND desyncs button state from the still-held physical button, so the engine re-presses
-	// itself and the next draw starts on its own — re-nock free.
+	// input pipeline mid-dispatch.
+	//
+	// The engine does NOT self-redraw a still-held button (holding IS the draw, releasing IS the
+	// loose — same axis, so a held button never emits the button-up that looses nor the fresh
+	// button-down that redraws). An earlier build assumed the synthetic release "desyncs" the
+	// engine into re-pressing itself; that was a false positive masked by a stale duplicate plugin
+	// (RapidBow.dll) silently doing the re-nock. So re-nock needs an explicit synthetic press.
+	//
+	// The press is NOT chained here: the engine defers the actual loose/launch by a few frames, so
+	// a press fired now lands mid-loose and trips the vanilla double-tap stuck-bow state (looses
+	// once, then won't release). Instead AutoArrowHook fires the re-nock once the auto arrow has
+	// actually launched — the real "loose complete" signal.
 	void LooseNow()
 	{
 		g_firedThisCycle = true;
-		g_boostNextArrow = true;  // tag the arrow this loose produces for the DPS-compensation bump
+		g_boostNextArrow = true;  // tags the arrow for the DPS bump AND triggers re-nock at its launch
 		if (auto* task = SKSE::GetTaskInterface()) {
-			task->AddTask([]() { SendSyntheticAttack(false); });
+			task->AddTask([]() { SendSyntheticAttack(false); });  // loose on the genuine full draw
 		}
 	}
 
@@ -122,6 +131,17 @@ namespace
 				runtime.weaponDamage *= kAutoDamageMult;  // 0x198: DPS-compensation bump (auto only)
 				SKSE::log::info("AutoFireBow: auto arrow damage {:.1f} -> {:.1f} (x{:.2f})",
 					before, runtime.weaponDamage, kAutoDamageMult);
+				// The auto arrow has now launched (this hook fires at launch), so the loose is
+				// complete — safe to re-nock without tripping the double-tap stuck state. Deferred
+				// synthetic press starts the next draw, gated on the button still being held.
+				if (auto* task = SKSE::GetTaskInterface()) {
+					task->AddTask([]() {
+						if (AttackHeld()) {
+							SendSyntheticAttack(true);
+							SKSE::log::info("AutoFireBow: re-nock press injected (loop continues)");
+						}
+					});
+				}
 			}
 			return func(a_this);
 		}
@@ -129,9 +149,9 @@ namespace
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	// Drives the rapid-fire loop off the player's bow animation graph: on bowDraw
+	// Drives the rapid-fire loop off the player's bow animation graph: on BowDraw
 	// (re-)arm the per-cycle fire guard; on the engine's own BowDrawn (genuine full
-	// draw, any bow/perk/speed) auto-loose; on the resulting arrowRelease re-nock.
+	// draw, any bow/perk/speed) auto-loose, which also injects the re-nock press.
 	class BowLoopSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 	{
 	public:
@@ -150,11 +170,15 @@ namespace
 			if (!tag) {
 				return RE::BSEventNotifyControl::kContinue;
 			}
-			if (std::strcmp(tag, "bowDraw") == 0) {
-				// Nock start: re-arm the per-cycle fire guard.
+			if (std::strcmp(tag, "BowDraw") == 0) {
+				// Nock start: re-arm the per-cycle fire guard so the next BowDrawn can loose.
+				// The engine's native nock event is capital-B "BowDraw" — NOT the lowercase
+				// "bowDraw" RapidBow used to inject itself. With the input-driven re-draw the
+				// engine emits its own casing; matching the wrong case left the guard stuck
+				// true after the first loose, so the loop died after one shot.
 				g_firedThisCycle = false;
 			} else if (std::strcmp(tag, "BowDrawn") == 0) {
-				// Auto-loose at genuine full draw while held; re-nocks for free.
+				// Auto-loose at genuine full draw while held.
 				if (AttackHeld() && !g_firedThisCycle) {
 					LooseNow();
 				}
