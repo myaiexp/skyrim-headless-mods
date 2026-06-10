@@ -1,9 +1,24 @@
-# DBVOResponseGap
+# DBVODialogueTweaks
 
-**Status: STAGED — scoped, not started.** This README is the scope doc; no code yet.
+A small set of tweaks to **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329)**
+dialogue pacing, built in phases:
 
-Make the **gap between the player's voiced line and the NPC's reply** configurable for
-[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329), so
+| Phase  | Feature                                                                       | Tier                | Status                                                                 |
+| ------ | ----------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| **v1** | **Manual player-line skip** (E / left-click), vanilla-style                   | swf only            | **building now** — design: `docs/plans/dbvo-dialogue-tweaks-design.md` |
+| v2     | Configurable response gap + speed (pad ms + wpm) via MCM                      | swf + Papyrus + MCM | scoped below, not started                                              |
+| v3     | SKSE C++: cut player voice on skip; optional exact `.fuz`-duration scheduling | SKSE (`plugins/`)   | scoped below, not started                                              |
+
+v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
+(the configurable gap); v3 is the **Tier 3** section near the bottom.
+
+(Renamed from `DBVOResponseGap` once the skip feature broadened it past just the gap.)
+
+---
+
+## v2 — configurable response gap
+
+Make the **gap between the player's voiced line and the NPC's reply** configurable, so
 fast voice packs don't leave dead air (or, over-corrected, overlap). Born out of installing DBVO +
 the **Karat** AI voice pack: Karat speaks far faster than DBVO assumes, so DBVO's fixed timing
 mis-paces every line.
@@ -27,11 +42,12 @@ So the NPC reply is delayed by **`wordCount × 200 ms` (a 300-wpm length estimat
 
 - The `1400` pad is pure dead air on top of the estimate.
 - The `wordCount × 200 ms` estimate assumes 300 wpm. Real voice packs vary wildly. **Karat is much
-  faster** — e.g. *"where can I get a drink"* = 6 words ⇒ 1200 ms budgeted, but the clip finishes in
+  faster** — e.g. _"where can I get a drink"_ = 6 words ⇒ 1200 ms budgeted, but the clip finishes in
   under a second. A single fixed pad **cannot** track this per-line: short of reading the real audio
   length, any constant is wrong for some lines.
 
-Reference points already built (in the *staging* repo, `~/Downloads/skyrim-mods/`):
+Reference points already built (in the _staging_ repo, `~/Downloads/skyrim-mods/`):
+
 - **stock** swf — md5 `b1f70c58…` — `00-docs/overrides/2026-06-09-DBVO-instant-skip/`
 - **"Instant Skip"** (Nexus 140682) — md5 `9c93e72d…` — sets the timeout to `1` ⇒ NPC fires
   immediately ⇒ player+NPC **overlap**. Also drops the `bAllowProgress` skip-cooldown (unrelated).
@@ -76,8 +92,9 @@ The swf is a **derivative of DBVO's** asset. Personal use is fine; a public rele
 author's permission (or ship a script-only patch). Same reason this repo stays private re: bundled
 Bethesda Papyrus sources — don't redistribute the swf.
 
-## First steps when starting
+## First steps when starting (v2)
 
-1. `docs/plans/dbvo-response-gap-design.md` (transport mechanism, MCM layout, what the swf exposes).
+1. Extend the v1 design into a v2 section / new design doc (transport mechanism, MCM layout, what the
+   swf exposes). v1 already establishes the swf rebuild path it shares.
 2. Decompile stock swf, prototype the parameterized `startTopicClickedTimer`.
 3. Stub the Papyrus MCM, wire one slider end-to-end, verify the value reaches the swf (Papyrus log).

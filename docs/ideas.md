@@ -24,7 +24,7 @@ ghost-allies-design.md` → "## v2 design") and consumes the former "spells" ite
   tried first and disproven (it fired/skipped but damage persisted — streams don't damage via
   AddImpact). See `docs/plans/ghost-allies-design.md` §2b.
 - **Cosmetic: continuous-stream visual clips a teammate's shield/weapon collidable.** The ghost-group
-  write only stamps the **char-controller**, so a stream's *visual* can still stop on the follower's
+  write only stamps the **char-controller**, so a stream's _visual_ can still stop on the follower's
   equipped shield/weapon or ragdoll collision body (no damage — that's refused at AddTarget). Fixing
   would require walking each teammate's 3D to stamp every equipment/ragdoll rigid body and redoing it
   on equip changes — judged not worth it for a cosmetic clip. Revisit only if it looks bad enough in
@@ -40,7 +40,7 @@ State: **v1 designed** (`docs/plans/oneclick-map-design.md`), not yet built. v1 
 no config. Deferred:
 
 - **Modifier-key escape hatch.** v1 permanently trades away two vanilla options: "Place Marker" on
-  a *discovered* location (you always travel instead), and "Place marker? Yes/No" on an undiscovered
+  a _discovered_ location (you always travel instead), and "Place marker? Yes/No" on an undiscovered
   location when a marker already exists (you get Move/Leave/Remove instead). Both were accepted, but
   a held modifier (e.g. Shift-click) could restore the old behavior on demand — Shift-click a
   discovered marker to place a marker on it; Shift-click an undiscovered location to place/relocate
@@ -55,13 +55,14 @@ no config. Deferred:
 ## 2026-06-08 — AutoFireBow config (deferred)
 
 Make the mod configurable instead of always-on. Settings worth exposing:
+
 - **Master on/off**, plus a configurable **toggle hotkey**.
 - **Auto-fire** on/off independently of **full-power clamp** on/off — they're separate mechanisms
   in the code (`BowLoopSink` vs `PowerSpeedHook`), so some users will want one without the other.
   **Contingent:** the real-charge spike (`docs/plans/autofirebow-real-charge-design.md`) aims to
-  *delete* `PowerSpeedHook` outright. If it lands, there's no clamp left to toggle — auto-fire just
+  _delete_ `PowerSpeedHook` outright. If it lands, there's no clamp left to toggle — auto-fire just
   looses honestly-charged shots, and this split collapses to a single auto-fire on/off.
-- *(maybe)* min delay between auto-shots — a cadence cap.
+- _(maybe)_ min delay between auto-shots — a cadence cap.
 
 Gating is cheap: a few `bool` globals checked in `PowerSpeedHook::thunk` and the `BowDrawn` handler.
 
@@ -70,12 +71,13 @@ the toggle **hotkey** wired into the existing `AttackInputSink`. Zero new user d
 `.esp`, stays in the pure-C++ tier. Settings are global (not per-save) — correct for an on/off mod.
 
 **Considered and rejected for v1:**
-- *Classic SkyUI MCM (Papyrus)* — needs an esp + `.pex` extending `SKI_ConfigBase` + SkyUI + a
+
+- _Classic SkyUI MCM (Papyrus)_ — needs an esp + `.pex` extending `SKI_ConfigBase` + SkyUI + a
   C++↔Papyrus bridge. Drags the Papyrus tier back into a pure-C++ plugin. Worst fit.
-- *MCM Helper* — no Papyrus authoring (generic script), familiar Esc→Mod Configuration UX, but
+- _MCM Helper_ — no Papyrus authoring (generic script), familiar Esc→Mod Configuration UX, but
   pulls in SkyUI + MCM Helper as required mods and still needs a tiny ESL. Revisit only if release
   comments ask for a real in-game menu.
-- *SKSE Menu Framework (ImGui)* — pure C++, no esp/SkyUI/Papyrus, menu rendered from the DLL;
+- _SKSE Menu Framework (ImGui)_ — pure C++, no esp/SkyUI/Papyrus, menu rendered from the DLL;
   architecturally the cleanest fit, but niche UX and small install base. Skipped for familiarity.
 
 ## 2026-06-09 — headless driver (testing harness)
@@ -85,6 +87,7 @@ New top-level `headless/` subsystem: run Skyrim invisibly in headless `gamescope
 `headless/docs/{design,findings,status}.md` — this is just the index pointer.
 
 Open work (detail in `headless/docs/status.md`):
+
 - **libei pointer doesn't land in-game** (keyboard does). Chase: gamescope's unbounded abs-region
   scaling; confirm pointer/button caps on the bound device; start_emulating/frame timing; whether
   Skyrim needs the pointer "entered" before it reacts.
@@ -93,3 +96,21 @@ Open work (detail in `headless/docs/status.md`):
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.
+
+## 2026-06-10 — DBVODialogueTweaks v2 / v3 (deferred phases)
+
+The mod (renamed from `DBVOResponseGap`) ships in phases. v1 = manual player-line skip (building now,
+design in `docs/plans/dbvo-dialogue-tweaks-design.md`). Deferred:
+
+- **v2 — configurable response gap + speed.** Parameterize the swf's `startTopicClickedTimer`
+  (`wordCount × 200 ms` @ 300 wpm `+ 1400 ms` pad) so the user tunes **pad ms** and **wpm** live via
+  **MCM sliders**, transported swf↔Papyrus. Already scoped in the mod README ("v2 — configurable
+  response gap" / "Tier 2"). Shares v1's swf rebuild. Needed because fast packs (Karat) mis-pace under
+  the fixed estimate.
+- **v3 — cut the player voice on skip.** SKSE C++ plugin (sibling to `plugins/`): console
+  `Player.SpeakSound` gives no handle, so hook/track the player's voice instance and stop it when v1's
+  skip fires — removes the audio-tail overlap v1 accepts. Same plugin could also do the README's
+  exact-`.fuz`/`.xwm`-duration NPC-reply scheduling (eliminates the wpm guess entirely, supersedes v2's
+  heuristic).
+- **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
+  ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
