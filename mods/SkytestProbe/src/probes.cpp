@@ -481,6 +481,11 @@ bool probes::HasMainTickWork()
 
 void probes::WriteStatus()
 {
+	// World-readiness first — this is what a host poller waits on (`inWorld:true`
+	// means fully interactive). `status` acks at the main menu too, so the ack
+	// alone says nothing; read these fields. Same predicate the exec gate uses.
+	const engine::WorldState w = engine::GetWorldState();
+
 	trace::json armed = trace::json::object();
 
 	trace::json events = trace::json::object();
@@ -506,5 +511,10 @@ void probes::WriteStatus()
 	}
 	armed["watch"] = std::move(watches);
 
-	trace::Write(trace::json{ { "src", "status" }, { "armed", std::move(armed) } });
+	trace::Write(trace::json{
+		{ "src", "status" },
+		{ "inWorld", w.inWorld },  // hoisted for a cheap grep; the world block has the breakdown
+		{ "world", { { "inWorld", w.inWorld }, { "is3DLoaded", w.is3DLoaded },
+		             { "mainMenu", w.mainMenu }, { "loadingMenu", w.loadingMenu } } },
+		{ "armed", std::move(armed) } });
 }

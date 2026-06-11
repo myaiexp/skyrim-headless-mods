@@ -32,6 +32,20 @@ namespace engine
 	// Arbitrary AV name ("health","onehanded",…) -> enum; ActorValue::kNone if unknown.
 	RE::ActorValue ResolveActorValue(std::string_view a_name);
 
+	// World-readiness snapshot. `inWorld` is the EXACT gate the exec path needs:
+	// no Main/Loading menu open AND the player's 3D is loaded. parentCell/gameActive
+	// both flip true mid-load (too early); Is3DLoaded is the reliable "fully
+	// interactive" signal. Read on the main thread only.
+	struct WorldState
+	{
+		bool mainMenu    = false;  // Main Menu open (pre-load)
+		bool loadingMenu = false;  // loading screen up
+		bool is3DLoaded  = false;  // player character 3D present
+		bool inWorld     = false;  // == !mainMenu && !loadingMenu && is3DLoaded
+	};
+	WorldState GetWorldState();
+	bool       IsInWorld();  // == GetWorldState().inWorld; the exec/console gate
+
 	// Run one console command line, fire-and-forget (ConsoleUtilSSE-NG technique).
 	enum class ExecResult
 	{

@@ -141,3 +141,30 @@ For the automated OneClickMap test, the durable version is template-matching the
 get their pixels (markers are ~12px; eyeballing won't scale), then this same no-home nudge+click. A
 `moveto`-on-map variant would need a non-edge origin (e.g. re-open the map to recenter the cursor on
 the player) instead of the corner home.
+
+## 11. Process detection by cmdline grep is a trap — use a pidfile + the probe
+
+Three separate ways the "is it up / is it ready?" question bit us, and the fixes now baked in:
+
+1. **`pgrep -f "gamescope --backend headless"` self-matches.** `-f` matches the *whole cmdline* of
+   *every* process — including an editor on `launch.sh`, or a shell command you typed that contained
+   that phrase. The launch guard fired on a phantom "already running". The bracket trick doesn't save
+   you (a plain phrase still matches). → **Fix:** `launch.sh` writes the real gamescope pid to
+   `/tmp/headless-skyrim.pid` and the guard checks `kill -0 <pid>` + `/proc/<pid>/cmdline` is
+   gamescope. `shot.sh` reads that pid for SIGUSR2 (no pgrep); `stop.sh` removes it.
+
+2. **`$!` after `setsid … &` is a corpse, and `pgrep -x gamescope` finds nothing.** `setsid` can't
+   `setsid()` as a process-group leader, so it **forks** the real process and exits — `$!` is the
+   wrapper, already dead, useless for a pidfile. And gamescope's process name isn't exactly
+   `gamescope`, so `-x` whiffs (we used to match `-W 1280 -H 720` instead). → **Fix:** launch via an
+   inner `setsid bash -c 'echo $$ > pidfile; exec gamescope …'`. The pid is recorded *before* the
+   `exec`, and `exec` means gamescope **inherits** it — so the pidfile holds the true compositor pid.
+
+3. **"In-world" has no process signal — and the main menu looks ready.** `SkyrimSE.exe` spawns
+   minutes into the Proton boot, so an early `pgrep SkyrimSE.exe` false-negatives mid-load. Worse,
+   the main menu *looks* ready (main thread free → `status` acks there) and `parentCell`/`gameActive`
+   both flip true mid-load, too early. The only reliable "fully interactive" signal is the player's
+   **`Is3DLoaded()`**. → **Fix:** `SkytestProbe`'s `status` now reports a `world` block
+   (`inWorld`/`is3DLoaded`/`mainMenu`/`loadingMenu`) — `inWorld` is the exact gate the probe's `exec`
+   uses, so the two can't disagree. `./ready.sh` polls it and blocks until `inWorld:true`. Don't gate
+   readiness on any pgrep.

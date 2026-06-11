@@ -1,6 +1,8 @@
 #!/bin/bash
 # Kill the headless Skyrim session cleanly.
 set -uo pipefail
+PIDFILE="${PIDFILE:-/tmp/headless-skyrim.pid}"
+rm -f "$PIDFILE"
 pkill -9 -f "gamescope --backend headless" 2>/dev/null || true
 pkill -9 -f "proton run.*skse64_loader" 2>/dev/null || true
 pkill -9 -f "SkyrimSE.exe" 2>/dev/null || true

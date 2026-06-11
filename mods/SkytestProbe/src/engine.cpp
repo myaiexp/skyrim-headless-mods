@@ -156,6 +156,25 @@ RE::ActorValue engine::ResolveActorValue(std::string_view a_name)
 	return avl->LookupActorValueByName(a_name);  // kNone if unknown (case-insensitive)
 }
 
+engine::WorldState engine::GetWorldState()
+{
+	WorldState w;
+	auto* ui = RE::UI::GetSingleton();
+	if (ui) {
+		w.mainMenu    = ui->IsMenuOpen(RE::MainMenu::MENU_NAME);
+		w.loadingMenu = ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
+	}
+	auto* player = RE::PlayerCharacter::GetSingleton();
+	w.is3DLoaded  = player && player->Is3DLoaded();
+	w.inWorld     = ui && !w.mainMenu && !w.loadingMenu && w.is3DLoaded;
+	return w;
+}
+
+bool engine::IsInWorld()
+{
+	return GetWorldState().inWorld;
+}
+
 engine::ExecResult engine::RunConsoleCommand(const std::string& a_line)
 {
 	if (a_line.empty()) {
@@ -164,14 +183,9 @@ engine::ExecResult engine::RunConsoleCommand(const std::string& a_line)
 	// CompileAndRun needs a FULLY-LOADED, interactive world — at the main menu AND
 	// during the loading screen the console-compiler globals are uninitialized and it
 	// crashes (verified via headless smoke: EXCEPTION_ACCESS_VIOLATION in the compile
-	// path, with SkytestProbe frames in the stack). parentCell/gameActive both go true
-	// mid-load, too early; gate on no Main/Loading menu AND the player 3D being loaded.
-	auto* ui = RE::UI::GetSingleton();
-	if (!ui || ui->IsMenuOpen(RE::MainMenu::MENU_NAME) || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
-		return ExecResult::kNotInWorld;
-	}
-	auto* player = RE::PlayerCharacter::GetSingleton();
-	if (!player || !player->Is3DLoaded()) {
+	// path, with SkytestProbe frames in the stack). IsInWorld() is that exact gate
+	// (shared with `status` so exec and status can never disagree).
+	if (!IsInWorld()) {
 		return ExecResult::kNotInWorld;
 	}
 	// The ENGINE must construct the Script: `new RE::Script()` would force this TU

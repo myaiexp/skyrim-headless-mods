@@ -65,10 +65,10 @@ ever drifts between runs.)
 
 ```
 launch                      # or assume running
-wait menu                   # poll SkyrimSE.exe + a stable menu frame
+wait menu                   # ./ready.sh acks once the probe answers (status at main menu)
 click 1175 505              # Continue
 tap enter                   # "Continue from last save?" -> Yes
-wait load                   # poll until in-game (HUD present)
+wait load                   # ./ready.sh blocks until status.inWorld:true (don't poll SkyrimSE.exe)
 tap m            @map        # checkpoint label
 rel <dx> <dy>               # map-open cursor -> Dustman's Cairn marker (fixed delta; no home on map)
 click            @marker     # checkpoint: the step under test
