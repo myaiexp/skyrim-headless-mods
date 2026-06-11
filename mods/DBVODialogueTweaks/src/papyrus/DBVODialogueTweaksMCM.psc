@@ -15,6 +15,24 @@ Event OnConfigInit()
 	Pages[1] = "Voice"
 EndEvent
 
+; v2 saves registered this MCM at version 1 with only the "Timing" page; OnConfigInit
+; never re-runs, so the persisted Pages array stays 1-wide. Bumping GetVersion makes
+; SkyUI's CheckVersion (run from Parent.OnGameReload every load) call OnVersionUpdate,
+; which migrates the page list — and seeds fPlayerVoiceVol, since a newly-added Auto
+; property isn't guaranteed its declared 100.0 default on an existing save (0.0 = mute).
+Int Function GetVersion()
+	Return 2
+EndFunction
+
+Event OnVersionUpdate(Int aVersion)
+	If aVersion == 2
+		fPlayerVoiceVol = 100.0
+		Pages = new String[2]
+		Pages[0] = "Timing"
+		Pages[1] = "Voice"
+	EndIf
+EndEvent
+
 Event OnPageReset(String page)
 	If page == "Timing"
 		SetCursorFillMode(TOP_TO_BOTTOM)
