@@ -3,11 +3,11 @@
 A small set of tweaks to **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329)**
 dialogue pacing, built in phases:
 
-| Phase  | Feature                                                                       | Tier                | Status                                                                 |
-| ------ | ----------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------- |
-| **v1** | **Manual player-line skip** (E / left-click), vanilla-style                   | swf only            | **building now** — design: `docs/plans/dbvo-dialogue-tweaks-design.md` |
-| v2     | Configurable response gap + speed (pad ms + wpm) via MCM                      | swf + Papyrus + MCM | scoped below, not started                                              |
-| v3     | SKSE C++: cut player voice on skip; optional exact `.fuz`-duration scheduling | SKSE (`plugins/`)   | scoped below, not started                                              |
+| Phase  | Feature                                                                       | Tier                | Status                                                            |
+| ------ | ----------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------- |
+| **v1** | **Manual player-line skip** (E / left-click), vanilla-style                   | swf only            | **shipped** — design: `docs/plans/dbvo-dialogue-tweaks-design.md` |
+| **v2** | Configurable response gap (pad ms + ms/word) via MCM                          | swf + Papyrus + MCM | **shipped** — verified in-game                                    |
+| v3     | SKSE C++: cut player voice on skip; optional exact `.fuz`-duration scheduling | SKSE (`plugins/`)   | scoped below, not started                                         |
 
 v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
 (the configurable gap); v3 is the **Tier 3** section near the bottom.
@@ -59,18 +59,25 @@ Reference points already built (in the _staging_ repo, `~/Downloads/skyrim-mods/
 **Designed:** `docs/plans/dbvo-v2-configurable-gap-design.md` (read that for the authoritative spec).
 Summary of the chosen shape:
 
-1. **swf**: `startTopicClickedTimer` reads `this.dbvoWpm` / `this.dbvoPadMs` (baked defaults `300` /
-   `1400` = stock) in place of the literals. Recompile with **ffdec**.
-2. **Papyrus**: an **independent** ESL quest script — we do *not* touch DBVO's script. It pushes the
-   two values onto the live menu (`UI.SetFloat("Dialogue Menu", "_root.DialogueMenu_mc.dbvoWpm", …)`)
+1. **swf**: `startTopicClickedTimer` reads `this.dbvoMsPerWord` / `this.dbvoPadMs` (baked defaults `200`
+   / `1400` = stock) in place of the literals — the delay is `round(words × msPerWord) + pad`. Recompile
+   with **ffdec**.
+2. **Papyrus**: an **independent** ESL quest script — we do _not_ touch DBVO's script. It pushes the
+   two values onto the live menu (`UI.SetFloat("Dialogue Menu", "_root.DialogueMenu_mc.dbvoMsPerWord", …)`)
    **on each dialogue-menu open** (the swf instance is recreated per conversation, so the push must
    repeat). The rejected alternative — routing values through DBVO's own `UI.Invoke` call — would mean
    editing DBVO's script for no benefit (timer's in the swf either way); see the design doc.
-3. **MCM** (**native SkyUI**, *not* MCM Helper): the quest script `extends SKI_ConfigBase` and builds
-   two sliders in Papyrus — **words-per-minute** and **NPC response pad (ms)** — calibrated live. MCM
+3. **MCM** (**native SkyUI**, _not_ MCM Helper): the quest script `extends SKI_ConfigBase` and builds
+   two sliders in Papyrus — **Per-word delay (ms)** and **NPC response pad (ms)** — calibrated live. MCM
    Helper is only an optional JSON layer on top of SkyUI; for a 2-slider menu we drop it to keep the
    dependency footprint to SkyUI alone. Vanilla skip behavior kept (Instant Skip's `bAllowProgress`
-   removal is *not* bundled). Needs a player ref-alias (`SKI_PlayerLoadGameAlias`) for reload re-reg.
+   removal is _not_ bundled). Needs a player ref-alias (`SKI_PlayerLoadGameAlias`) for reload re-reg.
+
+> **Shipped as ms/word, not wpm.** The per-word knob is exposed directly as **ms per word** (default
+> `200` = stock's 300 wpm, since `60/300×1000 = 200`), not words-per-minute — more intuitive ("6 words ×
+> 200 ms") and it drops the division. _Lower = faster reply._ The design/plan docs were written around a
+> `wpm` slider; the only change is the unit/reciprocal. Stock-formula mentions of "300 wpm" below still
+> correctly describe DBVO's _original_ code.
 
 ## Tier 3 — the actually-correct fix (separate, `plugins/`)
 
@@ -108,7 +115,7 @@ v2 is fully designed and planned — execute from the plan, don't re-derive:
 - **Design (rationale):** `docs/plans/dbvo-v2-configurable-gap-design.md`
 - **Plan (6 tasks, step-by-step):** `docs/plans/dbvo-v2-configurable-gap-plan.md`
 
-Shape in one breath: swf reads `dbvoWpm`/`dbvoPadMs` (defaults = stock) → an independent
+Shape in one breath: swf reads `dbvoMsPerWord`/`dbvoPadMs` (defaults = stock) → an independent
 `SKI_ConfigBase` quest (native SkyUI MCM, player ref-alias for reload) pushes the slider values onto
 the live menu via `UI.SetFloat` on each dialogue-menu open. Vendor SkyUI `.psc` sources + extend
 `EspGen` for the player alias are the one-time toolchain steps (Tasks 1–2).

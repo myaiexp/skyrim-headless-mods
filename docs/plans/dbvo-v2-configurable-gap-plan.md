@@ -1,7 +1,13 @@
 # DBVODialogueTweaks v2 — configurable response gap (implementation plan)
 
-**Goal:** Make DBVO's NPC-reply delay tunable live via two MCM sliders (words-per-minute + pad ms),
-replacing the swf's hardcoded `300 wpm + 1400 ms` estimate.
+> **STATUS: shipped & verified in-game.** One change from this plan: the per-word knob ships as
+> **ms-per-word** (`dbvoMsPerWord`, slider "Per-word delay", default `200`), **not** wpm — chosen during
+> bring-up as more intuitive ("words × 200 ms") and it drops the `60/wpm` division. `200 ms/word` ≡ stock
+> 300 wpm. The `wpm`/`dbvoWpm`/`60/wpm` references in the task contracts below are the *as-planned* form;
+> the shipped swf computes `round(words × msPerWord) + pad` and the slider range is `0..500` ms.
+
+**Goal:** Make DBVO's NPC-reply delay tunable live via two MCM sliders (per-word ms + pad ms),
+replacing the swf's hardcoded `200 ms/word + 1400 ms` estimate (stock = 300 wpm).
 
 **Architecture:** The swf reads two members (`this.dbvoWpm` / `this.dbvoPadMs`, baked defaults =
 stock) when arming its reply timer. An independent plugin — one Start-Game-Enabled quest whose script

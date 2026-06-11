@@ -1,5 +1,10 @@
 # DBVODialogueTweaks v2 — configurable response gap (design)
 
+> **Shipped note:** the per-word knob ships as **ms-per-word** (default `200`), not the `wpm` this doc
+> discusses — same lever, reciprocal unit (`200 ms/word` ≡ `300 wpm`), picked during bring-up as more
+> intuitive and division-free. The two-knob rationale below is unchanged; mentally read "wpm slider" as
+> "ms/word slider". Shipped swf delay: `round(words × msPerWord) + pad`.
+
 **Mod:** `mods/DBVODialogueTweaks/` — extends the shipped v1 (manual player-line skip, swf-only).
 v2 makes DBVO's **NPC-reply delay** configurable at runtime via two MCM sliders, so fast voice
 packs (e.g. Karat) stop being mis-paced by DBVO's fixed `300 wpm + 1400 ms` assumption.
