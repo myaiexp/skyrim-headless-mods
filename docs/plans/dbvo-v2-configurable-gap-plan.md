@@ -24,8 +24,13 @@ gen via `tools/EspGen`), SkyUI (runtime dep + compile-time Papyrus sources to ve
 | `tools/compile-papyrus.sh` | Add `skyui/` to the compiler import path | Modify |
 | `tools/EspGen/Program.cs` | Optional player ref-alias (PlayerRef + alias script) for the config quest | Modify |
 | `mods/DBVODialogueTweaks/src/__Packages/DialogueMenu.as` | swf reads `dbvoWpm`/`dbvoPadMs` instead of literals | Modify |
-| `mods/DBVODialogueTweaks/src/scripts/DBVODialogueTweaksMCM.psc` | `SKI_ConfigBase` config script: properties + sliders + menu-open push | New |
+| `mods/DBVODialogueTweaks/src/papyrus/DBVODialogueTweaksMCM.psc` | `SKI_ConfigBase` config script: properties + sliders + menu-open push | New |
 | `mods/DBVODialogueTweaks/build.sh` | Build swf + compile psc + gen esp + assemble `build/` tree | Modify |
+
+> The Papyrus source dir is `src/papyrus/`, **not** `src/scripts/` (as first drafted): ffdec's
+> `-importScript` treats a `scripts/` subfolder of the import root as the ActionScript source dir,
+> so `src/scripts/` would hijack the swf import (no `.as` there → it silently rebuilds *stock*).
+> `src/papyrus/` has no special meaning to ffdec, so the swf import keeps finding `src/__Packages/`.
 
 Final installable `build/` layout (what `--install` copies into `Data/`):
 ```
@@ -142,7 +147,7 @@ installed SkyUI. **No `config.json`** — the menu is built in our script.
 ### Task 4: Papyrus config script  [Mode: Delegated]
 
 **Files:**
-- Create: `mods/DBVODialogueTweaks/src/scripts/DBVODialogueTweaksMCM.psc`
+- Create: `mods/DBVODialogueTweaks/src/papyrus/DBVODialogueTweaksMCM.psc`
 
 **Contract** — native SkyUI MCM (`SKI_ConfigBase`), menu built in Papyrus, no `config.json`:
 ```papyrus
@@ -187,7 +192,7 @@ Behavior (standard SkyUI menu lifecycle — see SkyUI `ExampleConfigMenu.psc`):
 - `UI.SetFloat` appears only in the push; member names (`dbvoWpm`/`dbvoPadMs`) must match Task 3 exactly.
 
 **Verification:**
-- `tools/compile-papyrus.sh DBVODialogueTweaksMCM mods/DBVODialogueTweaks/src/scripts /tmp/pex` →
+- `tools/compile-papyrus.sh DBVODialogueTweaksMCM mods/DBVODialogueTweaks/src/papyrus /tmp/pex` →
   produces `/tmp/pex/DBVODialogueTweaksMCM.pex`, no errors.
 
 **Commit after passing.**
@@ -203,7 +208,7 @@ No `config.json` — the menu is authored in the Task-4 script. `build.sh` just 
 three artifacts.
 
 **`build.sh` additions** (keep the existing swf path + md5 guard; layer on):
-- Compile `src/scripts/DBVODialogueTweaksMCM.psc` → `build/Scripts/DBVODialogueTweaksMCM.pex` (via
+- Compile `src/papyrus/DBVODialogueTweaksMCM.psc` → `build/Scripts/DBVODialogueTweaksMCM.pex` (via
   `tools/compile-papyrus.sh`, which now includes the `skyui/` import path from Task 1).
 - Generate the plugin: `EspGen build/DBVODialogueTweaks.esp DBVODialogueTweaksMCMQuest
   DBVODialogueTweaksMCM "DBVO Dialogue Tweaks" --player-alias SKI_PlayerLoadGameAlias`.
