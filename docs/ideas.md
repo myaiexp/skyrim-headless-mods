@@ -99,19 +99,30 @@ Open work (detail in `headless/docs/status.md`):
 
 ## 2026-06-10 — DBVODialogueTweaks v2 / v3 (deferred phases)
 
-The mod (renamed from `DBVOResponseGap`) ships in phases. v1 (manual player-line skip) shipped; **v2
-is now building** (configurable response gap — design in `docs/plans/dbvo-v2-configurable-gap-design.md`,
-self-first scope). Deferred:
+The mod (renamed from `DBVOResponseGap`) ships in phases. v1 (manual player-line skip) and **v2**
+(configurable response gap — `docs/plans/dbvo-v2-configurable-gap-design.md`) both shipped. **v3 (SKSE
+tier) is now building, starting with the player-voice volume slider** —
+`docs/plans/dbvo-v3-player-voice-volume-design.md`. Deferred:
 
 - **v2 → public Nexus release (post-v2 follow-up).** v2 builds self-first; releasing it publicly is a
   clean separate pass once the mechanism is proven in-game. **Unlocked:** DBVO's page grants
   modify-and-release with credit, and DBVO is a frozen target (~3 yr, won't bitrot) — see mod README
   "Permissions". Release pass = ship the built modified swf + ESL + MCM, credit the DBVO author, write a
   Nexus page, and test beyond the DBVO+Karat setup (a few more voice packs). No architectural change.
-- **v3 — cut the player voice on skip.** SKSE C++ plugin (sibling to `plugins/`): console
-  `Player.SpeakSound` gives no handle, so hook/track the player's voice instance and stop it when v1's
-  skip fires — removes the audio-tail overlap v1 accepts. Same plugin could also do the README's
-  exact-`.fuz`/`.xwm`-duration NPC-reply scheduling (eliminates the wpm guess entirely, supersedes v2's
-  heuristic).
+- **v3 — cut the player voice on skip (now unblocked).** The volume-slider plugin establishes the
+  exact enabling primitive: a trampoline hook on `Actor::SpeakSoundFunction`
+  (`RELOCATION_ID(36541, 37542)`) that captures the player line's `BSSoundHandle`. Once that DLL exists
+  (at `mods/DBVODialogueTweaks/plugin/`, post-layout-unification), cut-on-skip is just
+  `handle.Stop()` / `FadeOutAndRelease()` on that handle when v1's skip fires — removes the audio-tail
+  overlap v1 accepts. The same plugin can also read the line's `.fuz`/`.xwm` duration for exact
+  NPC-reply scheduling (eliminates the wpm guess, supersedes v2's heuristic).
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
+
+## 2026-06-11 — DBVODialogueTweaks v3 volume-slider follow-ups
+
+- **Boost-clamp resolution.** The v3 volume slider spans 0–200%, but `BSSoundHandle::SetVolume(>1.0)`
+  may clamp at 1.0 (engine handle volumes are normally 0.0–1.0 multipliers). If in-game 150% testing
+  shows no amplification, decide: cap the slider at 100%, or pursue a different gain path (e.g. a custom
+  sound output model / re-route). Attenuation (0–100%) is unaffected. See
+  `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value mapping & the boost caveat".
