@@ -52,8 +52,8 @@ function startTopicClickedTimer(voicePackID)
    ...
    else
    {
-      var wpm = this.dbvoWpm != undefined ? this.dbvoWpm : 300;     // baked default = stock
-      var pad = this.dbvoPadMs != undefined ? this.dbvoPadMs : 1400;
+      var wpm = this.dbvoWpm > 0 ? this.dbvoWpm : 300;       // guard: 0/undefined -> stock default
+      var pad = this.dbvoPadMs >= 0 ? this.dbvoPadMs : 1400; // (> 0 also blocks a 0-push divide-by-zero)
       _loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;
       _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * 60 / wpm * 1000) + pad;
       this.timer = setTimeout(this, "topicClicked", _loc4_);
@@ -93,25 +93,36 @@ edit the swf either way; routing values through DBVO's script would *additionall
 where to read our settings — strictly more coupling and more code for zero benefit. Push-on-open keeps
 our plugin fully decoupled from DBVO's scripts.
 
-### Plugin form
+### Plugin form (MCM scaffolding — heavier than first assumed)
 
-Minimal **ESL** (Mutagen, like the repo's other plugins): one Quest, **Start Game Enabled**, carrying
-the control script. The script: two Float properties (`wpm`, `padMs`), `RegisterForMenu("Dialogue
-Menu")` in `OnInit`, the `OnMenuOpen` push above. MCM Helper renders the menu from `config.json` and
-persists the two values; the sliders bind to the script's properties. No new ESP records beyond the
-quest.
+Researched against the MCM Helper wiki/repo: a `config.json` **alone does not register a menu**. The
+quest's config script **must `extends MCM_ConfigBase`** (→ SkyUI's `SKI_ConfigBase`), and the standard
+template carries a **player reference alias** with `SKI_PlayerLoadGameAlias` to re-register on load. So:
 
-> **Open API detail for the plan (not a design fork):** confirm MCM Helper's binding mode —
-> `PropertyValueFloat` (sliders read/write the quest script's properties directly, MCM Helper
-> persists) vs an INI/`ModSetting`-backed value the script mirrors into its properties. Either reaches
-> the same `OnMenuOpen` push; pick the simpler one when wiring the `config.json`.
+- **Binding = `PropertyValueFloat`** (resolved, not ModSetting). The slider values land directly in the
+  config script's Auto properties `fWpm` / `fPadMs`; defaults come from the property **initializers**
+  (`Float Property fWpm = 300.0 Auto`), so there is **no 0/uninitialized window** and **no `MCM.psc`
+  call** is needed to read them. `config.json`'s `defaultValue` only feeds "reset to default" (set it to
+  match). `sourceForm`/`scriptName` omitted → resolve to the config quest/script.
+- **Vendor SkyUI + MCM Helper Papyrus sources** into `tools/papyrus-sources/` (`MCM_ConfigBase.psc`,
+  `SKI_ConfigBase.psc` + parent chain, `SKI_PlayerLoadGameAlias.psc`) so the script compiles. Compile-
+  time only — not shipped, no release-permission concern (same status as the vendored SKSE sources).
+- **Extend `EspGen`** — today it emits a bare property-less, alias-less quest. The MCM quest needs its
+  script to extend `MCM_ConfigBase` **and** a player ref-alias (PlayerRef `0x14`) carrying
+  `SKI_PlayerLoadGameAlias`. No ESP-side property *values* are needed (the `.pex` initializers supply
+  defaults); MCM Helper reads/writes the live property and persists it in the co-save.
+- The `OnMenuOpen → UI.SetFloat` push lives on this same `MCM_ConfigBase`-derived script (it inherits
+  the base; the push body itself uses only vanilla+SKSE+`UI.psc`).
+
+This is a one-time toolchain investment (SkyUI sources + EspGen alias support) that also unlocks MCM for
+any future mod in this repo. The transport, two-knob surface, and stock-default behavior are unchanged.
 
 ### MCM surface
 
-| Slider | Property | Default | Range (tune in-game) |
+| Slider | Script property | Default (initializer) | Range (tune in-game) |
 | --- | --- | --- | --- |
-| Voice-pack speed (wpm) | `wpm` | 300 | ~150–600 |
-| NPC response pad (ms) | `padMs` | 1400 | 0–2500 |
+| Voice-pack speed (wpm) | `fWpm` | 300.0 | ~150–600 |
+| NPC response pad (ms) | `fPadMs` | 1400.0 | 0–2500 |
 
 Both default to stock, so installing v2 changes nothing until the user deliberately tunes — no
 surprise re-pacing on first launch.
