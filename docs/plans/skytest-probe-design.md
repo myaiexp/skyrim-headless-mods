@@ -1,7 +1,8 @@
 # SkytestProbe — design
 
-**Status:** designed 2026-06-11, not yet built. No separate implementation plan — exploration
-happens during implementation; this doc is the contract.
+**Status:** **built + validated 2026-06-11** (v0.1.0) — `mods/SkytestProbe/`. No separate
+implementation plan — exploration happened during implementation; this doc is the contract.
+As-built notes (deltas from this contract) are at the end.
 
 ## Goal
 
@@ -145,3 +146,45 @@ mod-under-test; main-menu skip; editor-ID ref addressing; a per-mod fixture-auto
 - **po3 StartOnSave** (`1-skytest/base-skse/`) — the DLL-only + Address-Library-only pattern.
 - **ConsoleUtilSSE-NG** — console `CompileAndRun` from an SKSE plugin.
 - **CrashLogger** — already in every test profile; its logs complement the trace.
+
+## As-built notes (2026-06-11, v0.1.0)
+
+Implemented as `mods/SkytestProbe/` (6 source files: `main` bootstrap, `trace` writer, `engine`
+main-thread helpers, `probes` registry, `hotkey`, `commands` poll thread). JSON: **vendored**
+single-header `nlohmann/json` v3.11.3 at `src/external/` (not FetchContent — header-only, NG
+never links it, so it can't hit spdlog's export-set problem). Trace lines carry `t` (epoch-ms) +
+`src`; acks are `{"t":..,"ack":id,"ok":..[,"err":..]}`.
+
+Validated **headless in the live full ~40-mod profile** (via `headless/` + a loaded save): loads
+to menu, file-visibility roundtrip works (Linux append → in-wine poll → ack within a tick — the
+reopen-per-poll defeats wine caching, **risk #1 resolved**), `dump`/F11 return full real data
+(cell, **char-controller systemGroup**, AVs, 40+ active effects, equipment — the GhostAllies-class
+data), and malformed/unknown input degrades to error/`ok:false` lines without crashing.
+
+Deltas from the contract, all driven by in-game findings + an adversarial review:
+
+- **AE layout:** `Actor` reaches `ActorValueOwner` via `AsActorValueOwner()` (not direct
+  inheritance) on the AE build; `Script` must be made by the **form factory**
+  (`IFormFactory::GetConcreteFormFactoryByType<Script>()->Create()`), never `new RE::Script()`
+  (the latter forces the TU to emit the engine-owned vtable → unresolved-symbol link errors).
+- **`exec` is gated + SEH-guarded.** `CompileAndRun` crashes at the main menu / mid-load (console
+  compiler globals uninitialised) — gated on "world fully loaded" (`!MainMenu && !LoadingMenu &&
+  player->Is3DLoaded()`; `Main::gameActive` is true even at the menu, so it's the wrong gate). And
+  in a **console-less environment (e.g. headless gamescope)** the compiler subsystem is absent and
+  `CompileAndRun` AVs even in-world — so the call is wrapped in SEH (`__try/__except`), turning the
+  AV into an `ok:false` "faulted" ack instead of a crash (zero cost in a normal windowed game,
+  where exec runs for real). **In-game `exec` (gold appears) still needs confirming in a normal
+  windowed session** — headless can't exercise the working path.
+- **Event filters resolve lazily + correctly.** `trace … refs:[…]` keeps a `hasFilter` flag so a
+  filter that resolves to empty (e.g. `refs:[teammates]` before a save loads) matches **nothing**
+  (not match-all), and the main-thread tick **re-resolves** armed filters each cycle so teammates
+  membership tracks the live party.
+- **Anim sinks survive loads.** Sink objects are kept alive for the process lifetime (freeing a
+  still-registered sink is a UAF) and **re-attached opportunistically on the tick** (idempotent
+  `AddAnimationGraphEventSink`), so `anim-trace` survives save-loads / 3D reloads; `status` reports
+  only genuinely-armed entries; `anim-trace off ref:all` detaches everything.
+- **Watch** rejects the `teammates` set (single-actor only), re-baselines when a dynamic ref
+  (crosshair) changes target, and treats NaN-vs-NaN as no-change (no poll-cadence spam).
+- The poll loop skips a tick on a failed `tellg()` (won't re-execute the whole file) and treats a
+  mid-session **in-place rewrite as append-only** — CC truncates/rewrites `commands.jsonl` only
+  **between sessions** (the plugin re-reads from the top at startup).
