@@ -11,7 +11,7 @@ class DialogueMenu extends MovieClip
    var iAllowProgressTimerID;
    var timer;
    var skipArmedAt;
-   var dbvoWpm;
+   var dbvoMsPerWord;
    var dbvoPadMs;
    static var ALLOW_PROGRESS_DELAY = 750;
    static var SKIP_DEBOUNCE_MS = 250;
@@ -267,10 +267,10 @@ class DialogueMenu extends MovieClip
       }
       else
       {
-         var wpm = this.dbvoWpm > 0 ? this.dbvoWpm : 300;
+         var mspw = this.dbvoMsPerWord >= 0 ? this.dbvoMsPerWord : 200;
          var pad = this.dbvoPadMs >= 0 ? this.dbvoPadMs : 1400;
          _loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;
-         _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * 60 / wpm * 1000) + pad;
+         _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * mspw) + pad;
          this.timer = setTimeout(this,"topicClicked",_loc4_);
          this.skipArmedAt = getTimer();
       }
