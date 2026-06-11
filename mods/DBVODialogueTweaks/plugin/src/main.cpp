@@ -85,15 +85,7 @@ namespace
 		{
 			const bool r = original(a_this, a_path, a_handle, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
 			if (a_this && a_this->IsPlayerRef() && a_path && a_handle && a_handle->IsValid() && is_dbvo_path(a_path)) {
-				const float vol = g_dbvoVolume.load();
-				a_handle->SetVolume(vol);
-				// Bring-up trace, throttled to the first few player+DBVO hits so it can't flood the
-				// log. A later task quiets/removes this; steady state is silent.
-				static std::atomic<int> s_logged{ 0 };
-				if (s_logged.load() < 5) {
-					++s_logged;
-					SKSE::log::info("DBVO hit: path='{}' volume={:.2f}", a_path, vol);
-				}
+				a_handle->SetVolume(g_dbvoVolume.load());
 			}
 			return r;
 		}

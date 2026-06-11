@@ -56,7 +56,7 @@ Event OnOptionSliderOpen(Int oid)
 		SetSliderDialogInterval(25)
 		SetSliderDialogStartValue(fPadMs)
 	ElseIf oid == _volOID
-		SetSliderDialogRange(0, 200)
+		SetSliderDialogRange(0, 100)
 		SetSliderDialogDefaultValue(100)
 		SetSliderDialogInterval(5)
 		SetSliderDialogStartValue(fPlayerVoiceVol)
