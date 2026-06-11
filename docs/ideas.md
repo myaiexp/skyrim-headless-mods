@@ -99,30 +99,35 @@ Open work (detail in `headless/docs/status.md`):
 
 ## 2026-06-10 — DBVODialogueTweaks v2 / v3 (deferred phases)
 
-The mod (renamed from `DBVOResponseGap`) ships in phases. v1 (manual player-line skip) and **v2**
-(configurable response gap — `docs/plans/dbvo-v2-configurable-gap-design.md`) both shipped. **v3 (SKSE
-tier) is now building, starting with the player-voice volume slider** —
-`docs/plans/dbvo-v3-player-voice-volume-design.md`. Deferred:
+The mod (renamed from `DBVOResponseGap`) ships in phases. v1 (manual player-line skip), **v2**
+(configurable response gap — `docs/plans/dbvo-v2-configurable-gap-design.md`), and **v3** (player-voice
+volume slider — `docs/plans/dbvo-v3-player-voice-volume-design.md`, the first SKSE-tier feature) all
+shipped, verified in-game. Deferred:
 
 - **v2 → public Nexus release (post-v2 follow-up).** v2 builds self-first; releasing it publicly is a
   clean separate pass once the mechanism is proven in-game. **Unlocked:** DBVO's page grants
   modify-and-release with credit, and DBVO is a frozen target (~3 yr, won't bitrot) — see mod README
   "Permissions". Release pass = ship the built modified swf + ESL + MCM, credit the DBVO author, write a
   Nexus page, and test beyond the DBVO+Karat setup (a few more voice packs). No architectural change.
-- **v3 — cut the player voice on skip (now unblocked).** The volume-slider plugin establishes the
-  exact enabling primitive: a trampoline hook on `Actor::SpeakSoundFunction`
-  (`RELOCATION_ID(36541, 37542)`) that captures the player line's `BSSoundHandle`. Once that DLL exists
-  (at `mods/DBVODialogueTweaks/plugin/`, post-layout-unification), cut-on-skip is just
-  `handle.Stop()` / `FadeOutAndRelease()` on that handle when v1's skip fires — removes the audio-tail
-  overlap v1 accepts. The same plugin can also read the line's `.fuz`/`.xwm` duration for exact
-  NPC-reply scheduling (eliminates the wpm guess, supersedes v2's heuristic).
+- **v3+ — cut the player voice on skip (hook now live).** v3's volume-slider DLL
+  (`mods/DBVODialogueTweaks/plugin/`) already installs the enabling primitive: a **MinHook entry detour**
+  on `Actor::SpeakSoundFunction` (`RELOCATION_ID(36541, 37542)`, the general per-actor voice path) that
+  captures the player line's `BSSoundHandle`. **Gotcha learned the hard way:** CommonLibSSE-NG's
+  `write_branch<5>` is a *call-site* primitive (it decodes the existing instruction's rel32) and CANNOT
+  hook a function *entry* — doing so returns a garbage "original" pointer and CTDs on first call; use
+  MinHook (or hook a call-site). Cut-on-skip is then `handle.Stop()` / `FadeOutAndRelease()` on that
+  captured handle when v1's skip fires — removes the audio-tail overlap v1 accepts. The same hook can
+  also read the line's `.fuz`/`.xwm` duration for exact NPC-reply scheduling (eliminates the wpm guess,
+  supersedes v2's heuristic).
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 
 ## 2026-06-11 — DBVODialogueTweaks v3 volume-slider follow-ups
 
-- **Boost-clamp resolution.** The v3 volume slider spans 0–200%, but `BSSoundHandle::SetVolume(>1.0)`
-  may clamp at 1.0 (engine handle volumes are normally 0.0–1.0 multipliers). If in-game 150% testing
-  shows no amplification, decide: cap the slider at 100%, or pursue a different gain path (e.g. a custom
-  sound output model / re-route). Attenuation (0–100%) is unaffected. See
-  `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value mapping & the boost caveat".
+- **Boost-clamp: RESOLVED → slider capped at 0–100%.** In-game 150% testing confirmed
+  `BSSoundHandle::SetVolume(>1.0)` does **not** amplify — 150% was indistinguishable from 100% (engine
+  handle volumes are 0.0–1.0 multipliers). Attenuation works fully (50% quieter, 0% silent, NPC reply
+  unchanged, survives save/reload). The slider now caps at 100%. If voice *boost* is ever wanted it needs
+  a different gain path (re-encode the Karat pack louder offline, or a custom audio output model) — not
+  worth it for the "tame it" goal. See `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value
+  mapping & the boost caveat".
