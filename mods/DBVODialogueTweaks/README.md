@@ -66,8 +66,11 @@ Summary of the chosen shape:
    **on each dialogue-menu open** (the swf instance is recreated per conversation, so the push must
    repeat). The rejected alternative — routing values through DBVO's own `UI.Invoke` call — would mean
    editing DBVO's script for no benefit (timer's in the swf either way); see the design doc.
-3. **MCM** (MCM Helper): two sliders — **words-per-minute** and **NPC response pad (ms)** — calibrated
-   live. Vanilla skip behavior kept (Instant Skip's `bAllowProgress` removal is *not* bundled).
+3. **MCM** (**native SkyUI**, *not* MCM Helper): the quest script `extends SKI_ConfigBase` and builds
+   two sliders in Papyrus — **words-per-minute** and **NPC response pad (ms)** — calibrated live. MCM
+   Helper is only an optional JSON layer on top of SkyUI; for a 2-slider menu we drop it to keep the
+   dependency footprint to SkyUI alone. Vanilla skip behavior kept (Instant Skip's `bAllowProgress`
+   removal is *not* bundled). Needs a player ref-alias (`SKI_PlayerLoadGameAlias`) for reload re-reg.
 
 ## Tier 3 — the actually-correct fix (separate, `plugins/`)
 
@@ -81,8 +84,9 @@ tier 2 isn't good enough.
 
 - **ffdec** (Flash decompiler) — `-export script <out> <swf>` / `-importScript <in> <out> <scriptsdir>`
   (AS2 recompiles). Run via `java -jar ffdec.jar …`.
-- Papyrus compiler — already in this repo (`tools/`).
-- **MCM Helper** + SkyUI (runtime deps, already in the user's load order).
+- Papyrus compiler — already in this repo (`tools/`). SkyUI SDK `.psc` sources vendored under
+  `tools/papyrus-sources/skyui/` (compile-time only) to compile against `SKI_ConfigBase`.
+- **SkyUI** (runtime dep, already in the user's load order). **No MCM Helper** — native SkyUI MCM.
 - Builds on the standard DBVO requirements (SKSE, PapyrusUtil, ConsoleUtilSSE NG).
 
 ## Permissions
@@ -97,9 +101,14 @@ bundled **Bethesda** Papyrus sources — a separate Bethesda-asset concern, unre
 won't drift from an updated upstream (there is none), the modified swf we ship won't bitrot, and a
 public release stays low-maintenance. Don't re-derive these two facts each session — they're settled here.
 
-## First steps when starting (v2)
+## Building v2
 
-1. Extend the v1 design into a v2 section / new design doc (transport mechanism, MCM layout, what the
-   swf exposes). v1 already establishes the swf rebuild path it shares.
-2. Decompile stock swf, prototype the parameterized `startTopicClickedTimer`.
-3. Stub the Papyrus MCM, wire one slider end-to-end, verify the value reaches the swf (Papyrus log).
+v2 is fully designed and planned — execute from the plan, don't re-derive:
+
+- **Design (rationale):** `docs/plans/dbvo-v2-configurable-gap-design.md`
+- **Plan (6 tasks, step-by-step):** `docs/plans/dbvo-v2-configurable-gap-plan.md`
+
+Shape in one breath: swf reads `dbvoWpm`/`dbvoPadMs` (defaults = stock) → an independent
+`SKI_ConfigBase` quest (native SkyUI MCM, player ref-alias for reload) pushes the slider values onto
+the live menu via `UI.SetFloat` on each dialogue-menu open. Vendor SkyUI `.psc` sources + extend
+`EspGen` for the player alias are the one-time toolchain steps (Tasks 1–2).

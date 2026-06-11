@@ -41,8 +41,8 @@ better than stock on a uniformly fast/slow pack.
 | Piece | Role | Notes |
 | --- | --- | --- |
 | **swf** (`src/__Packages/DialogueMenu.as`) | `startTopicClickedTimer` reads `this.dbvoWpm` / `this.dbvoPadMs` instead of the `300` / `1400` literals. Baked-in defaults = stock. | Same `build.sh` / ffdec path as v1. v1's skip is untouched (additive). |
-| **ESL plugin + quest script** | Holds `wpm` + `padMs` (MCM-backed). On each dialogue-menu open, pushes both into the live swf. | New: first Papyrus/plugin tier for this mod. ESL generated headlessly via Mutagen. |
-| **MCM Helper `config.json`** | Two sliders (wpm, pad ms) bound to the quest script's Float properties. | `Interface/MCM/Config/DBVODialogueTweaks/config.json`. |
+| **ESL plugin + quest script** | Holds `fWpm` + `fPadMs` in its own Auto properties; renders the two MCM sliders itself; on each dialogue-menu open pushes both into the live swf. | New: first Papyrus/plugin tier for this mod. ESL generated headlessly via Mutagen. |
+| **Native SkyUI menu (in the config script)** | The script `extends SKI_ConfigBase` and builds the two sliders in `OnPageReset` — **no MCM Helper, no `config.json`**. | SkyUI only (already a universal dep). |
 
 ### swf change
 
@@ -93,36 +93,47 @@ edit the swf either way; routing values through DBVO's script would *additionall
 where to read our settings — strictly more coupling and more code for zero benefit. Push-on-open keeps
 our plugin fully decoupled from DBVO's scripts.
 
-### Plugin form (MCM scaffolding — heavier than first assumed)
+### Plugin form (native SkyUI MCM — no MCM Helper)
 
-Researched against the MCM Helper wiki/repo: a `config.json` **alone does not register a menu**. The
-quest's config script **must `extends MCM_ConfigBase`** (→ SkyUI's `SKI_ConfigBase`), and the standard
-template carries a **player reference alias** with `SKI_PlayerLoadGameAlias` to re-register on load. So:
+MCM Helper is **not** a SkyUI alternative — it's an optional JSON-authoring layer *on top of* SkyUI
+(`MCM_ConfigBase extends SKI_ConfigBase`). Since this is a tiny 2-slider menu and we'd like a lean
+dependency footprint for an eventual public release, we drop MCM Helper and write the menu the classic
+SkyUI way. This removes a runtime dependency and a vendored source tree; the cost is ~50 lines of
+standard SkyUI menu Papyrus.
 
-- **Binding = `PropertyValueFloat`** (resolved, not ModSetting). The slider values land directly in the
-  config script's Auto properties `fWpm` / `fPadMs`; defaults come from the property **initializers**
-  (`Float Property fWpm = 300.0 Auto`), so there is **no 0/uninitialized window** and **no `MCM.psc`
-  call** is needed to read them. `config.json`'s `defaultValue` only feeds "reset to default" (set it to
-  match). `sourceForm`/`scriptName` omitted → resolve to the config quest/script.
-- **Vendor SkyUI + MCM Helper Papyrus sources** into `tools/papyrus-sources/` (`MCM_ConfigBase.psc`,
-  `SKI_ConfigBase.psc` + parent chain, `SKI_PlayerLoadGameAlias.psc`) so the script compiles. Compile-
-  time only — not shipped, no release-permission concern (same status as the vendored SKSE sources).
-- **Extend `EspGen`** — today it emits a bare property-less, alias-less quest. The MCM quest needs its
-  script to extend `MCM_ConfigBase` **and** a player ref-alias (PlayerRef `0x14`) carrying
-  `SKI_PlayerLoadGameAlias`. No ESP-side property *values* are needed (the `.pex` initializers supply
-  defaults); MCM Helper reads/writes the live property and persists it in the co-save.
-- The `OnMenuOpen → UI.SetFloat` push lives on this same `MCM_ConfigBase`-derived script (it inherits
-  the base; the push body itself uses only vanilla+SKSE+`UI.psc`).
+- **Config script `extends SKI_ConfigBase`.** It holds `fWpm` / `fPadMs` as its own Auto properties
+  (initializers `= 300.0` / `= 1400.0` = stock) and builds the sliders itself: `OnConfigInit` sets
+  `ModName` + `Pages`; `OnPageReset` calls `AddSliderOption` ×2 (storing the option-IDs);
+  `OnOptionSliderOpen` sets each slider's range/default/value; `OnOptionSliderAccept` stores the new
+  value. **No `config.json`, no MCM Helper.** `ModName`/`Pages`/defaults are all set in Papyrus, so the
+  plugin needs **no ESP-set property values**.
+- **Player ref-alias is still required** (this is a SkyUI base-class fact, not an MCM Helper one):
+  `SKI_ConfigBase.OnInit → OnGameReload` registers the menu only on *first* run; on every later save
+  reload `OnInit` does not re-fire, so a player alias carrying `SKI_PlayerLoadGameAlias` must call
+  `OwningQuest.OnGameReload()` each load or the MCM entry goes stale after a reload. So the quest needs
+  **one player ReferenceAlias** (ForcedReference → PlayerRef `0x14`) with that alias script.
+- **Vendor SkyUI Papyrus sources only** into `tools/papyrus-sources/skyui/` (`SKI_ConfigBase`,
+  `SKI_QuestBase`, `SKI_ConfigManager`, `SKI_PlayerLoadGameAlias`, + the rest of the SkyUI SDK Source
+  tree to satisfy the type graph). Compile-time only — not shipped (SkyUI provides the `.pex` at
+  runtime), same private-repo status as the vendored SKSE sources. **No MCM Helper sources.**
+- **Extend `EspGen`** to emit the quest's player ref-alias (PlayerRef `0x14` + `SKI_PlayerLoadGameAlias`)
+  alongside the hosted config script. Unchanged by the MCM-Helper drop — the alias requirement is
+  SkyUI's.
+- **Reload + push:** override `OnGameReload()` (call `Parent.OnGameReload()` first, then
+  `RegisterForMenu("Dialogue Menu")` so registration re-arms each load); `OnMenuOpen` does the
+  `UI.SetFloat` push. The push body uses only vanilla + SKSE + `UI.psc`.
 
-This is a one-time toolchain investment (SkyUI sources + EspGen alias support) that also unlocks MCM for
-any future mod in this repo. The transport, two-knob surface, and stock-default behavior are unchanged.
+One-time toolchain investment (SkyUI sources + EspGen alias support) that also unlocks SkyUI MCM for any
+future mod here. The transport, two-knob surface, and stock-default behavior are unchanged.
 
 ### MCM surface
 
 | Slider | Script property | Default (initializer) | Range (tune in-game) |
 | --- | --- | --- | --- |
-| Voice-pack speed (wpm) | `fWpm` | 300.0 | ~150–600 |
+| Voice-pack speed (wpm) | `fWpm` | 300.0 | 150–600 |
 | NPC response pad (ms) | `fPadMs` | 1400.0 | 0–2500 |
+
+Built in Papyrus via `AddSliderOption` / `SetSliderDialog*` / `SetSliderOptionValue` (no `config.json`).
 
 Both default to stock, so installing v2 changes nothing until the user deliberately tunes — no
 surprise re-pacing on first launch.
@@ -131,11 +142,13 @@ surprise re-pacing on first launch.
 
 1. **swf** — edit `src/__Packages/DialogueMenu.as`, run `build.sh` (ffdec `-importScript`). md5-pinned
    stock baseline guards against vendoring the wrong swf.
-2. **Papyrus** — compile the quest `.psc` with the repo's `tools/` compiler.
-3. **Plugin** — generate the ESL via Mutagen; place `config.json` under `Interface/MCM/Config/…`.
-4. **Test** in a skytest profile carrying the MCM stack (DBVO + Karat + SkyUI + MCM Helper + this
-   plugin — a Papyrus/MCM feature that only manifests on top of the live order, so full-stack, not a
-   bare isolated pair):
+2. **Papyrus** — compile the `SKI_ConfigBase`-derived quest `.psc` with the repo's `tools/` compiler
+   (against the vendored SkyUI sources).
+3. **Plugin** — generate the ESL via Mutagen (quest + player ref-alias). No `config.json` — the menu is
+   built in the script.
+4. **Test** in a skytest profile carrying the MCM stack (DBVO + Karat + SkyUI + this plugin — a
+   Papyrus/MCM feature that only manifests on top of the live order, so full-stack, not a bare isolated
+   pair):
    - Open MCM → move a slider → open a merchant → confirm the NPC-reply gap visibly tracks the slider.
    - Papyrus log shows the pushed value arriving (add a one-line `Debug.Trace` on push during bring-up).
    - v1 skip (E / left-click) still works — additive change didn't regress it.

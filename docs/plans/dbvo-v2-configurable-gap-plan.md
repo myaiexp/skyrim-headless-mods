@@ -4,13 +4,13 @@
 replacing the swf's hardcoded `300 wpm + 1400 ms` estimate.
 
 **Architecture:** The swf reads two members (`this.dbvoWpm` / `this.dbvoPadMs`, baked defaults =
-stock) when arming its reply timer. An independent MCM plugin — one Start-Game-Enabled quest whose
-script `extends MCM_ConfigBase` — holds the two values as `PropertyValueFloat`-bound Auto properties
-and **pushes them onto the live dialogue menu via `UI.SetFloat` each time the menu opens**. DBVO's own
-scripts are never touched.
+stock) when arming its reply timer. An independent plugin — one Start-Game-Enabled quest whose script
+`extends SKI_ConfigBase` (native SkyUI MCM, **no MCM Helper**) — holds the two values in its own Auto
+properties, builds the two sliders in Papyrus, and **pushes the values onto the live dialogue menu via
+`UI.SetFloat` each time the menu opens**. DBVO's own scripts are never touched.
 
 **Tech stack:** ffdec (AS2 swf recompile), Papyrus compiler (wine, in-repo), Mutagen (headless ESP
-gen via `tools/EspGen`), MCM Helper + SkyUI (runtime deps + compile-time Papyrus sources to vendor).
+gen via `tools/EspGen`), SkyUI (runtime dep + compile-time Papyrus sources to vendor; no MCM Helper).
 
 **Design:** `docs/plans/dbvo-v2-configurable-gap-design.md` (spec-reviewed, approved).
 
@@ -20,39 +20,38 @@ gen via `tools/EspGen`), MCM Helper + SkyUI (runtime deps + compile-time Papyrus
 
 | File | Responsibility | New/Mod |
 | --- | --- | --- |
-| `tools/papyrus-sources/skyui/**` | Vendored SkyUI SDK + MCM Helper `Source/*.psc` (compile-time only) | New |
+| `tools/papyrus-sources/skyui/**` | Vendored SkyUI SDK `Source/*.psc` (compile-time only; no MCM Helper) | New |
 | `tools/compile-papyrus.sh` | Add `skyui/` to the compiler import path | Modify |
-| `tools/EspGen/Program.cs` | Optional player ref-alias (PlayerRef + alias script) for MCM quests | Modify |
+| `tools/EspGen/Program.cs` | Optional player ref-alias (PlayerRef + alias script) for the config quest | Modify |
 | `mods/DBVODialogueTweaks/src/__Packages/DialogueMenu.as` | swf reads `dbvoWpm`/`dbvoPadMs` instead of literals | Modify |
-| `mods/DBVODialogueTweaks/src/scripts/DBVODialogueTweaksMCM.psc` | Config script: properties + menu-open push | New |
-| `mods/DBVODialogueTweaks/src/mcm/config.json` | MCM Helper layout — two `PropertyValueFloat` sliders | New |
+| `mods/DBVODialogueTweaks/src/scripts/DBVODialogueTweaksMCM.psc` | `SKI_ConfigBase` config script: properties + sliders + menu-open push | New |
 | `mods/DBVODialogueTweaks/build.sh` | Build swf + compile psc + gen esp + assemble `build/` tree | Modify |
 
 Final installable `build/` layout (what `--install` copies into `Data/`):
 ```
 build/
-  DBVODialogueTweaks.esp                                   (EspGen)
-  Interface/dialoguemenu.swf                               (ffdec)
-  Interface/MCM/Config/DBVODialogueTweaks/config.json      (copied from src/mcm)
-  Scripts/DBVODialogueTweaksMCM.pex                        (compile-papyrus)
+  DBVODialogueTweaks.esp                       (EspGen — quest + player alias)
+  Interface/dialoguemenu.swf                   (ffdec)
+  Scripts/DBVODialogueTweaksMCM.pex            (compile-papyrus)
 ```
-We compile **against** SkyUI/MCM `.psc` but ship none of their `.pex` — `MCM_ConfigBase.pex`,
-`SKI_ConfigBase.pex`, `SKI_PlayerLoadGameAlias.pex` come from the user's installed MCM Helper + SkyUI.
+We compile **against** SkyUI `.psc` but ship none of their `.pex` — `SKI_ConfigBase.pex`,
+`SKI_QuestBase.pex`, `SKI_PlayerLoadGameAlias.pex`, `SKI_ConfigManager.pex` come from the user's
+installed SkyUI. **No `config.json`** — the menu is built in our script.
 
 ---
 
-### Task 1: Vendor SkyUI + MCM Helper Papyrus sources, wire the import path  [Mode: Direct]
+### Task 1: Vendor SkyUI Papyrus sources, wire the import path  [Mode: Direct]
 
 **Files:**
-- Create: `tools/papyrus-sources/skyui/` (bulk-copied `.psc` Source trees)
+- Create: `tools/papyrus-sources/skyui/` (bulk-copied SkyUI SDK `.psc` Source tree)
 - Modify: `tools/compile-papyrus.sh`
 
 **What:**
-- Locate the SkyUI **SDK** (`SkyUI_SDK` / SkyUI source archive) and **MCM Helper** download. Check the
-  staging repo first (`~/Downloads/skyrim-mods/` — `02-tools/` or the installed-active dirs); else note
-  they must be fetched. Extract their `Scripts/Source/*.psc` (MCM Helper's are under `scripts/private/`)
-  into `tools/papyrus-sources/skyui/`. Bulk-copy the whole Source tree, don't cherry-pick — the type
-  graph pulls in `SKI_QuestBase`, `SKI_ConfigManager*`, etc.
+- Locate the SkyUI **SDK** / SkyUI source (modders-resource) download. Check the staging repo first
+  (`~/Downloads/skyrim-mods/` — `02-tools/` or the installed-active dirs); else note it must be fetched
+  (authoritative copies: `github.com/schlangster/skyui` under `dist/Data/Scripts/Source/`). Extract its
+  `Scripts/Source/*.psc` into `tools/papyrus-sources/skyui/`. Bulk-copy the whole Source tree, don't
+  cherry-pick — the type graph pulls in `SKI_QuestBase`, `SKI_ConfigManager`, etc. **No MCM Helper.**
 - Add the dir to the compiler import path in `compile-papyrus.sh` (after the mod src, before `skse`):
   `…-i="$(winpath "$SRC_DIR");$(winpath "$SRCROOT/skyui");$(winpath "$SRCROOT/skse");…"`.
 
@@ -61,9 +60,9 @@ We compile **against** SkyUI/MCM `.psc` but ship none of their `.pex` — `MCM_C
   status (don't redistribute), unrelated to the DBVO release-permission.
 
 **Verification:**
-- `ls tools/papyrus-sources/skyui/MCM_ConfigBase.psc tools/papyrus-sources/skyui/SKI_ConfigBase.psc tools/papyrus-sources/skyui/SKI_PlayerLoadGameAlias.psc` — all exist.
-- Smoke-compile a throwaway script `Scriptname _T extends MCM_ConfigBase` via `compile-papyrus.sh` →
-  produces `_T.pex` with no missing-type errors. Delete the throwaway after.
+- `ls tools/papyrus-sources/skyui/SKI_ConfigBase.psc tools/papyrus-sources/skyui/SKI_QuestBase.psc tools/papyrus-sources/skyui/SKI_PlayerLoadGameAlias.psc` — all exist.
+- Smoke-compile a throwaway `Scriptname _T extends SKI_ConfigBase` via `compile-papyrus.sh` → produces
+  `_T.pex` with no missing-type errors. Delete the throwaway after.
 
 **Commit after passing.**
 
@@ -83,8 +82,8 @@ We compile **against** SkyUI/MCM `.psc` but ship none of their `.pex` — `MCM_C
   Name e.g. `"PlayerAlias"`) whose **Forced Reference = PlayerRef** (`Skyrim.esm:0x00000014`) and whose
   alias VMAD hosts a single local script named `<AliasScriptName>`. This adds `Skyrim.esm` as a master
   (expected). The quest's own hosted script (`<ScriptName>`) is added exactly as today.
-- No script **property** entries are written (the `.pex` Auto-initializers supply defaults; MCM Helper
-  writes/persists the live values).
+- No script **property** entries are written (the `.pex` Auto-initializers supply defaults; the live
+  values are stored in the `SKI_ConfigBase` script's properties and persisted in the co-save).
 
 **Constraints:**
 - ESL/light-master flag is **optional** — `.esp` output is acceptable; match repo convention. If
@@ -145,17 +144,32 @@ We compile **against** SkyUI/MCM `.psc` but ship none of their `.pex` — `MCM_C
 **Files:**
 - Create: `mods/DBVODialogueTweaks/src/scripts/DBVODialogueTweaksMCM.psc`
 
-**Contract:**
+**Contract** — native SkyUI MCM (`SKI_ConfigBase`), menu built in Papyrus, no `config.json`:
 ```papyrus
-Scriptname DBVODialogueTweaksMCM extends MCM_ConfigBase
+Scriptname DBVODialogueTweaksMCM extends SKI_ConfigBase
 
-Float Property fWpm   = 300.0  Auto    ; PropertyValueFloat-bound; stock default
-Float Property fPadMs = 1400.0 Auto    ; PropertyValueFloat-bound; stock default
+Float Property fWpm   = 300.0  Auto    ; stock default
+Float Property fPadMs = 1400.0 Auto    ; stock default
+
+Int _wpmOID    ; option-IDs captured in OnPageReset for dispatch
+Int _padOID
 ```
-Behavior:
-- Register for the dialogue menu so registration survives reloads **without** clobbering the MCM base
-  init: extend `OnGameReload()` — call `Parent.OnGameReload()` first, then
-  `RegisterForMenu("Dialogue Menu")`. (Do **not** override raw `OnInit`; that's where SKI/MCM bootstraps.)
+Behavior (standard SkyUI menu lifecycle — see SkyUI `ExampleConfigMenu.psc`):
+- `Event OnConfigInit()` — set `ModName = "DBVO Dialogue Tweaks"` and `Pages = new String[1]` /
+  `Pages[0] = "Timing"`. (Display name + page tabs in Papyrus → no ESP property values needed.)
+- `Event OnPageReset(String page)` — `SetCursorFillMode(TOP_TO_BOTTOM)`; then
+  `_wpmOID = AddSliderOption("Voice-pack speed", fWpm, "{0} wpm")` and
+  `_padOID = AddSliderOption("NPC response pad", fPadMs, "{0} ms")`.
+- `Event OnOptionSliderOpen(Int oid)` — dispatch on `oid`:
+  `_wpmOID` → range `150..600`, default `300`, interval `10`, start `fWpm`;
+  `_padOID` → range `0..2500`, default `1400`, interval `25`, start `fPadMs`
+  (via `SetSliderDialogRange/DefaultValue/Interval/StartValue`).
+- `Event OnOptionSliderAccept(Int oid, Float value)` — store into `fWpm`/`fPadMs` by `oid`, then
+  `SetSliderOptionValue(oid, value, "{0} wpm"|"{0} ms")` to refresh the displayed text.
+- `Event OnGameReload()` — call `Parent.OnGameReload()` **first** (preserves SkyUI's per-load
+  re-registration), then `RegisterForMenu("Dialogue Menu")` so the push re-arms each load. Do **not**
+  override raw `OnInit` (SkyUI bootstraps there). The player alias from Task 2 is what re-invokes
+  `OnGameReload` on every load.
 - `Event OnMenuOpen(String menuName)`:
   ```
   if menuName == "Dialogue Menu"
@@ -167,11 +181,10 @@ Behavior:
   ```
 
 **Constraints:**
-- Read the two values as **plain properties** — no `MCM.psc` / MCM-API calls (PropertyValue binding
-  means MCM Helper has already written them into `fWpm`/`fPadMs`).
+- The slider values are stored in this script's own `fWpm`/`fPadMs` properties — **no `MCM.psc`/MCM
+  Helper**. The push reads them directly.
 - Compiles against vanilla + skse + `UI.psc` + the Task-1 `skyui/` sources only.
-- The push body is the only place `UI.SetFloat` is used; member names (`dbvoWpm`/`dbvoPadMs`) must match
-  Task 3 exactly.
+- `UI.SetFloat` appears only in the push; member names (`dbvoWpm`/`dbvoPadMs`) must match Task 3 exactly.
 
 **Verification:**
 - `tools/compile-papyrus.sh DBVODialogueTweaksMCM mods/DBVODialogueTweaks/src/scripts /tmp/pex` →
@@ -181,51 +194,31 @@ Behavior:
 
 ---
 
-### Task 5: MCM `config.json` + build assembly  [Mode: Direct]
+### Task 5: build.sh assembly  [Mode: Direct]
 
 **Files:**
-- Create: `mods/DBVODialogueTweaks/src/mcm/config.json`
 - Modify: `mods/DBVODialogueTweaks/build.sh`
 
-**`config.json` contract** (folder name must equal `modName`):
-```json
-{
-  "modName": "DBVODialogueTweaks",
-  "displayName": "DBVO Dialogue Tweaks",
-  "content": [
-    { "pageDisplayName": "Timing", "content": [
-      { "id": "wpm", "text": "Voice-pack speed (wpm)", "type": "slider",
-        "help": "Higher = NPC replies sooner. Match your voice pack; 300 = DBVO stock.",
-        "valueOptions": { "min": 150, "max": 600, "step": 10, "formatString": "{0} wpm",
-                          "sourceType": "PropertyValueFloat", "propertyName": "fWpm", "defaultValue": 300 } },
-      { "id": "pad", "text": "NPC response pad (ms)", "type": "slider",
-        "help": "Flat delay added after the estimate. 1400 = DBVO stock; lower to cut dead air.",
-        "valueOptions": { "min": 0, "max": 2500, "step": 25, "formatString": "{0} ms",
-                          "sourceType": "PropertyValueFloat", "propertyName": "fPadMs", "defaultValue": 1400 } }
-    ] }
-  ]
-}
-```
-(`sourceForm`/`scriptName` omitted → resolve to the config quest/script. `defaultValue` matches the
-`.psc` initializers so "reset to default" agrees.)
+No `config.json` — the menu is authored in the Task-4 script. `build.sh` just compiles + assembles the
+three artifacts.
 
 **`build.sh` additions** (keep the existing swf path + md5 guard; layer on):
-- Compile `src/scripts/DBVODialogueTweaksMCM.psc` → `build/Scripts/DBVODialogueTweaksMCM.pex`.
+- Compile `src/scripts/DBVODialogueTweaksMCM.psc` → `build/Scripts/DBVODialogueTweaksMCM.pex` (via
+  `tools/compile-papyrus.sh`, which now includes the `skyui/` import path from Task 1).
 - Generate the plugin: `EspGen build/DBVODialogueTweaks.esp DBVODialogueTweaksMCMQuest
   DBVODialogueTweaksMCM "DBVO Dialogue Tweaks" --player-alias SKI_PlayerLoadGameAlias`.
-- Copy `src/mcm/config.json` → `build/Interface/MCM/Config/DBVODialogueTweaks/config.json`.
-- `--install`: copy **all** of `build/` into `$GAME_DATA` (esp, swf, config.json, pex) — back up any
-  live file first per workspace rules, and enable the esp in `Plugins.txt` (leading `*`).
+- `--install`: copy **all** of `build/` into `$GAME_DATA` (esp, swf, pex) — back up any live file first
+  per workspace rules, and enable the esp in `Plugins.txt` (leading `*`).
 
 **Constraints:**
 - `--install` must list each file it copies and its pre-install md5 (mirror the existing swf line) so a
   later revert is possible.
-- Don't ship SkyUI/MCM `.pex` — only `DBVODialogueTweaksMCM.pex`.
+- Don't ship SkyUI `.pex` — only `DBVODialogueTweaksMCM.pex`.
 
 **Verification:**
-- `./build.sh` → the four `build/` artifacts above all exist; print the tree.
-- `python -c "import json,sys; json.load(open('mods/DBVODialogueTweaks/build/Interface/MCM/Config/DBVODialogueTweaks/config.json'))"`
-  → valid JSON.
+- `./build.sh` → the three `build/` artifacts (esp, swf, pex) all exist; print the tree.
+- Re-read `build/DBVODialogueTweaks.esp` with Mutagen (or the Task-2 `--verify` path) → quest +
+  player alias present.
 
 **Commit after passing.**
 
@@ -234,7 +227,7 @@ Behavior:
 ### Task 6: In-game integration test (skytest, manual)  [Mode: Direct — human-in-loop]
 
 Not automatable — requires launching Skyrim. Install into a skytest profile carrying the full MCM
-stack: **DBVO + Karat + SkyUI + MCM Helper + this plugin** (full-profile, per the "which mode?" rule —
+stack: **DBVO + Karat + SkyUI + this plugin** (full-profile, per the "which mode?" rule —
 a Papyrus/MCM feature that only manifests on the live order). Add a temporary `Debug.Trace` on push
 during bring-up.
 
