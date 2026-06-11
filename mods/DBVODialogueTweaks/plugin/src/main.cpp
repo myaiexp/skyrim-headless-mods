@@ -1,6 +1,7 @@
 #include <SKSE/SKSE.h>
 #include <RE/Skyrim.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <MinHook.h>
 
 #include <atomic>
 
@@ -69,7 +70,7 @@ namespace
 		return true;
 	}
 
-	// Trampoline branch hook on the NON-virtual Actor::SpeakSoundFunction (the one the console's
+	// MinHook entry detour on the NON-virtual Actor::SpeakSoundFunction (the one the console's
 	// Player.SpeakSound dispatches into — it fills a_handle and STARTS it synchronously inside the
 	// call). We call the original FIRST so the engine builds + plays the handle (lip-sync intact),
 	// then — only for the player's own DBVO line — scale the live handle's volume. a4–a14 are
@@ -82,7 +83,7 @@ namespace
 			std::uint64_t a7, std::uint64_t a8, std::uint64_t a9,
 			bool a10, std::uint64_t a11, bool a12, bool a13, bool a14)
 		{
-			const bool r = func(a_this, a_path, a_handle, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+			const bool r = original(a_this, a_path, a_handle, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
 			if (a_this && a_this->IsPlayerRef() && a_path && a_handle && a_handle->IsValid() && is_dbvo_path(a_path)) {
 				const float vol = g_dbvoVolume.load();
 				a_handle->SetVolume(vol);
@@ -97,18 +98,36 @@ namespace
 			return r;
 		}
 
-		static inline REL::Relocation<decltype(thunk)> func;
+		// MinHook fills this with the trampoline to the real SpeakSoundFunction (relocated
+		// prologue + jump back past the stolen bytes). Calling original() runs the engine's
+		// original function; the thunk wraps it.
+		static inline decltype(&thunk) original = nullptr;
 	};
 
-	// Install the speak-sound branch hook at load (matching the sibling mods' at-load InstallHooks
+	// Install the speak-sound entry hook at load (matching the sibling mods' at-load InstallHooks
 	// idiom). Addressed ONLY via Address Library id (SE 36541 / AE 37542) — no hardcoded offset, so
-	// one NG-built DLL resolves the right target per runtime.
+	// one NG-built DLL resolves the right target per runtime. MinHook disassembles whatever prologue
+	// is at the entry, relocates it into a trampoline (stored in SpeakSoundHook::original), and
+	// writes a 5-byte jmp to our thunk — so calling original() runs the real function intact.
 	void InstallHooks()
 	{
 		REL::Relocation<std::uintptr_t> target{ REL::RelocationID(36541, 37542) };
-		SKSE::AllocTrampoline(14);
-		SpeakSoundHook::func = SKSE::GetTrampoline().write_branch<5>(target.address(), SpeakSoundHook::thunk);
-		SKSE::log::info("DBVODialogueTweaks: speak-sound trampoline hook installed");
+		if (auto s = MH_Initialize(); s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
+			SKSE::log::error("DBVODialogueTweaks: MH_Initialize failed ({})", static_cast<int>(s));
+			return;
+		}
+		if (auto s = MH_CreateHook(reinterpret_cast<LPVOID>(target.address()),
+								   reinterpret_cast<LPVOID>(&SpeakSoundHook::thunk),
+								   reinterpret_cast<LPVOID*>(&SpeakSoundHook::original));
+			s != MH_OK) {
+			SKSE::log::error("DBVODialogueTweaks: MH_CreateHook failed ({})", static_cast<int>(s));
+			return;
+		}
+		if (auto s = MH_EnableHook(reinterpret_cast<LPVOID>(target.address())); s != MH_OK) {
+			SKSE::log::error("DBVODialogueTweaks: MH_EnableHook failed ({})", static_cast<int>(s));
+			return;
+		}
+		SKSE::log::info("DBVODialogueTweaks: speak-sound entry hook installed (MinHook)");
 	}
 }
 

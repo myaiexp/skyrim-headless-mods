@@ -36,8 +36,17 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(CommonLibSSE)
 
+# --- MinHook: length-disassembling inline detour engine. CommonLibSSE-NG's
+# write_branch<5> only replaces existing call-site branch instructions; hooking a
+# function ENTRY and calling the original needs a real prologue-stealing trampoline,
+# which MinHook provides (matches how TiltedEvolution hooks this same function).
+FetchContent_Declare(minhook
+	GIT_REPOSITORY https://github.com/TsudaKageyu/minhook
+	GIT_TAG master)
+FetchContent_MakeAvailable(minhook)
+
 # --- The plugin DLL itself.
 add_library(DBVODialogueTweaks SHARED src/main.cpp)
 target_compile_features(DBVODialogueTweaks PRIVATE cxx_std_23)
-target_link_libraries(DBVODialogueTweaks PRIVATE CommonLibSSE::CommonLibSSE)
+target_link_libraries(DBVODialogueTweaks PRIVATE CommonLibSSE::CommonLibSSE minhook)
 set_target_properties(DBVODialogueTweaks PROPERTIES PREFIX "" SUFFIX ".dll")
