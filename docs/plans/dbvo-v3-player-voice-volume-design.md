@@ -41,6 +41,7 @@ mods/<Name>/            every mod, any tier mix (esp / Papyrus / swf / DLL)
   AutoFireBow/          (DLL-only)        ← moved from plugins/
   GhostAllies/          (DLL-only)        ← moved from plugins/
   OneClickMap/          (DLL-only)        ← moved from plugins/
+  RapidBowHold/         (esp+pex)         ← already here; unchanged
   DBVODialogueTweaks/
     src/  …             (existing swf/Papyrus sources)
     plugin/             NEW: main.cpp, CMakeLists.txt   (DLL lives in-place)
@@ -50,9 +51,11 @@ tools/
 ```
 
 `plugins/` is deleted. Each moved DLL mod's `build.sh` re-roots the toolchain from `$PLUGINS_DIR`
-to `tools/skse/`. This is mechanical (3 `build.sh` path-fixes, `cmake/`, `.gitignore`) plus a doc
-sweep (~12 files mention `plugins/`). Done **first**, as its own commit, so the new DLL lands in the
-clean home rather than being moved later. It has independent value (removes the false mod/plugin
+to `tools/skse/` (only the three DLL mods move; `RapidBowHold` is already an esp+pex resident of
+`mods/` and is untouched). This is mechanical (3 `build.sh` path-fixes, `cmake/`, `.gitignore`) plus a
+doc sweep — **16 `.md` files** reference `plugins/` (README + skse-toolchain/-tier-bringup + the
+per-mod plan/design docs). Done **first**, as its own commit, so the new DLL lands in the clean home
+rather than being moved later. It has independent value (removes the false mod/plugin
 dichotomy) and no design content beyond this target tree — it goes straight to the plan.
 
 ## Approach — Design A: hook the playback, attenuate the resulting handle
@@ -130,8 +133,10 @@ Two cheap conjunctive gates; everything failing either gate hits the untouched o
 ### SKSE plugin
 
 CommonLibSSE-NG entry (`SKSEPluginLoad` / `SKSE::Init`), mirror an existing plugin's scaffold.
-Install the trampoline hook on `kDataLoaded` (or at load with `AllocTrampoline(14)`). Register the
-Papyrus native via the `SKSEPapyrusInterface`. State is a single `static float g_dbvoVolume = 1.0f`.
+Install the trampoline hook **in `SKSEPluginLoad`, right after `SKSE::Init`** (`AllocTrampoline(14)`
+then `write_branch<5>`) — matching the existing plugins' idiom (AutoFireBow calls `InstallHooks()` at
+load, not on a message). Register the Papyrus native via the `SKSEPapyrusInterface`. State is a single
+`static float g_dbvoVolume = 1.0f`.
 No SKSE co-save serialization — the MCM owns persistence (below), and re-pushes on every load.
 
 ### Papyrus native bridge
@@ -160,11 +165,16 @@ Extend the existing `SKI_ConfigBase` quest script:
 
 ### Build integration
 
-`mods/DBVODialogueTweaks/build.sh` gains step `[4/4]`: configure+build the `plugin/` DLL with the
-`tools/skse/` toolchain (cmake + `clang-cl-msvc.cmake`), and on `--install` copy
-`DBVODialogueTweaks.dll` → `<Data>/SKSE/Plugins/`. The Papyrus step compiles **both**
-`DBVODialogueTweaksMCM.psc` and the new `DBVOTweaks.psc`. One `build.sh [--install]` still builds and
-installs the whole mod (swf + 2×pex + esp + dll).
+`mods/DBVODialogueTweaks/build.sh` is renumbered to **4 steps** (current is `[1/3]` swf → `[2/3]`
+Papyrus(MCM) → `[3/3]` esp; the esp is last, not Papyrus). Final ordering:
+
+- `[1/4]` swf (ffdec) — unchanged.
+- `[2/4]` Papyrus — now compiles **both** `DBVODialogueTweaksMCM.psc` and the new `DBVOTweaks.psc`.
+- `[3/4]` esp (EspGen) — unchanged.
+- `[4/4]` **DLL** — configure+build `plugin/` with the `tools/skse/` toolchain (cmake +
+  `clang-cl-msvc.cmake`); on `--install` copy `DBVODialogueTweaks.dll` → `<Data>/SKSE/Plugins/`.
+
+One `build.sh [--install]` still builds and installs the whole mod (swf + 2×pex + esp + dll).
 
 ## Data flow
 
