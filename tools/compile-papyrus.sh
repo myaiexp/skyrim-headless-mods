@@ -21,13 +21,14 @@ winpath() { printf 'Z:%s' "$(printf '%s' "$1" | sed 's|/|\\|g')"; }
 export WINEPREFIX="$WINEPREFIX_PAPYRUS" WINEDEBUG=-all WINEDLLOVERRIDES="mscoree=b"
 [ -d "$WINEPREFIX" ] || wineboot -i >/dev/null 2>&1
 
-# Import order matters: the mod's own src first, then SKSE (its versions win for SKSE
-# functions), then the vanilla base tree (fills the rest of the type graph), then the
-# folder holding TESV_Papyrus_Flags.flg.
+# Import order matters: the mod's own src first, then SkyUI (its MCM base classes,
+# compile-time only — runtime .pex comes from the user's SkyUI), then SKSE (its versions
+# win for SKSE functions), then the vanilla base tree (fills the rest of the type graph),
+# then the folder holding TESV_Papyrus_Flags.flg.
 cd "$COMPILER_DIR"
 wine PapyrusCompiler.exe "$SCRIPT" \
   -f=TESV_Papyrus_Flags.flg \
-  -i="$(winpath "$SRC_DIR");$(winpath "$SRCROOT/skse");$(winpath "$SRCROOT/vanilla");$(winpath "$SRCROOT")" \
+  -i="$(winpath "$SRC_DIR");$(winpath "$SRCROOT/skyui");$(winpath "$SRCROOT/skse");$(winpath "$SRCROOT/vanilla");$(winpath "$SRCROOT")" \
   -o="$(winpath "$OUT_DIR")" 2>&1 | grep -viE 'pci id|libEGL|gmisc-win32|assertion' || true
 
 [ -f "$OUT_DIR/$SCRIPT.pex" ] || { echo "ERROR: $SCRIPT.pex was not produced" >&2; exit 1; }
