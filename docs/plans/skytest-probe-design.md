@@ -66,25 +66,25 @@ Files live under the SKSE log directory, which is **stable across Data profile s
   (resolve via `SKSE::log::log_directory()` + `skytest/`; create if missing)
 - Linux view: `~/.steam/steam/steamapps/compatdata/489830/pfx/drive_c/users/steamuser/Documents/My Games/Skyrim Special Edition/SKSE/skytest/`
 
-| File | Direction | Semantics |
-|------|-----------|-----------|
-| `commands.jsonl` | CC → game | One JSON command per line, each with an `id`. At startup the plugin executes the **whole file from the top** (it's the declarative probe script for the session — CC can pre-stage it before launch), then polls for appended lines (live commands mid-game). CC rewrites/truncates the file between sessions. |
-| `trace.jsonl` | game → CC | Append-only structured output: a session-header line at startup (plugin + game version), then command acks, probe events, dumps, markers. |
-| `trace.prev.jsonl` | — | At startup the plugin rotates the previous `trace.jsonl` here (one-deep history). |
+| File               | Direction | Semantics                                                                                                                                                                                                                                                                                                      |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commands.jsonl`   | CC → game | One JSON command per line, each with an `id`. At startup the plugin executes the **whole file from the top** (it's the declarative probe script for the session — CC can pre-stage it before launch), then polls for appended lines (live commands mid-game). CC rewrites/truncates the file between sessions. |
+| `trace.jsonl`      | game → CC | Append-only structured output: a session-header line at startup (plugin + game version), then command acks, probe events, dumps, markers.                                                                                                                                                                      |
+| `trace.prev.jsonl` | —         | At startup the plugin rotates the previous `trace.jsonl` here (one-deep history).                                                                                                                                                                                                                              |
 
 Every command gets an ack line: `{"ack":"<id>","ok":true}` or `{"ack":"<id>","ok":false,"err":"…"}`.
 
 ## v1 command catalog
 
-| Command (JSON `cmd`) | Args | Does |
-|---|---|---|
-| `trace` | `on`, `events:[hit,equip,magic-apply,combat,activate,container,death]`, optional `refs:[…]` | Arm/disarm engine event sinks. With `refs`, log only events whose source **or** target matches; without, log all of that type. |
-| `anim-trace` | `on`, `ref` | Animation graph events for one actor (the AutoFireBow `BowDrawn` class of bug). |
-| `dump` | `ref` | Snapshot one actor → trace: FormID, name, base, position/cell, actor values (health/magicka/stamina + any requested), active effects, equipped gear, teammate flag, 3D-loaded, and **char-controller collision group** (reuse GhostAllies's access code — the GhostAllies class of bug). |
-| `watch` | `on`, `ref`, `av` | Sample an actor value at poll cadence (~4 Hz), log only on change. Per-frame sampling via a `Main::Update` hook is a deliberate non-goal for v1 — explore only if 4 Hz proves too coarse. |
-| `exec` | `line` | Run a console command via the engine's compile-and-run (precedent: ConsoleUtilSSE-NG). Fire-and-forget + ack; **console output capture is out of scope for v1**. Also mechanically covers fixture setup (spawn teammate, `setstage`, …). |
-| `marker` | optional `note` | Drop a marker line (CC-side counterpart of the F11 hotkey). |
-| `status` | — | Write a trace line listing currently-armed probes. |
+| Command (JSON `cmd`) | Args                                                                                        | Does                                                                                                                                                                                                                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trace`              | `on`, `events:[hit,equip,magic-apply,combat,activate,container,death]`, optional `refs:[…]` | Arm/disarm engine event sinks. With `refs`, log only events whose source **or** target matches; without, log all of that type. Disarm (`on:false`) takes the same `events` list; re-arming an already-armed event type **replaces** its filter.                                                |
+| `anim-trace`         | `on`, `ref`                                                                                 | Animation graph events for one actor (the AutoFireBow `BowDrawn` class of bug). A set keyword (`teammates`) attaches to each member resolved **at command time** — membership is not tracked afterwards.                                                                                       |
+| `dump`               | `ref`, optional `avs:[…]`                                                                   | Snapshot one actor → trace: FormID, name, base, position/cell, actor values (health/magicka/stamina + any listed in `avs`), active effects, equipped gear, teammate flag, 3D-loaded, and **char-controller collision group** (reuse GhostAllies's access code — the GhostAllies class of bug). |
+| `watch`              | `on`, `ref`, `av`                                                                           | Sample an actor value at poll cadence (~4 Hz; the poll thread enqueues a main-thread sampling task per tick), log only on change. Per-frame sampling via a `Main::Update` hook is a deliberate non-goal for v1 — explore only if 4 Hz proves too coarse.                                       |
+| `exec`               | `line`                                                                                      | Run a console command via the engine's compile-and-run (precedent: ConsoleUtilSSE-NG). Fire-and-forget + ack; **console output capture is out of scope for v1**. Also mechanically covers fixture setup (spawn teammate, `setstage`, …).                                                       |
+| `marker`             | optional `note`                                                                             | Drop a marker line (CC-side counterpart of the F11 hotkey).                                                                                                                                                                                                                                    |
+| `status`             | —                                                                                           | Write a trace line listing currently-armed probes.                                                                                                                                                                                                                                             |
 
 `ref` accepts `player`, `crosshair`, `teammates`, or a hex runtime FormID string (`"0x14"`).
 
@@ -92,7 +92,8 @@ Every command gets an ack line: `{"ack":"<id>","ok":true}` or `{"ack":"<id>","ok
 
 The built DLL is staged at `~/Downloads/skyrim-mods/1-skytest/base-skse/SkytestProbe.dll`
 (+ ini template). `1-skytest/skytest` injects it into the **test profile unconditionally**,
-mirroring the existing StartOnSave symlink injection (but with no save-existence condition).
+mirroring the existing StartOnSave symlink injection (but with no save-existence condition);
+the ini is copied **verbatim** (no `sed` substitution, unlike StartOnSave's).
 Full-profile use = normal manual install into the full profile, optional, for DBVO-style cases.
 
 ## Failure model

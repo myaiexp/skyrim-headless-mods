@@ -131,3 +131,28 @@ shipped, verified in-game. Deferred:
   a different gain path (re-encode the Karat pack louder offline, or a custom audio output model) — not
   worth it for the "tame it" goal. See `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value
   mapping & the boost caveat".
+
+## 2026-06-11 — SkytestProbe (runtime-commandable debug instrumentation)
+
+State: **v1 designed** (`docs/plans/skytest-probe-design.md`), no separate plan — implementation
+works straight from the design doc. Deferred beyond v1:
+
+- **Full command bridge (socket/RPC).** v1's file protocol already makes the running game
+  externally scriptable; a socket would add request/response semantics and lower latency. Only
+  worth it if file polling proves limiting.
+- **Curated runtime-toggleable hook probes.** Pre-compiled trampoline hooks on commonly-debugged
+  engine functions (damage application, projectile spawn, …), armed via command — the safe
+  subset of "dynamic tracing". Arbitrary-address hooking stays out (crash-prone).
+- **Console output capture for `exec`.** v1 is fire-and-forget; capturing what the command
+  printed (hook `ConsoleLog::Print`?) would make `exec` a query tool (`GetAV`, `GetStage`, …).
+- **Papyrus script-variable peeking.** Visibility into running Papyrus state from the C++ side.
+- **Per-mod fixture autoexec convention.** `exec` covers the mechanics; define where a
+  mod-under-test's fixture script lives so `skytest test <mod>` arms it automatically
+  (the deferred per-mod-fixtures item from the skytest v2 handoff).
+- **Per-frame `watch` sampling** via a `Main::Update` hook, if 4 Hz poll cadence proves too
+  coarse for spiky values.
+- **Editor-ID / plugin-relative ref addressing** (`"MyMod.esp|0xD62"`) in addition to runtime
+  FormIDs.
+- **DLL hot-reload of the mod-under-test.** Would kill the remaining restart-on-fix cost;
+  generally unsafe (static state, irreversible hooks) — research only if restarts become the
+  bottleneck again.
