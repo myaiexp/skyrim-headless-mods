@@ -2,20 +2,28 @@ Scriptname DBVODialogueTweaksMCM extends SKI_ConfigBase
 
 Float Property fMsPerWord = 200.0  Auto    ; stock default (= 300 wpm: 60/300*1000)
 Float Property fPadMs     = 1400.0 Auto    ; stock default
+Float Property fPlayerVoiceVol = 100.0 Auto    ; percent; 100 = unchanged
 
 Int _mspwOID    ; option-IDs captured in OnPageReset for dispatch
 Int _padOID
+Int _volOID
 
 Event OnConfigInit()
 	ModName = "DBVO Dialogue Tweaks"
-	Pages = new String[1]
+	Pages = new String[2]
 	Pages[0] = "Timing"
+	Pages[1] = "Voice"
 EndEvent
 
 Event OnPageReset(String page)
-	SetCursorFillMode(TOP_TO_BOTTOM)
-	_mspwOID = AddSliderOption("Per-word delay", fMsPerWord, "{0} ms")
-	_padOID  = AddSliderOption("NPC response pad", fPadMs, "{0} ms")
+	If page == "Timing"
+		SetCursorFillMode(TOP_TO_BOTTOM)
+		_mspwOID = AddSliderOption("Per-word delay", fMsPerWord, "{0} ms")
+		_padOID  = AddSliderOption("NPC response pad", fPadMs, "{0} ms")
+	ElseIf page == "Voice"
+		SetCursorFillMode(TOP_TO_BOTTOM)
+		_volOID = AddSliderOption("Player voice volume", fPlayerVoiceVol, "{0}%")
+	EndIf
 EndEvent
 
 Event OnOptionSliderOpen(Int oid)
@@ -29,6 +37,11 @@ Event OnOptionSliderOpen(Int oid)
 		SetSliderDialogDefaultValue(1400)
 		SetSliderDialogInterval(25)
 		SetSliderDialogStartValue(fPadMs)
+	ElseIf oid == _volOID
+		SetSliderDialogRange(0, 200)
+		SetSliderDialogDefaultValue(100)
+		SetSliderDialogInterval(5)
+		SetSliderDialogStartValue(fPlayerVoiceVol)
 	EndIf
 EndEvent
 
@@ -39,12 +52,17 @@ Event OnOptionSliderAccept(Int oid, Float value)
 	ElseIf oid == _padOID
 		fPadMs = value
 		SetSliderOptionValue(oid, value, "{0} ms")
+	ElseIf oid == _volOID
+		fPlayerVoiceVol = value
+		SetSliderOptionValue(oid, value, "{0}%")
+		DBVOTweaks.SetPlayerVoiceVolume(fPlayerVoiceVol / 100.0)
 	EndIf
 EndEvent
 
 Event OnGameReload()
 	Parent.OnGameReload()
 	RegisterForMenu("Dialogue Menu")
+	DBVOTweaks.SetPlayerVoiceVolume(fPlayerVoiceVol / 100.0)
 EndEvent
 
 Event OnMenuOpen(String menuName)
