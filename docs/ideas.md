@@ -99,14 +99,15 @@ Open work (detail in `headless/docs/status.md`):
 
 ## 2026-06-10 — DBVODialogueTweaks v2 / v3 (deferred phases)
 
-The mod (renamed from `DBVOResponseGap`) ships in phases. v1 = manual player-line skip (building now,
-design in `docs/plans/dbvo-dialogue-tweaks-design.md`). Deferred:
+The mod (renamed from `DBVOResponseGap`) ships in phases. v1 (manual player-line skip) shipped; **v2
+is now building** (configurable response gap — design in `docs/plans/dbvo-v2-configurable-gap-design.md`,
+self-first scope). Deferred:
 
-- **v2 — configurable response gap + speed.** Parameterize the swf's `startTopicClickedTimer`
-  (`wordCount × 200 ms` @ 300 wpm `+ 1400 ms` pad) so the user tunes **pad ms** and **wpm** live via
-  **MCM sliders**, transported swf↔Papyrus. Already scoped in the mod README ("v2 — configurable
-  response gap" / "Tier 2"). Shares v1's swf rebuild. Needed because fast packs (Karat) mis-pace under
-  the fixed estimate.
+- **v2 → public Nexus release (post-v2 follow-up).** v2 builds self-first; releasing it publicly is a
+  clean separate pass once the mechanism is proven in-game. **Unlocked:** DBVO's page grants
+  modify-and-release with credit, and DBVO is a frozen target (~3 yr, won't bitrot) — see mod README
+  "Permissions". Release pass = ship the built modified swf + ESL + MCM, credit the DBVO author, write a
+  Nexus page, and test beyond the DBVO+Karat setup (a few more voice packs). No architectural change.
 - **v3 — cut the player voice on skip.** SKSE C++ plugin (sibling to `plugins/`): console
   `Player.SpeakSound` gives no handle, so hook/track the player's voice instance and stop it when v1's
   skip fires — removes the audio-tail overlap v1 accepts. Same plugin could also do the README's

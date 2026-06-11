@@ -56,19 +56,18 @@ Reference points already built (in the _staging_ repo, `~/Downloads/skyrim-mods/
 
 ## Tier 2 — configurable (this mod's target)
 
-Expose the timing instead of hardcoding it. The clean hook already exists: DBVO's Papyrus script
-calls into the swf via `UI.Invoke…("_root.DialogueMenu_mc.startTopicClickedTimer", voicePackId)`.
+**Designed:** `docs/plans/dbvo-v2-configurable-gap-design.md` (read that for the authoritative spec).
+Summary of the chosen shape:
 
-1. **swf**: extend `startTopicClickedTimer` to accept `padMs` and `wpm` (or a precomputed delay)
-   and use them in place of the literal `1400` / `300`. Recompile with **ffdec**.
-2. **Papyrus**: small script holding the settings; pass them on that same `UI.Invoke…` call
-   (array invoke, or set props on `_root.DialogueMenu_mc` just before).
-3. **MCM** (MCM Helper): two sliders — **NPC response pad (ms)** and **words-per-minute** — so the
-   user calibrates to their voice pack live. Keep vanilla skip behavior (don't bundle Instant Skip's
-   `bAllowProgress` removal; make it a separate optional toggle if wanted).
-
-Open question: cleanest swf↔Papyrus value transport (extra `UI.InvokeNumberA` args vs. writing a
-shared property the swf reads at `startTopicClickedTimer` time). Resolve during design.
+1. **swf**: `startTopicClickedTimer` reads `this.dbvoWpm` / `this.dbvoPadMs` (baked defaults `300` /
+   `1400` = stock) in place of the literals. Recompile with **ffdec**.
+2. **Papyrus**: an **independent** ESL quest script — we do *not* touch DBVO's script. It pushes the
+   two values onto the live menu (`UI.SetFloat("Dialogue Menu", "_root.DialogueMenu_mc.dbvoWpm", …)`)
+   **on each dialogue-menu open** (the swf instance is recreated per conversation, so the push must
+   repeat). The rejected alternative — routing values through DBVO's own `UI.Invoke` call — would mean
+   editing DBVO's script for no benefit (timer's in the swf either way); see the design doc.
+3. **MCM** (MCM Helper): two sliders — **words-per-minute** and **NPC response pad (ms)** — calibrated
+   live. Vanilla skip behavior kept (Instant Skip's `bAllowProgress` removal is *not* bundled).
 
 ## Tier 3 — the actually-correct fix (separate, `plugins/`)
 
@@ -88,9 +87,15 @@ tier 2 isn't good enough.
 
 ## Permissions
 
-The swf is a **derivative of DBVO's** asset. Personal use is fine; a public release needs the DBVO
-author's permission (or ship a script-only patch). Same reason this repo stays private re: bundled
-Bethesda Papyrus sources — don't redistribute the swf.
+DBVO's Nexus page **grants modify-and-release**: _"You are allowed to modify my files and release bug
+fixes or improve on the features so long as you credit me as the original creator."_ So shipping the
+**modified swf** (a derivative of DBVO's asset) publicly is fine **with credit to the DBVO author** —
+no separate ask needed, and a script-only patch is not required. (This repo still stays private re:
+bundled **Bethesda** Papyrus sources — a separate Bethesda-asset concern, unrelated to DBVO.)
+
+**DBVO is a frozen target** — last updated ~3 years ago. So the md5-pinned stock swf in `build.sh`
+won't drift from an updated upstream (there is none), the modified swf we ship won't bitrot, and a
+public release stays low-maintenance. Don't re-derive these two facts each session — they're settled here.
 
 ## First steps when starting (v2)
 
