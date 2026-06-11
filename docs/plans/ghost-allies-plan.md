@@ -8,7 +8,7 @@ collision-filter hook, at **player-arrow launch** we copy the target follower's 
 **systemGroup** onto the arrow's phantom collidable (`unk0E0` → `collidable.broadPhaseHandle.collisionFilterInfo`).
 The arrow then ignores that follower exactly as it already ignores its own shooter, sweeping
 through and continuing to the enemy behind. No per-frame hook, no hot path. New plugin
-`plugins/GhostAllies/`, independent of AutoFireBow.
+`mods/GhostAllies/`, independent of AutoFireBow.
 
 **Tech Stack:** C++23, CommonLibSSE-NG (FetchContent, AE+SE), spdlog; headless clang-cl + lld-link + xwin cross-build (Linux→Windows DLL); Address Library for version-independent offsets.
 
@@ -19,35 +19,35 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 ## Reference material
 
 - Design: `docs/plans/ghost-allies-design.md` (read first — mechanism, scope, risks, open decisions).
-- Pattern source in-repo: `plugins/AutoFireBow/{CMakeLists.txt,build.sh,src/main.cpp}` — copy its CMake, `build.sh`, logging setup, vtable-hook idiom (`REL::Relocation::write_vfunc`), and `SKSEPluginInfo`/`SKSEPluginLoad` boilerplate verbatim where applicable.
-- Shared toolchain (do not duplicate): `plugins/cross-env.sh`, `plugins/cmake/clang-cl-msvc.cmake`, `tools/env.sh` (provides `$GAME_DATA` for `--install`).
+- Pattern source in-repo: `mods/AutoFireBow/{CMakeLists.txt,build.sh,src/main.cpp}` — copy its CMake, `build.sh`, logging setup, vtable-hook idiom (`REL::Relocation::write_vfunc`), and `SKSEPluginInfo`/`SKSEPluginLoad` boilerplate verbatim where applicable.
+- Shared toolchain (do not duplicate): `tools/skse/cross-env.sh`, `tools/skse/cmake/clang-cl-msvc.cmake`, `tools/env.sh` (provides `$GAME_DATA` for `--install`).
 - External precedent to mine for the hook + group logic: `adamhynek/higgs` (`src/hooks.cpp` — `CompareFilterInfo` hook, `CollisionFilterComparisonResult{Collide,Ignore,Continue}`), `adamhynek/activeragdoll` (`src/main.cpp` — `CollisionFilterComparisonCallback`, `GetCollisionGroup(info)=info>>16`, per-actor ignore set), `powerof3/PapyrusExtenderSSE` (`GetCollisionFilterInfo`, system-group read).
 
 ## File structure
 
 | File | Responsibility |
 |------|----------------|
-| `plugins/GhostAllies/CMakeLists.txt` | Build the `GhostAllies.dll` target; same FetchContent deps as AutoFireBow (spdlog pin, CommonLibSSE-NG pinned tag). |
-| `plugins/GhostAllies/build.sh` | Configure+build via clang-cl toolchain; `--install` copies DLL to `$GAME_DATA/SKSE/Plugins`. Copy of AutoFireBow's with names changed. |
-| `plugins/GhostAllies/src/main.cpp` | Entire plugin: log setup, the `CompareFilterInfo` hook, the two group sets + their maintenance hooks, and the selectivity decision. Single file is appropriate at this size (AutoFireBow is one 328-line file); split only if it grows past ~400 lines. |
+| `mods/GhostAllies/CMakeLists.txt` | Build the `GhostAllies.dll` target; same FetchContent deps as AutoFireBow (spdlog pin, CommonLibSSE-NG pinned tag). |
+| `mods/GhostAllies/build.sh` | Configure+build via clang-cl toolchain; `--install` copies DLL to `$GAME_DATA/SKSE/Plugins`. Copy of AutoFireBow's with names changed. |
+| `mods/GhostAllies/src/main.cpp` | Entire plugin: log setup, the `CompareFilterInfo` hook, the two group sets + their maintenance hooks, and the selectivity decision. Single file is appropriate at this size (AutoFireBow is one 328-line file); split only if it grows past ~400 lines. |
 
 ---
 
 ### Task 1: Plugin scaffolding that loads in-game [Mode: Direct]
 
 **Files:**
-- Create: `plugins/GhostAllies/CMakeLists.txt`
-- Create: `plugins/GhostAllies/build.sh`
-- Create: `plugins/GhostAllies/src/main.cpp`
+- Create: `mods/GhostAllies/CMakeLists.txt`
+- Create: `mods/GhostAllies/build.sh`
+- Create: `mods/GhostAllies/src/main.cpp`
 
 **Contracts:**
-- `CMakeLists.txt`: identical structure to `plugins/AutoFireBow/CMakeLists.txt` with `project(GhostAllies ...)` and target renamed; same spdlog v1.13.0 pin, same CommonLibSSE-NG `GIT_TAG`, `cxx_std_23`, `PREFIX ""`/`SUFFIX ".dll"`.
+- `CMakeLists.txt`: identical structure to `mods/AutoFireBow/CMakeLists.txt` with `project(GhostAllies ...)` and target renamed; same spdlog v1.13.0 pin, same CommonLibSSE-NG `GIT_TAG`, `cxx_std_23`, `PREFIX ""`/`SUFFIX ".dll"`.
 - `build.sh`: copy of AutoFireBow's with `AutoFireBow`→`GhostAllies`; same `cross-env.sh` source and `--install` path.
 - `main.cpp`: `SetupLog()` writing to `<SKSE log dir>/GhostAllies.log` (AutoFireBow idiom); `SKSEPluginInfo(.Name="GhostAllies", .RuntimeCompatibility=AddressLibrary, .StructCompatibility=Independent)`; `SKSEPluginLoad` calls `SetupLog()`, `SKSE::Init`, logs `"GhostAllies <ver> loaded"`.
 
 **Test Cases (verification):**
-- `./plugins/GhostAllies/build.sh` exits 0; `file build/GhostAllies.dll` reports `PE32+ executable (DLL) (console) x86-64, for MS Windows`.
-- `./plugins/GhostAllies/build.sh --install` copies to `$GAME_DATA/SKSE/Plugins/GhostAllies.dll`.
+- `./mods/GhostAllies/build.sh` exits 0; `file build/GhostAllies.dll` reports `PE32+ executable (DLL) (console) x86-64, for MS Windows`.
+- `./mods/GhostAllies/build.sh --install` copies to `$GAME_DATA/SKSE/Plugins/GhostAllies.dll`.
 - After launching the game: `GhostAllies.log` exists and contains `GhostAllies ... loaded`.
 
 **Constraints:**
@@ -60,7 +60,7 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 ### Task 2: Resolve + hook `CompareFilterInfo` (the make-or-break proof-point) [Mode: Delegated]
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
+- Modify: `mods/GhostAllies/src/main.cpp`
 
 **Contracts:**
 - Install a hook on the engine's per-pair collision-filter decision, `bhkCollisionFilter::CompareFilterInfo`, resolved **version-independently** for **AE 1.6.1170** — never hardcode HIGGS's `0xE2BA10` (that is the 1.5.97 SE address).
@@ -89,7 +89,7 @@ through and continuing to the enemy behind. No per-frame hook, no hot path. New 
 ### Task 3: Stamp the follower's systemGroup onto the player-arrow phantom at launch [Mode: Delegated]
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp` (remove the Task 2 dual-virtual probe hooks; add the launch stamp)
+- Modify: `mods/GhostAllies/src/main.cpp` (remove the Task 2 dual-virtual probe hooks; add the launch stamp)
 
 **Contracts:**
 - **Pick the launch hook.** Reuse AutoFireBow's proven per-arrow signal, `ArrowProjectile::GetPowerSpeedMult` (`VTABLE_ArrowProjectile[0]`, AE vtable slot `0xB0`), where `GetProjectileRuntimeData().shooter` is available. Gate on shooter `IsPlayerRef()`. **Verify the phantom exists at this point**: `GetProjectileRuntimeData().unk0E0` (the `bhkSimpleShapePhantom`, offset `0x0E0`). If it's reliably null at GetPowerSpeedMult time, fall back to a projectile 3D-loaded / first-`UpdateImpl` hook. Stamp **once** per arrow (guard like AutoFireBow's `logged` flag).

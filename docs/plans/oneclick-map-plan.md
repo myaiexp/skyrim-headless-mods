@@ -2,7 +2,7 @@
 
 **Goal:** An SKSE C++ plugin that removes the world-map confirmation popups so a click does the obvious action in one step — discovered location → instant fast travel; non-travelable spot with no custom marker → instant place; otherwise → the Move/Leave/Remove menu.
 
-**Architecture:** A single standalone CommonLibSSE-NG DLL hooking the MapMenu click handler (`RELOCATION_ID(52208, 53095)`). At each click it reads two predicates — is the marker under the cursor travelable, and does a custom marker already exist — and dispatches one of three actions instead of letting the default message box appear. Built with the repo's existing headless clang-cl → Windows-DLL toolchain, mirroring `plugins/GhostAllies/` and `plugins/AutoFireBow/`.
+**Architecture:** A single standalone CommonLibSSE-NG DLL hooking the MapMenu click handler (`RELOCATION_ID(52208, 53095)`). At each click it reads two predicates — is the marker under the cursor travelable, and does a custom marker already exist — and dispatches one of three actions instead of letting the default message box appear. Built with the repo's existing headless clang-cl → Windows-DLL toolchain, mirroring `mods/GhostAllies/` and `mods/AutoFireBow/`.
 
 **Tech Stack:** C++23, CommonLibSSE-NG (FetchContent, runtime SE+AE), spdlog, clang-cl + lld-link + xwin cross-build, CMake/Ninja.
 
@@ -14,18 +14,18 @@
 
 ### Task 1: Scaffold the plugin (builds + loads as a no-op) [Mode: Direct]
 
-Stand up the DLL so it compiles with the cross toolchain and loads in-game, doing nothing yet. Pure boilerplate mirrored from `plugins/GhostAllies/`.
+Stand up the DLL so it compiles with the cross toolchain and loads in-game, doing nothing yet. Pure boilerplate mirrored from `mods/GhostAllies/`.
 
 **Files:**
-- Create: `plugins/OneClickMap/CMakeLists.txt`
-- Create: `plugins/OneClickMap/build.sh`
-- Create: `plugins/OneClickMap/src/main.cpp`
+- Create: `mods/OneClickMap/CMakeLists.txt`
+- Create: `mods/OneClickMap/build.sh`
+- Create: `mods/OneClickMap/src/main.cpp`
 
 **Contracts:**
-- `CMakeLists.txt`: copy `plugins/GhostAllies/CMakeLists.txt` verbatim, replacing the project name and target with `OneClickMap` (same spdlog v1.13.0 / CommonLibSSE-NG pinned tag / `cxx_std_23` / `PREFIX "" SUFFIX ".dll"`). Drop the `rapidcsv` block — OneClickMap has no CSV dependency.
-- `build.sh`: copy `plugins/GhostAllies/build.sh` verbatim, replacing every `GhostAllies` with `OneClickMap`. Same `--install` path (`$GAME_DATA/SKSE/Plugins`).
+- `CMakeLists.txt`: copy `mods/GhostAllies/CMakeLists.txt` verbatim, replacing the project name and target with `OneClickMap` (same spdlog v1.13.0 / CommonLibSSE-NG pinned tag / `cxx_std_23` / `PREFIX "" SUFFIX ".dll"`). Drop the `rapidcsv` block — OneClickMap has no CSV dependency.
+- `build.sh`: copy `mods/GhostAllies/build.sh` verbatim, replacing every `GhostAllies` with `OneClickMap`. Same `--install` path (`$GAME_DATA/SKSE/Plugins`).
 - `main.cpp` must expose the SKSE plugin entry and version data CommonLibSSE-NG requires (mirror GhostAllies):
-  - Use the modern declarative form GhostAllies uses: `SKSEPluginInfo(...)` macro + `SKSEPluginLoad(const SKSE::LoadInterface*)` (`plugins/GhostAllies/src/main.cpp` ~L412–429). There is no `SKSEPlugin_Version`/`SKSEPlugin_Load` pair in this repo — copy the sibling's form exactly.
+  - Use the modern declarative form GhostAllies uses: `SKSEPluginInfo(...)` macro + `SKSEPluginLoad(const SKSE::LoadInterface*)` (`mods/GhostAllies/src/main.cpp` ~L412–429). There is no `SKSEPlugin_Version`/`SKSEPlugin_Load` pair in this repo — copy the sibling's form exactly.
   - `SKSE::Init(skse)` then open a log sink at `<SKSE log dir>/OneClickMap.log` via `spdlog::basic_logger_mt`, pattern matching GhostAllies, default level `info`.
   - On load, log one banner line: `OneClickMap loaded (v<version>)`.
 - No hooks yet.
@@ -35,9 +35,9 @@ Stand up the DLL so it compiles with the cross toolchain and loads in-game, doin
 - Name is locked to `OneClickMap` everywhere (dir, CMake target, DLL, log) per the design.
 
 **Verification:**
-- Run: `./plugins/OneClickMap/build.sh`
+- Run: `./mods/OneClickMap/build.sh`
 - Expected: `built: .../OneClickMap.dll`, and `file` reports a PE32+ DLL for MS Windows.
-- In-game (manual): `./plugins/OneClickMap/build.sh --install`, restart Skyrim, confirm `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log` contains the `OneClickMap loaded` banner and the game reaches the main menu without a crash.
+- In-game (manual): `./mods/OneClickMap/build.sh --install`, restart Skyrim, confirm `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log` contains the `OneClickMap loaded` banner and the game reaches the main menu without a crash.
 
 **Commit after the build succeeds** (don't gate the commit on the manual in-game check).
 
@@ -48,7 +48,7 @@ Stand up the DLL so it compiles with the cross toolchain and loads in-game, doin
 The gating research task from the design. Hook the click handler read-only and **log**, without changing any behavior, to prove every signal the dispatch needs is reachable at that site. This is throwaway/observational code that Task 3 builds on; keep it behind a verbose log level.
 
 **Files:**
-- Modify: `plugins/OneClickMap/src/main.cpp`
+- Modify: `mods/OneClickMap/src/main.cpp`
 
 **Contracts:**
 - Install a hook at `RELOCATION_ID(52208, 53095)` (the MapMenu click handler PapyrusExtender hooks; cross-check the exact call offset against `powerof3/PapyrusExtenderSSE` `src/Game/HookedEventHandler.cpp` namespace `FastTravel`). Use SKSE trampoline / `write_call` or a vfunc write as appropriate — match the precedent.
@@ -82,7 +82,7 @@ The gating research task from the design. Hook the click handler read-only and *
 Replace the read-only probe with the real action: suppress the default box and perform the dispatched action, per the design's reduced logic.
 
 **Files:**
-- Modify: `plugins/OneClickMap/src/main.cpp`
+- Modify: `mods/OneClickMap/src/main.cpp`
 
 **Contracts:**
 Implement the design's logic at the hook:
@@ -117,7 +117,7 @@ else                                        -> raise Move/Leave/Remove (box #4)
 ### Task 4: Document the shipped mod [Mode: Direct]
 
 **Files:**
-- Modify: `~/Projects/skyrim-headless-mods/README.md` (add a `plugins/OneClickMap/` row to the table, one-line description matching the AutoFireBow/GhostAllies rows; mark AE-tested or built-untested per what Task 3's in-game run actually achieved).
+- Modify: `~/Projects/skyrim-headless-mods/README.md` (add a `mods/OneClickMap/` row to the table, one-line description matching the AutoFireBow/GhostAllies rows; mark AE-tested or built-untested per what Task 3's in-game run actually achieved).
 - Modify: `docs/plans/oneclick-map-design.md` (flip the `Status:` line to shipped/verified or built-untested, recording the Task 2 gate outcome and any fallback taken).
 
 **Constraints:**

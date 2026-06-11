@@ -255,9 +255,9 @@ install to test. Document observed results if/when play data appears.)
 
 ## Architecture
 
-- **New, standalone plugin:** `plugins/GhostAllies/`, built with the existing headless
+- **New, standalone plugin:** `mods/GhostAllies/`, built with the existing headless
   clang-cl + lld-link + xwin + CommonLibSSE-NG (FetchContent) toolchain, mirroring
-  `plugins/AutoFireBow/`'s CMake/cross-env setup. It loads, ships, and disables independently of
+  `mods/AutoFireBow/`'s CMake/cross-env setup. It loads, ships, and disables independently of
   AutoFireBow — chosen over folding into AutoFireBow to keep each DLL to one responsibility.
 - **Logging:** own `GhostAllies.log` in the SKSE log dir (same pattern as AutoFireBow), used for the
   proof-point below and for verifying the filter decisions in-game.
@@ -302,9 +302,9 @@ stable, stop and reassess before investing in the selectivity logic.
 > multi-follower route, and the AddImpact fallback slot is **0xBD** (this section's "190" is stale).
 > Retained for the still-useful build/iterate notes and precedent links.
 
-All v1 logic is one file: `plugins/GhostAllies/src/main.cpp`. The whole effect is `StampHook::thunk`
+All v1 logic is one file: `mods/GhostAllies/src/main.cpp`. The whole effect is `StampHook::thunk`
 (hooked on `ArrowProjectile::GetPowerSpeedMult`, `VTABLE_ArrowProjectile[0]` slot `0xB0`) +
-`FindNearestFollower`. Build/iterate with `./plugins/GhostAllies/build.sh --install`, restart the
+`FindNearestFollower`. Build/iterate with `./mods/GhostAllies/build.sh --install`, restart the
 game, check `<SKSE log dir>/GhostAllies.log` for `stamped player arrow -> follower …`. (Note: the
 sibling bow plugin was renamed RapidBow → **AutoFireBow**; in-code comments still say "RapidBow" —
 harmless, same idioms.)

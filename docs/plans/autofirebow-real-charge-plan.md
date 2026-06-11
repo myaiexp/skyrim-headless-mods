@@ -11,13 +11,13 @@ in-game unknown (does a held button auto-redraw after a real loose?) before comm
 wiring. Spec: `docs/plans/autofirebow-real-charge-design.md`.
 
 **Tech Stack:** SKSE C++ / CommonLibSSE-NG, cross-compiled Linux→Windows (clang-cl + lld-link +
-xwin), CMake/Ninja. Single TU: `plugins/AutoFireBow/src/main.cpp`.
+xwin), CMake/Ninja. Single TU: `mods/AutoFireBow/src/main.cpp`.
 
 **Iterate loop (SKSE DLL — no Papyrus bytecode caching):**
 
 ```
 edit src/main.cpp
-./plugins/AutoFireBow/build.sh --install     # builds + copies DLL into Data/SKSE/Plugins
+./mods/AutoFireBow/build.sh --install     # builds + copies DLL into Data/SKSE/Plugins
 quit Skyrim to desktop  →  relaunch  →  load save
 read <prefix>/.../My Games/Skyrim Special Edition/SKSE/AutoFireBow.log
 ```
@@ -32,7 +32,7 @@ the in-game steps and reports the logged values; Opus builds and edits between r
 **Files:**
 
 - Reference (read): CommonLibSSE-NG headers under
-  `plugins/AutoFireBow/build/_deps/commonlibsse-src/include/RE/` — `ButtonEvent`, `InputEvent`,
+  `mods/AutoFireBow/build/_deps/commonlibsse-src/include/RE/` — `ButtonEvent`, `InputEvent`,
   `BSInputDeviceManager`, `InputDevices`, and how the existing `AttackInputSink` reads
   `QUserEvent()` / `IsPressed()` (`src/main.cpp:120-152`).
 - No code committed yet — output is a confirmed construction + injection recipe captured as a
@@ -65,7 +65,7 @@ void SendSyntheticAttack(bool pressed);
 
 **Verification:**
 This task is "confident we know how to build it." Done when the construction + injection calls
-compile against CommonLibSSE-NG (`./plugins/AutoFireBow/build.sh` succeeds) and the recipe is
+compile against CommonLibSSE-NG (`./mods/AutoFireBow/build.sh` succeeds) and the recipe is
 written down. Behavioral proof is Task 1 (in-game).
 
 **Commit** the `SendSyntheticAttack` helper (compiling, unused) once it builds.
@@ -78,7 +78,7 @@ written down. Behavioral proof is Task 1 (in-game).
 
 **Files:**
 
-- Modify: `plugins/AutoFireBow/src/main.cpp`
+- Modify: `mods/AutoFireBow/src/main.cpp`
 
 **Changes:**
 
@@ -119,7 +119,7 @@ Build+install, restart, equip a bow, **hold** attack. Read `AutoFireBow.log`. Re
 | No further draw after the first loose while held                                | Need synthetic press for re-nock (Task 2)                                     |
 | Black screen / no input / ambient audio only                                    | Main-thread hang — injection re-entered the pipeline; defer harder or rethink |
 
-**Verification command:** `./plugins/AutoFireBow/build.sh --install`; expected `file` output
+**Verification command:** `./mods/AutoFireBow/build.sh --install`; expected `file` output
 `PE32+ executable (DLL)`. Then in-game log read above.
 
 **Commit after the probe build is captured** (with a one-line note of the observed outcome in the
@@ -142,7 +142,7 @@ commit body once Mase reports).
 
 **Files:**
 
-- Modify: `plugins/AutoFireBow/src/main.cpp`
+- Modify: `mods/AutoFireBow/src/main.cpp`
 
 **Changes:**
 
@@ -168,7 +168,7 @@ commit body once Mase reports).
 - No main-thread hang over sustained holding.
 - Manual quick-tap = vanilla partial-draw arrow (no free full damage anymore).
 
-**Verification command:** `./plugins/AutoFireBow/build.sh --install` then the in-game checks above.
+**Verification command:** `./mods/AutoFireBow/build.sh --install` then the in-game checks above.
 
 **Commit after in-game pass.**
 
@@ -180,9 +180,9 @@ commit body once Mase reports).
 
 **Files:**
 
-- Modify: `plugins/AutoFireBow/src/main.cpp` (final comment/header pass — the file header still
+- Modify: `mods/AutoFireBow/src/main.cpp` (final comment/header pass — the file header still
   describes "force full charge … clamp"; rewrite to describe the real-input-release design).
-- Delete: `plugins/AutoFireBow/src/main.cpp.probe-logging.bak` — it was the probe-logging source
+- Delete: `mods/AutoFireBow/src/main.cpp.probe-logging.bak` — it was the probe-logging source
   lifted in Task 1 and has served its purpose once the spike ships. Delete **only if Mase confirms**
   he doesn't want to keep it as a reusable instrumentation reference for future archery RE.
 - Modify: `docs/autofirebow-nexus-page.md` — change the one-liner and "what's genuinely new" from
@@ -195,7 +195,7 @@ commit body once Mase reports).
 
 **Verification:**
 
-- `grep -rn "power = 1.0\|weaponDamage \*=\|GetPowerSpeedMult" plugins/AutoFireBow/src` → no clamp
+- `grep -rn "power = 1.0\|weaponDamage \*=\|GetPowerSpeedMult" mods/AutoFireBow/src` → no clamp
   remnants (a vtable hook may remain only if Task 2's path still needs it; it should not).
 - Docs read truthfully against the shipped behavior.
 

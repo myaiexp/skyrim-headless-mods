@@ -28,10 +28,10 @@ their in-game verification; do verify build + log + the regression checks that *
 
 - Design: `docs/plans/ghost-allies-design.md` → read the **"## v2 design"** section first (it
   governs; sections below it in that doc are pre-pivot/v1 historical).
-- v1 source (the thing being modified): `plugins/GhostAllies/src/main.cpp` (151 lines, single file).
-- Pattern source in-repo: `plugins/AutoFireBow/{CMakeLists.txt,build.sh,src/main.cpp}` — vtable-hook
+- v1 source (the thing being modified): `mods/GhostAllies/src/main.cpp` (151 lines, single file).
+- Pattern source in-repo: `mods/AutoFireBow/{CMakeLists.txt,build.sh,src/main.cpp}` — vtable-hook
   idiom (`REL::Relocation::write_vfunc`), logging, SKSE boilerplate.
-- Build/iterate: `./plugins/GhostAllies/build.sh --install`, then restart the game and read
+- Build/iterate: `./mods/GhostAllies/build.sh --install`, then restart the game and read
   `<SKSE log dir>/GhostAllies.log`.
 - External precedent for the Task 3 char-controller group write: `powerof3/PapyrusExtenderSSE`
   (`GetCollisionFilterInfo`, system-group read/write), `adamhynek/activeragdoll` (custom
@@ -57,7 +57,7 @@ their in-game verification; do verify build + log + the regression checks that *
 
 | File | Responsibility |
 |------|----------------|
-| `plugins/GhostAllies/src/main.cpp` | Entire plugin. v2 reshapes it into: log setup; `StampProjectilePhantom` free function (shared stamp logic); a per-subclass `UpdateImpl` hook (template); `InstallHooks` looping the in-scope vtables; (Task 3) ghost-group membership maintenance. Stays one file — well under the ~400-line split threshold. |
+| `mods/GhostAllies/src/main.cpp` | Entire plugin. v2 reshapes it into: log setup; `StampProjectilePhantom` free function (shared stamp logic); a per-subclass `UpdateImpl` hook (template); `InstallHooks` looping the in-scope vtables; (Task 3) ghost-group membership maintenance. Stays one file — well under the ~400-line split threshold. |
 
 No new files. CMake/build.sh unchanged.
 
@@ -70,7 +70,7 @@ Move the **arrow** effect from the `GetPowerSpeedMult` (0xB0) hook to the unifie
 new hook point against the already-verified behavior before any new feature is added.
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
+- Modify: `mods/GhostAllies/src/main.cpp`
 
 **Contracts:**
 - Keep `FindNearestFollower(RE::Actor* player) -> RE::Actor*` as-is.
@@ -107,7 +107,7 @@ new hook point against the already-verified behavior before any new feature is a
   struct.
 
 **Test Cases (verification):**
-- `./plugins/GhostAllies/build.sh` exits 0; `file build/GhostAllies.dll` → `PE32+ executable (DLL)
+- `./mods/GhostAllies/build.sh` exits 0; `file build/GhostAllies.dll` → `PE32+ executable (DLL)
   (console) x86-64, for MS Windows`. `--install` copies to `$GAME_DATA/SKSE/Plugins/`.
 - In-game (regression of v1): follower between player and enemy → arrows pass through the follower
   and hit the enemy; `GhostAllies.log` shows the stamp line. No follower in line → vanilla.
@@ -129,7 +129,7 @@ Add the spell projectile types to the install loop. Mechanism still read-only ne
 (Task 3 generalizes it). This is where "spells bypass followers" first works.
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
+- Modify: `mods/GhostAllies/src/main.cpp`
 
 **Contracts:**
 - In `InstallHooks()`, add (alongside the arrow install), passing a per-type label:
@@ -167,7 +167,7 @@ accepted-unverified feature** — verify build, log lines, and the single-follow
 block on in-game multi-follower observation.
 
 **Files:**
-- Modify: `plugins/GhostAllies/src/main.cpp`
+- Modify: `mods/GhostAllies/src/main.cpp`
 
 **Contracts:**
 - Define a reserved 16-bit ghost group constant (e.g. `constexpr std::uint32_t kGhostGroup`), chosen

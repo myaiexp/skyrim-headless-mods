@@ -5,7 +5,7 @@ Windows, no Visual Studio, no MSVC, no vcpkg. This is the second tier of headles
 (tier 1 = Papyrus, see [papyrus-toolchain.md](papyrus-toolchain.md)); it exists because some engine behaviour
 is unreachable from Papyrus (see [papyrus-limits.md](papyrus-limits.md)).
 
-**Status: working, and shipping a real hook.** `plugins/AutoFireBow/` builds a valid SKSE-shaped
+**Status: working, and shipping a real hook.** `mods/AutoFireBow/` builds a valid SKSE-shaped
 `AutoFireBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
 implements option 1 — a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
 charge for the player (verified in-game on 1.6.1170). See
@@ -68,17 +68,17 @@ Building MSVC-targeted C++ on Linux with Clang hits two issues that the toolchai
 
 | Path                                 | Role                                                                                                                                                             |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plugins/cross-env.sh`               | Sourced before building. Puts the LLVM cross tools on `PATH`/`LD_LIBRARY_PATH`, exports `XWIN_SDK`, ensures the `.lib` symlinks exist.                           |
-| `plugins/setup-sdk-symlinks.sh`      | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
-| `plugins/cmake/clang-cl-msvc.cmake`  | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
-| `plugins/AutoFireBow/CMakeLists.txt` | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `AutoFireBow.dll`.   |
-| `plugins/AutoFireBow/src/main.cpp`   | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
-| `plugins/AutoFireBow/build.sh`       | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
+| `tools/skse/cross-env.sh`               | Sourced before building. Puts the LLVM cross tools on `PATH`/`LD_LIBRARY_PATH`, exports `XWIN_SDK`, ensures the `.lib` symlinks exist.                           |
+| `tools/skse/setup-sdk-symlinks.sh`      | Creates the PascalCase `.lib` symlinks in the xwin SDK (called by `cross-env.sh`).                                                                               |
+| `tools/skse/cmake/clang-cl-msvc.cmake`  | CMake toolchain file: sets the compiler/linker/ar/rc, the `/imsvc` include dirs, the `/libpath` lib dirs, `-fdelayed-template-parsing`, and cross-find settings. |
+| `mods/AutoFireBow/CMakeLists.txt` | FetchContent for spdlog (`OVERRIDE_FIND_PACKAGE`), rapidcsv (header, fed via `RAPIDCSV_INCLUDE_DIRS`), and CommonLibSSE-NG (pinned); builds `AutoFireBow.dll`.   |
+| `mods/AutoFireBow/src/main.cpp`   | The plugin: declarative `SKSEPluginInfo` + `SKSEPluginLoad`, plus the vtable hook forcing full bow charge for the player.                                        |
+| `mods/AutoFireBow/build.sh`       | One-shot configure + build (`--install` copies the DLL into the live game's `Data/SKSE/Plugins`).                                                                |
 
 ## Build it
 
 ```bash
-cd plugins/AutoFireBow
+cd mods/AutoFireBow
 ./build.sh            # -> build/AutoFireBow.dll (PE32+, x86-64)
 ./build.sh --install  # also copy into the game's Data/SKSE/Plugins
 ```
@@ -99,9 +99,9 @@ is cached in `build/_deps` and rebuilds are incremental.
 ## Verifying a built DLL
 
 ```bash
-source plugins/cross-env.sh
-llvm-readobj --coff-exports plugins/AutoFireBow/build/AutoFireBow.dll   # expect SKSEPlugin_{Load,Query,Version}
-file plugins/AutoFireBow/build/AutoFireBow.dll                          # expect PE32+ ... (DLL), x86-64
+source tools/skse/cross-env.sh
+llvm-readobj --coff-exports mods/AutoFireBow/build/AutoFireBow.dll   # expect SKSEPlugin_{Load,Query,Version}
+file mods/AutoFireBow/build/AutoFireBow.dll                          # expect PE32+ ... (DLL), x86-64
 ```
 
 A loadable-DLL smoke test under wine (`LoadLibraryA` + `GetProcAddress` on the exports) confirms

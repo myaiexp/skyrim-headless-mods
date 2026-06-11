@@ -1,7 +1,7 @@
 # Cross-compile environment: Linux -> x86_64 Windows (MSVC ABI), headless.
 # Source this before configuring/building any SKSE C++ plugin here.
 #
-#   source plugins/cross-env.sh
+#   source tools/skse/cross-env.sh
 #
 # Provides on PATH: clang-cl, lld-link, llvm-rc, llvm-lib, llvm-dlltool.
 # clang/clang-cl come from the system `clang` package; lld-link + llvm-* come

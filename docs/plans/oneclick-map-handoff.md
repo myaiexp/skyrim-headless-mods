@@ -10,7 +10,7 @@ Nexus-ready. This doc hands a fresh session everything needed to finish it. Read
 - The feature is **proven achievable**: hooking `MessageBoxData::QueueMessage` intercepts the
   "Fast travel to X?" confirm box, and driving `FastTravelConfirmCallback::Run(kUnk1)` performs
   the trip with no box. Mase confirmed "works almost perfect" in-game.
-- The committed/installed build (`plugins/OneClickMap/src/main.cpp`) hooks `QueueMessage` at its
+- The committed/installed build (`mods/OneClickMap/src/main.cpp`) hooks `QueueMessage` at its
   **function entry** with `SKSE::GetTrampoline().write_branch<5>`. The travel branch works because
   it returns without using the trampoline. **But the pass-through path (`func(a_this)`) is a wild
   pointer and crashes on the first box that isn't a travelable fast-travel confirm** — marker
@@ -151,8 +151,8 @@ Only **two** map-click outcomes actually exist in Mase's game:
   (the probe's `write_call` at `52208/53095+0x3A6` worked at load).
 
 ## Build / install / test
-- Build: `./plugins/OneClickMap/build.sh` → `OneClickMap.dll` (PE32+).
-- Install: `./plugins/OneClickMap/build.sh --install` → copies into the live game's `SKSE/Plugins`.
+- Build: `./mods/OneClickMap/build.sh` → `OneClickMap.dll` (PE32+).
+- Install: `./mods/OneClickMap/build.sh --install` → copies into the live game's `SKSE/Plugins`.
 - Log: `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log`.
 - Crash logs (CrashLogger): `<prefix>/.../SKSE/crash-*.log`. Trust `[P]` frames; `[S]` are stack
   scans and can be false (the 52292 lead was a false `[S]`).

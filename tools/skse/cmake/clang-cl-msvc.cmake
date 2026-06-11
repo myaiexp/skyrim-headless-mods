@@ -1,8 +1,8 @@
 # CMake toolchain: cross-compile Linux -> x86_64 Windows (MSVC ABI) with clang-cl.
 #
-# Pairs with plugins/cross-env.sh (must be sourced first so XWIN_SDK is set and
+# Pairs with tools/skse/cross-env.sh (must be sourced first so XWIN_SDK is set and
 # clang-cl/lld-link/llvm-* are on PATH). Pass to CMake with:
-#   -DCMAKE_TOOLCHAIN_FILE=plugins/cmake/clang-cl-msvc.cmake
+#   -DCMAKE_TOOLCHAIN_FILE=tools/skse/cmake/clang-cl-msvc.cmake
 
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR AMD64)
@@ -12,7 +12,7 @@ if(DEFINED ENV{XWIN_SDK})
 	set(XWIN_SDK "$ENV{XWIN_SDK}")
 endif()
 if(NOT EXISTS "${XWIN_SDK}/crt/include")
-	message(FATAL_ERROR "clang-cl-msvc.cmake: XWIN_SDK invalid (${XWIN_SDK}). Source plugins/cross-env.sh first.")
+	message(FATAL_ERROR "clang-cl-msvc.cmake: XWIN_SDK invalid (${XWIN_SDK}). Source tools/skse/cross-env.sh first.")
 endif()
 
 set(_target "x86_64-pc-windows-msvc")

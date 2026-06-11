@@ -7,7 +7,7 @@ dialogue pacing, built in phases:
 | ------ | ----------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------- |
 | **v1** | **Manual player-line skip** (E / left-click), vanilla-style                   | swf only            | **shipped** — design: `docs/plans/dbvo-dialogue-tweaks-design.md` |
 | **v2** | Configurable response gap (pad ms + ms/word) via MCM                          | swf + Papyrus + MCM | **shipped** — verified in-game                                    |
-| v3     | SKSE C++: cut player voice on skip; optional exact `.fuz`-duration scheduling | SKSE (`plugins/`)   | scoped below, not started                                         |
+| v3     | SKSE C++: cut player voice on skip; optional exact `.fuz`-duration scheduling | SKSE (`plugin/`)    | scoped below, not started                                         |
 
 v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
 (the configurable gap); v3 is the **Tier 3** section near the bottom.
@@ -79,10 +79,10 @@ Summary of the chosen shape:
 > `wpm` slider; the only change is the unit/reciprocal. Stock-formula mentions of "300 wpm" below still
 > correctly describe DBVO's _original_ code.
 
-## Tier 3 — the actually-correct fix (separate, `plugins/`)
+## Tier 3 — the actually-correct fix (in-place, `plugin/`)
 
 A fixed pad and a wpm guess are both approximations. An **SKSE C++ plugin** (like the others in
-`plugins/`) could read the real **`.fuz`/`.xwm` duration** of the player line and schedule the NPC
+`mods/`) could read the real **`.fuz`/`.xwm` duration** of the player line and schedule the NPC
 reply to land exactly when it ends — zero dead air, zero overlap, on every line, no calibration.
 This eliminates the word-count heuristic entirely and would supersede tier 2. Track separately if/when
 tier 2 isn't good enough.

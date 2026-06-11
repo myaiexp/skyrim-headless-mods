@@ -3,7 +3,7 @@
 **Status:** approved 2026-06-09, not yet built.
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain.
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE.
-**Name:** `OneClickMap` — **locked** (drives `plugins/OneClickMap/`, `CMakeLists.txt` target,
+**Name:** `OneClickMap` — **locked** (drives `mods/OneClickMap/`, `CMakeLists.txt` target,
 `build.sh`, and `OneClickMap.log`; renaming later means touching all four, so pin it at step 0).
 
 ## Goal
@@ -128,9 +128,9 @@ rather than assuming every path suppresses.
 
 ## Architecture
 
-- **New standalone plugin:** `plugins/OneClickMap/`, built with the existing headless
+- **New standalone plugin:** `mods/OneClickMap/`, built with the existing headless
   clang-cl + lld-link + xwin + CommonLibSSE-NG (FetchContent) toolchain, mirroring
-  `plugins/AutoFireBow/` and `plugins/GhostAllies/` (own `CMakeLists.txt`, `build.sh`,
+  `mods/AutoFireBow/` and `mods/GhostAllies/` (own `CMakeLists.txt`, `build.sh`,
   `src/main.cpp`). Loads/ships/disables independently — one DLL, one responsibility.
 - **Logging:** own `OneClickMap.log` in the SKSE log dir (same pattern as the sibling
   plugins), used for the proof-point and to verify each branch fires correctly in-game.

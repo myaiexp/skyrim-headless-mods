@@ -66,7 +66,7 @@ Verification points (confirm when we actually build — don't assume):
    ships CMake; FetchContent resolved its deps cleanly). Two fixes were needed:
    `-fdelayed-template-parsing` (MSVC lazy template-body semantics) and PascalCase `.lib`
    symlinks (lld-link is case-sensitive). Both documented and automated.
-2. ~~Add a `plugins/AutoFireBow/` tree with its own build script.~~ **DONE** — `plugins/AutoFireBow/`
+2. ~~Add a `mods/AutoFireBow/` tree with its own build script.~~ **DONE** — `mods/AutoFireBow/`
    builds `AutoFireBow.dll` (valid PE32+, exports `SKSEPlugin_{Load,Query,Version}`, loads under
    wine). It's a hello-world: it logs on load and hooks nothing yet.
 3. ~~RE the bow charge; implement option 1 (force full charge on release); test in-game.~~
@@ -104,7 +104,7 @@ flag) or the damage rescale would compound on each `GetSpeed` call.
 AE vtable slot is **0xB0** (SE is 0xAF) — from CommonLibSSE-NG
 `Projectile::GetPowerSpeedMult → RelocateVirtual(0xAF, 0xB0)`; `RELOCATION_ID`/vtable lookups
 resolve against the Address Library DB for 1.6.1170 (installed in-game). Code:
-`plugins/AutoFireBow/src/main.cpp`.
+`mods/AutoFireBow/src/main.cpp`.
 
 ## Rapid-fire loop (hold-attack auto-fire) — DONE
 
