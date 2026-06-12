@@ -412,12 +412,30 @@ launch_and_hold() {
   fi
 }
 
+# A test session runs the game under gamescope so it is drivable + screenshot-able,
+# and is DETACHED: launch -> wait for in-world -> return, so CC can issue shot/drive/
+# ready as separate commands. There is no EXIT-trap restore (a detached session can't
+# be trap-covered) — `skytest stop` tears down AND restores Data -> full.
 cmd_test() {
-  local mod="$1" deps="${2:-}"
-  [ -n "$mod" ] || usage_err "test: missing mod path" "skytest test <mod-dir-or-file> [--with a.dll,b.dll]"
+  local mod="" deps="" backend="wayland"
+  local usage="skytest test <mod-dir-or-file> [--with a.dll,b.dll] [--headless]"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --headless) backend="headless"; shift ;;
+      --sdl)      backend="sdl"; shift ;;   # visible fallback if --backend wayland misbehaves under Hyprland
+      --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
+      -*)         usage_err "test: unknown option: $1" "$usage" ;;
+      *)          if [ -z "$mod" ]; then mod="$1"; else usage_err "test: unexpected arg: $1" "$usage"; fi; shift ;;
+    esac
+  done
+
+  [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
-  [ -e "$mod" ] || usage_err "mod path not found: $mod" "skytest test <mod-dir-or-file>"
+  [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
   game_running && die "Skyrim is running - close it first."
+  # Refuse BEFORE rebuilding/parking the profile — a second launch over a live session
+  # would double-park Data with no trap to undo it (detached model has no auto-restore).
+  gs_session_alive && die "a test session is already live (pid $(gs_session_pid))" "skytest stop"
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
 
   say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
@@ -425,21 +443,53 @@ cmd_test() {
   inject_skytestprobe          # runtime probe toolkit, every test (unconditional)
   backup_plugins
 
-  local lock_msg="test profile locked until you quit."
   if base_save_exists; then
     inject_startonsave
     say "base save '$BASE_SAVE_NAME' found - autoloading it on launch (hold SHIFT to skip to menu)."
-    lock_msg="$lock_msg booting into '$BASE_SAVE_NAME'."
   else
-    say "no base save '$BASE_SAVE_NAME.ess' - launching to the menu. Build one with: skytest setup-save"
-    lock_msg="$lock_msg (use a NEW GAME; modded saves won't load here.)"
+    say "no base save '$BASE_SAVE_NAME.ess' - launching to the menu (use a NEW GAME). Build one with: skytest setup-save"
   fi
 
-  trap 'point_data full; restore_plugins; say "restored: Data -> full, Plugins.txt restored"' EXIT INT TERM
   write_test_plugins "$mod"
   point_data test
   say "Data -> test."
-  launch_and_hold "$lock_msg"
+
+  gs_launch "$backend"
+
+  if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then
+    point_data full; restore_plugins
+    say "(SKYTEST_NO_LAUNCH) built + injected + swapped profile, then restored Data -> full. No game launched."
+    return 0
+  fi
+
+  local rc=0; gs_wait_ready || rc=$?
+  case "$rc" in
+    2) die "test session died during boot - check $GS_LOG" "skytest stop" ;;
+    1) say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready" ;;
+  esac
+  say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
+  say "when done:  skytest stop   (tears down + restores Data -> full)"
+}
+
+# ready / shot / drive / stop — operate on the running gamescope test session that
+# `cmd_test` launched. They error cleanly when no session/socket is up.
+cmd_ready() {
+  gs_session_alive || die "no live test session to wait on" "skytest test <mod>"
+  gs_wait_ready "$@"
+}
+cmd_shot()  { gs_shot "$@"; }
+cmd_drive() {
+  # A stale gamescope-0-ei socket can outlive a dead session, so the socket file alone
+  # isn't proof of life — require a live session (then gs_drive validates the socket).
+  gs_session_alive || die "no live test session to drive" "skytest test <mod>"
+  gs_drive "$@"
+}
+cmd_stop() {
+  gs_session_alive || die "no live test session to stop" "skytest status"
+  gs_stop || true                      # gs_stop warns on its own stderr if a straggler survived
+  point_data full
+  restore_plugins
+  say "restored: Data -> full, Plugins.txt restored"
 }
 
 cmd_setup_save() {
@@ -557,16 +607,22 @@ skytest — isolated Skyrim SE mod-test launcher (symlink-profile based)
 Usage: skytest <verb> [args]      (no verb → status)
 
 Verbs:
-  status            show current profile state                  [--json]
+  status            show current profile state + live test session [--json]
   init              preview the one-time migration (read-only)  [--commit --full --json]
   setup-save        build the base test save (vanilla launch)
-  test <mod>        launch vanilla + one mod                    [--with a.dll,b.dll]
-  play              launch the full modded game (fast path)
+  test <mod>        start a drivable gamescope test session      [--with a.dll,b.dll] [--headless]
+  ready [secs]      block until the test session is in-world (probe poll)
+  shot [out.png]    screenshot the test session       [cropWxH+X+Y] [scaleWxH]
+  drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
+  stop              tear down the test session + restore Data → full
+  play              launch the full modded game (fast path, blocking, not drivable)
   normal            force Data → full (recover after a crash)
   uninstall         revert to the original real Data/ directory
 
-  <mod> is also accepted bare:  `skytest path/to/mod`  ==  `skytest test path/to/mod`
-  Run `skytest <verb> --help` for examples.
+  test = a detached, drivable gamescope session (visible by default; --headless for no
+  window). It does NOT block: run shot/drive/ready as follow-up commands, then `stop` to
+  end + restore. play/normal stay the bare direct path. <mod> is also accepted bare:
+  `skytest path/to/mod` == `skytest test path/to/mod`. Run `skytest <verb> --help` for examples.
 EOF
 }
 
@@ -599,13 +655,63 @@ Examples:
 EOF
 ;;
     test) cat <<'EOF'
-skytest test <mod> — launch vanilla + one mod (boots into the base save if present)
+skytest test <mod> — start a drivable gamescope test session (vanilla + one mod;
+boots into the base save if present). DETACHED: returns once in-world so you can
+drive it with shot/drive/ready, then `skytest stop` to end + restore Data → full.
   <mod>        a Data-shaped folder, or a single .dll/.esp/.esl/.esm file
   --with a,b   extra framework DLLs to pull from the full profile (prefix match)
+  --headless   no window (offscreen render); default is a window nested in Hyprland
+  --sdl        visible fallback if --backend wayland misbehaves under Hyprland
 Examples:
-  skytest test build/MyMod
+  skytest test build/MyMod                    # visible, drivable
+  skytest test build/MyMod.dll --headless     # invisible, drivable
   skytest test build/MyMod.dll --with SKSE,po3_
   skytest build/MyMod.dll        # bare shortcut, identical to `test`
+Then:
+  skytest ready                  # block until in-world
+  skytest shot /tmp/a.png        # capture a frame
+  skytest drive seq down down enter
+  skytest stop                   # end + restore Data → full
+EOF
+;;
+    ready) cat <<'EOF'
+skytest ready [timeout] — block until the running test session is in-world
+(polls SkytestProbe status for inWorld:true). Default timeout 180s.
+Exit: 0 = in-world, 1 = timed out, 2 = session died.
+Examples:
+  skytest ready
+  skytest ready 240
+EOF
+;;
+    shot) cat <<'EOF'
+skytest shot [out.png] [cropWxH+X+Y] [scaleWxH] — screenshot the test session
+(SIGUSR2 → newest gamescope AVIF → PNG). Default out: /tmp/sky-shot.png.
+Examples:
+  skytest shot /tmp/a.png
+  skytest shot /tmp/crop.png 400x200+880+440
+EOF
+;;
+    drive) cat <<'EOF'
+skytest drive <cmd> … — inject input into the test session via libei (isolated to it).
+  tap <key>            press+release one key            (e.g. drive tap enter)
+  seq <key> …          tap several keys in order        (e.g. drive seq down down enter)
+  key <key> <0|1>      hold(1)/release(0) one key
+  click [<x> <y>]      click at (x,y), or at current cursor if omitted
+  abs <x> <y>          move cursor to pixel (x,y)
+  rel <dx> <dy>        relative pointer move (1 unit = 1 px)
+  raw <eidriver args>  pass through verbatim
+Keys: esc enter tab space backspace up down left right pageup pagedown home end
+      tilde/console e r m w a s d f y n j i
+Examples:
+  skytest drive seq down down enter
+  skytest drive click 1195 556
+EOF
+;;
+    stop) cat <<'EOF'
+skytest stop — tear down the running gamescope test session and restore Data → full
+(+ Plugins.txt). Kills by gamescope session, so a real game in the same prefix is safe.
+Examples:
+  skytest stop
 EOF
 ;;
     play) cat <<'EOF'
@@ -637,7 +743,7 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 
 # per-verb help: `skytest <verb> --help`
 case "${1:-}" in
-  status|init|setup-save|test|play|normal|uninstall)
+  status|init|setup-save|test|ready|shot|drive|stop|play|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
 esac
 
@@ -645,19 +751,14 @@ case "${1:-}" in
   ""|status)    cmd_status "${2:-}" ;;
   init)         shift; cmd_init "$@" ;;
   setup-save)   cmd_setup_save ;;
+  test)         shift; cmd_test "$@" ;;
+  ready)        shift; cmd_ready "$@" ;;
+  shot)         shift; cmd_shot "$@" ;;
+  drive)        shift; cmd_drive "$@" ;;
+  stop)         cmd_stop ;;
   play)         cmd_play ;;
   normal)       cmd_normal ;;
   uninstall)    cmd_uninstall ;;
-  test)
-    shift
-    mod="${1:-}"; deps=""
-    [ "${2:-}" = "--with" ] && deps="${3:-}"
-    cmd_test "$mod" "$deps"
-    ;;
   -*)           usage_err "unknown option: $1" "skytest help" ;;
-  *)            # bare positional = mod-path shortcut for `test`
-    mod="$1"; deps=""
-    [ "${2:-}" = "--with" ] && deps="${3:-}"
-    cmd_test "$mod" "$deps"
-    ;;
+  *)            cmd_test "$@" ;;   # bare positional = mod-path shortcut for `test`
 esac
