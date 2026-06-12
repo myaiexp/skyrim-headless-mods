@@ -41,17 +41,31 @@ shopt -s nullglob
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-ROOT="/home/mse/.steam/steam/steamapps/common/Skyrim Special Edition"
-DATA="$ROOT/Data"
-PROFILES="$ROOT/.profiles"
+# One canonical Steam base. Proton, the (now-unused) launch-skse.sh, and the absorbed
+# headless backend all already point here; deriving every path from STEAM kills the old
+# dual /.steam/steam vs /.local/share/Steam scheme (they symlink to the same install).
+# SKYDIR is the game dir (was ROOT).
+STEAM="/home/mse/.local/share/Steam"
+APPID="489830"
+SKYDIR="$STEAM/steamapps/common/Skyrim Special Edition"
+PROTON="$STEAM/steamapps/common/Proton - Experimental/proton"
+LOADER="$SKYDIR/skse64_loader.exe"
+DATA="$SKYDIR/Data"
+PROFILES="$SKYDIR/.profiles"
 FULL="$PROFILES/full"
 VANILLA="$PROFILES/vanilla"
 TEST="$PROFILES/test"
-CCC="$ROOT/Skyrim.ccc"
-LAUNCH="$ROOT/launch-skse.sh"
-PREFIX="/home/mse/.steam/steam/steamapps/compatdata/489830/pfx/drive_c/users/steamuser"
+CCC="$SKYDIR/Skyrim.ccc"
+PREFIX="$STEAM/steamapps/compatdata/$APPID/pfx/drive_c/users/steamuser"
 PLUGINS_TXT="$PREFIX/AppData/Local/Skyrim Special Edition/Plugins.txt"
 SAVES_DIR="$PREFIX/Documents/My Games/Skyrim Special Edition/Saves"
+
+# The gamescope test-session backend (sourced, never executed). Provides gs_launch /
+# gs_wait_ready / gs_shot / gs_drive / gs_stop / gs_session_alive — all operating on one
+# detached gamescope session. Needs SCRIPT_DIR + PREFIX (above) and the helpers below;
+# its functions only run after those exist. See lib/gamescope.sh + docs/headless-findings.md.
+# shellcheck source=lib/gamescope.sh
+source "$SCRIPT_DIR/lib/gamescope.sh"
 
 # Base test save (built by --setup-save) and the Start On Save autoload plugin.
 BASE_SAVE_NAME="SkytestBase"
@@ -89,6 +103,25 @@ game_running() { pgrep -i 'skyrimse' >/dev/null 2>&1; }  # match process name, n
 
 # Where the real, full Data currently lives: FULL if migrated, else DATA.
 src_data() { if [ -L "$DATA" ]; then printf '%s' "$FULL"; else printf '%s' "$DATA"; fi; }
+
+# Shared SKSE launch core: every launch path (direct play, gamescope test, setup-save)
+# runs the same `"$PROTON" run "$LOADER"`. This prepares its environment — cd to the
+# game dir + export the Steam-compat vars — but deliberately does NOT exec/launch:
+# the caller decides to exec (play), wrap it under gamescope (test), or run-and-poll
+# (setup-save). A function that exec'd couldn't be a gamescope `--` argv, and the
+# pgrep-hold paths must keep their shell alive. SteamGameId is set on purpose: the
+# headless path needed it and it's harmless to the direct path (merge design §Launch core).
+skse_env_export() {
+  cd "$SKYDIR" || die "game dir not found: $SKYDIR"
+  export STEAM_COMPAT_DATA_PATH="$STEAM/steamapps/compatdata/$APPID"
+  export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM"
+  export SteamAppId="$APPID"
+  export SteamGameId="$APPID"
+}
+
+# Preflight for any launch path: proton + the SKSE loader must exist (replaces the old
+# `[ -x launch-skse.sh ]` guard now that skytest no longer shells out to that script).
+skse_launch_ready() { [ -x "$PROTON" ] && [ -f "$LOADER" ]; }
 
 # --- classification (whitelist) ----------------------------------------------
 
@@ -346,7 +379,8 @@ launch_and_hold() {
   fi
 
   say "Launching SKSE..."
-  SteamAppId=489830 bash "$LAUNCH" || true   # steam_api64 init needs the appid; don't rely on ambient env
+  skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
+  "$PROTON" run "$LOADER" || true  # the loader exits in ~2s; the real game lives on (we poll for it below)
 
   # The loader and an early launcher stub flash and die within a second or two,
   # and they also match a 'skyrimse' name search. If we restored on their exit
@@ -384,7 +418,7 @@ cmd_test() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   [ -e "$mod" ] || usage_err "mod path not found: $mod" "skytest test <mod-dir-or-file>"
   game_running && die "Skyrim is running - close it first."
-  [ -x "$LAUNCH" ] || die "launch-skse.sh not found/executable at $LAUNCH"
+  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
 
   say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
   build_test_profile "$mod" "$deps"
@@ -411,7 +445,7 @@ cmd_test() {
 cmd_setup_save() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   game_running && die "Skyrim is running - close it first."
-  [ -x "$LAUNCH" ] || die "launch-skse.sh not found/executable at $LAUNCH"
+  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
   [ -d "$VANILLA" ] || die "vanilla profile missing." "skytest init --commit"
 
   if base_save_exists; then
@@ -462,7 +496,8 @@ cmd_play() {
   fi
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then say "would launch full modded game (NO_LAUNCH set)"; return 0; fi
   say "launching full modded game via the fast direct path..."
-  exec env SteamAppId=489830 bash "$LAUNCH"
+  skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
+  exec "$PROTON" run "$LOADER"     # blocking, no gamescope — the daily-driver fast path
 }
 
 cmd_status() {
