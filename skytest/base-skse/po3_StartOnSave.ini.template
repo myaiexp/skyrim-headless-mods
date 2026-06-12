@@ -1,0 +1,23 @@
+[Settings]
+
+;Auto load specific save. If blank, the last save will be loaded.
+;skytest pins this to the base test save so a modded autosave is never picked.
+Save File = @BASE_SAVE@
+
+;Auto load saves belonging to this character only. If blank, all saves will be considered.
+Character Name =
+
+;Type of save to auto load
+;0 - Last save, 1 - Last quicksave, 2 - Last autosave, 3 - Last manual save.
+;4 - First save, 5 - First quicksave, 6 - First autosave, 7 - First manual save.
+Save Type = 0
+
+;Skip autoload by pressing this key (default: SHIFT) before the main menu loads.
+Skip AutoLoad Hotkey = 16
+
+;Do NOT auto-start a new game if the pinned save is missing - skytest guards on that
+;separately, and a stray new game would defeat the point of a prepared save.
+Start New Game = false
+
+;Test saves are vanilla+base only; no missing-content warning is meaningful here.
+Disable Missing Content Warning = true

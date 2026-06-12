@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build SkytestProbe.dll headlessly (Linux -> Windows) with clang-cl + xwin.
 #   ./build.sh            configure + build into build/
-#   ./build.sh --stage    also stage DLL + ini template into 1-skytest/base-skse/
+#   ./build.sh --stage    also stage DLL + ini template into skytest/base-skse/
 #                         (where skytest injects it into the test profile)
 #   ./build.sh --install  also copy the DLL into the live game's SKSE/Plugins
 #                         (full-profile manual install, for DBVO-style cases)
@@ -30,7 +30,7 @@ for arg in "$@"; do
 	--stage)
 		# The skytest base-skse staging dir: skytest injects SkytestProbe.dll into
 		# the test profile unconditionally, copying the ini verbatim (no sed).
-		STAGE="$HOME/Downloads/skyrim-mods/1-skytest/base-skse"
+		STAGE="$REPO_ROOT/skytest/base-skse"
 		[ -d "$STAGE" ] || { echo "stage dir missing: $STAGE" >&2; exit 1; }
 		cp -v "$DLL" "$STAGE/SkytestProbe.dll"
 		cp -v "$HERE/SkytestProbe.ini" "$STAGE/SkytestProbe.ini.template"

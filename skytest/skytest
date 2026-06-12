@@ -1,0 +1,626 @@
+#!/usr/bin/env bash
+# skytest - symlink-profile launcher for fast, isolated Skyrim SE mod testing.
+#
+# Turns the game's Data/ into a symlink pointing at one of several profiles:
+#   .profiles/full     your real modded Data (renamed once, never modified)
+#   .profiles/vanilla  whitelist symlink-farm: vanilla BSAs+plugins + Address Library + CrashLogger
+#   .profiles/test     vanilla + the single mod under test (rebuilt each run)
+#
+# The ONLY change to the working install is one instant, reversible rename
+# (Data -> .profiles/full + a symlink). `skytest uninstall` reverts it exactly.
+#
+# Usage (run `skytest help`, or `skytest <verb> --help` for examples):
+#   skytest                     show current state (default, no args)
+#   skytest status              show current state            [--json]
+#   skytest init                read-only: show vanilla/mod split + planned migration
+#                               [--commit apply it] [--full list excluded mods] [--json]
+#   skytest setup-save          launch vanilla (no mod) to BUILD the base test save:
+#                               at the menu, console `coc qasmoke`, place any fixtures,
+#                               then `save SkytestBase`, quit. Used by the autoload below.
+#   skytest test <mod> [--with a.dll,b.dll]
+#                               launch vanilla + that mod. If the base save exists, boots
+#                               straight into it (Start On Save autoload); else to the menu.
+#                               Restores to full on exit. `skytest <mod>` is a shortcut.
+#   skytest play                launch the FULL modded game over the fast direct path
+#   skytest normal              force Data -> full (recover after a crash)
+#   skytest uninstall           revert to the original real Data/ directory
+#
+# v2 "boot into a test save": a test run injects powerofthree's Start On Save (a
+# DLL-only, Address-Library-only SKSE plugin) into the TEST profile and pins its
+# "Save File" to the base save built by --setup-save, so launch lands in-world with
+# the character controllable. Start On Save lives ONLY in the test profile (not in
+# vanilla) so --setup-save stays at the menu. Hold SHIFT while the gear spins to skip
+# autoload into the menu. The base save is made in vanilla+base only, so it loads under
+# any vanilla+1 test. (base-skse/ holds the DLL + ini template; see README.)
+
+set -euo pipefail
+shopt -s nullglob
+
+# Resolve through symlinks so PATH installs (e.g. ~/.local/bin/skytest -> repo) still
+# find base-skse/ in the real script directory, not the symlink's location.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+ROOT="/home/mse/.steam/steam/steamapps/common/Skyrim Special Edition"
+DATA="$ROOT/Data"
+PROFILES="$ROOT/.profiles"
+FULL="$PROFILES/full"
+VANILLA="$PROFILES/vanilla"
+TEST="$PROFILES/test"
+CCC="$ROOT/Skyrim.ccc"
+LAUNCH="$ROOT/launch-skse.sh"
+PREFIX="/home/mse/.steam/steam/steamapps/compatdata/489830/pfx/drive_c/users/steamuser"
+PLUGINS_TXT="$PREFIX/AppData/Local/Skyrim Special Edition/Plugins.txt"
+SAVES_DIR="$PREFIX/Documents/My Games/Skyrim Special Edition/Saves"
+
+# Base test save (built by --setup-save) and the Start On Save autoload plugin.
+BASE_SAVE_NAME="SkytestBase"
+SOS_DLL="$SCRIPT_DIR/base-skse/po3_StartOnSave.dll"
+SOS_INI_TEMPLATE="$SCRIPT_DIR/base-skse/po3_StartOnSave.ini.template"
+
+# SkytestProbe — the runtime probe toolkit (DLL-only, Address-Library-only). Injected
+# into the test profile unconditionally (no save-existence condition); ini copied
+# verbatim (no sed). Built from ~/Projects/skyrim-headless-mods/mods/SkytestProbe.
+PROBE_DLL="$SCRIPT_DIR/base-skse/SkytestProbe.dll"
+PROBE_INI_TEMPLATE="$SCRIPT_DIR/base-skse/SkytestProbe.ini.template"
+
+BASE_MASTERS=(Skyrim.esm Update.esm Dawnguard.esm HearthFires.esm Dragonborn.esm)
+
+say()  { printf 'skytest: %s\n' "$*"; }
+# die: runtime failure (exit 1). usage_err: bad invocation (exit 2). Both -> stderr,
+# both take an optional second arg printed as a "Try:" next-step line (AXI #6).
+die()  { printf 'skytest: ERROR: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit 1; }
+usage_err() { printf 'skytest: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit 2; }
+jbool() { [ "$1" = 1 ] && printf true || printf false; }
+# Emit a JSON array of strings from stdin (one per line; blank lines ignored).
+json_arr() {
+  local first=1 line out="["
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    line=${line//\\/\\\\}; line=${line//\"/\\\"}
+    [ "$first" = 1 ] && first=0 || out+=","
+    out+="\"$line\""
+  done
+  printf '%s]' "$out"
+}
+
+game_running() { pgrep -i 'skyrimse' >/dev/null 2>&1; }  # match process name, not cmdlines (avoids self-match)
+
+# Where the real, full Data currently lives: FULL if migrated, else DATA.
+src_data() { if [ -L "$DATA" ]; then printf '%s' "$FULL"; else printf '%s' "$DATA"; fi; }
+
+# --- classification (whitelist) ----------------------------------------------
+
+# vanilla plugin basenames present in $1 (base masters + Skyrim.ccc, CRLF-safe)
+collect_vanilla_plugins() {
+  local src="$1" p b f
+  local -A van=()
+  for p in "${BASE_MASTERS[@]}"; do van["${p,,}"]=1; done
+  if [ -f "$CCC" ]; then
+    while IFS= read -r p || [ -n "$p" ]; do
+      p="${p%$'\r'}"; [ -n "$p" ] || continue
+      van["${p,,}"]=1
+    done < "$CCC"
+  fi
+  for f in "$src"/*.es[mlp]; do
+    b=$(basename "$f")
+    [ -n "${van[${b,,}]:-}" ] && printf '%s\n' "$b"
+  done
+  return 0
+}
+
+# vanilla BSA basenames present in $1 (Skyrim - *, cc*, _ResourcePack*)
+collect_vanilla_bsas() {
+  local src="$1" f b
+  shopt -s nocasematch
+  for f in "$src"/*.bsa; do
+    b=$(basename "$f")
+    if [[ "$b" =~ ^(Skyrim\ -|cc|_ResourcePack) ]]; then printf '%s\n' "$b"; fi
+  done
+  shopt -u nocasematch
+  return 0
+}
+
+# base SKSE files every C++ test needs: Address Library + CrashLogger (+ its config)
+collect_base_skse() {
+  local src="$1/SKSE/Plugins" f
+  [ -d "$src" ] || return 0
+  for f in "$src"/versionlib*.bin "$src"/CrashLogger*; do printf '%s\n' "$(basename "$f")"; done
+  return 0
+}
+
+# --- profile building --------------------------------------------------------
+
+build_vanilla_profile() {
+  local b f
+  rm -rf "$VANILLA"
+  mkdir -p "$VANILLA/SKSE/Plugins"
+  while IFS= read -r b; do ln -s "$FULL/$b" "$VANILLA/$b"; done < <(collect_vanilla_plugins "$FULL")
+  while IFS= read -r b; do ln -s "$FULL/$b" "$VANILLA/$b"; done < <(collect_vanilla_bsas "$FULL")
+  while IFS= read -r f; do ln -s "$FULL/SKSE/Plugins/$f" "$VANILLA/SKSE/Plugins/$f"; done < <(collect_base_skse "$FULL")
+}
+
+build_test_profile() {
+  local mod="$1" deps="${2:-}"
+  rm -rf "$TEST"
+  cp -a "$VANILLA/." "$TEST/"            # copy the vanilla symlink-farm (links preserved)
+  if [ -f "$mod" ]; then
+    # a single build artifact: place it where it installs in Data
+    case "$mod" in
+      *.dll)     ln -sfn "$mod" "$TEST/SKSE/Plugins/$(basename "$mod")" ;;
+      *.es[mlp]) ln -sfn "$mod" "$TEST/$(basename "$mod")" ;;
+      *) die "don't know where to place file: $mod" ;;
+    esac
+  else
+    # a Data-shaped folder: mirror its layout exactly
+    local f rel
+    while IFS= read -r -d '' f; do
+      rel="${f#"$mod"/}"
+      mkdir -p "$TEST/$(dirname "$rel")"
+      ln -sfn "$f" "$TEST/$rel"
+    done < <(find "$mod" -type f -print0)
+  fi
+  # optional extra framework DLLs pulled from the full profile
+  if [ -n "$deps" ]; then
+    local d match
+    IFS=',' read -ra arr <<< "$deps"
+    for d in "${arr[@]}"; do
+      d="${d// /}"; [ -n "$d" ] || continue
+      for match in "$FULL/SKSE/Plugins/$d"*; do
+        ln -sfn "$match" "$TEST/SKSE/Plugins/$(basename "$match")"
+      done
+    done
+  fi
+}
+
+# --- Data symlink switching (atomic) -----------------------------------------
+
+point_data() {                            # point_data full|vanilla|test
+  local tgt="$PROFILES/$1"
+  [ -d "$tgt" ] || die "profile not found: $1"
+  ln -s "$tgt" "$DATA.swap.$$"
+  mv -T "$DATA.swap.$$" "$DATA"
+}
+
+backup_plugins()  { [ -f "$PLUGINS_TXT" ] && cp -f "$PLUGINS_TXT" "$PROFILES/Plugins.txt.bak"; }
+restore_plugins() { [ -f "$PROFILES/Plugins.txt.bak" ] && cp -f "$PROFILES/Plugins.txt.bak" "$PLUGINS_TXT"; }
+
+write_test_plugins() {
+  local mod="$1" f
+  {
+    echo "# Generated by skytest (test profile) - do not keep"
+    if [ -f "$mod" ]; then
+      case "$mod" in *.es[mlp]) echo "*$(basename "$mod")" ;; esac
+    else
+      while IFS= read -r -d '' f; do echo "*$(basename "$f")"; done \
+        < <(find "$mod" -maxdepth 2 -type f \( -iname '*.esp' -o -iname '*.esl' -o -iname '*.esm' \) -print0)
+    fi
+  } > "$PLUGINS_TXT"
+}
+
+# vanilla-only Plugins.txt (for --setup-save): base masters + Skyrim.ccc entries.
+write_vanilla_plugins() {
+  {
+    echo "# Generated by skytest (vanilla setup) - do not keep"
+    while IFS= read -r b; do echo "*$b"; done < <(collect_vanilla_plugins "$VANILLA")
+  } > "$PLUGINS_TXT"
+}
+
+base_save_exists() { [ -f "$SAVES_DIR/$BASE_SAVE_NAME.ess" ]; }
+
+# Inject Start On Save into the TEST profile and pin it to the base save, so launch
+# autoloads straight into the prepared scene. Only call when the base save exists.
+inject_startonsave() {
+  [ -f "$SOS_DLL" ] || die "Start On Save DLL missing at $SOS_DLL"
+  [ -f "$SOS_INI_TEMPLATE" ] || die "Start On Save ini template missing at $SOS_INI_TEMPLATE"
+  mkdir -p "$TEST/SKSE/Plugins"
+  ln -sfn "$SOS_DLL" "$TEST/SKSE/Plugins/po3_StartOnSave.dll"
+  sed "s/@BASE_SAVE@/$BASE_SAVE_NAME/" "$SOS_INI_TEMPLATE" > "$TEST/SKSE/Plugins/po3_StartOnSave.ini"
+}
+
+# Inject SkytestProbe into the TEST profile, unconditionally (mirrors the StartOnSave
+# symlink injection but with NO save-existence condition; the ini is copied verbatim,
+# no sed substitution). Gives every isolated test the runtime probe toolkit — CC writes
+# probe specs to commands.jsonl, the running game writes traces to trace.jsonl (both under
+# the SKSE log dir's skytest/). Degrades to a warning (not a hard failure) if the DLL
+# hasn't been built/staged, so skytest still works without it.
+inject_skytestprobe() {
+  if [ ! -f "$PROBE_DLL" ]; then
+    say "note: SkytestProbe DLL absent at $PROBE_DLL — skipping probe injection (build it in ~/Projects/skyrim-headless-mods/mods/SkytestProbe)."
+    return 0
+  fi
+  mkdir -p "$TEST/SKSE/Plugins"
+  ln -sfn "$PROBE_DLL" "$TEST/SKSE/Plugins/SkytestProbe.dll"
+  [ -f "$PROBE_INI_TEMPLATE" ] && cp -f "$PROBE_INI_TEMPLATE" "$TEST/SKSE/Plugins/SkytestProbe.ini"
+}
+
+# --- commands ----------------------------------------------------------------
+
+cmd_init() {
+  local commit="" full="" json=""
+  for a in "$@"; do
+    case "$a" in
+      --commit) commit=1 ;;
+      --full)   full=1 ;;
+      --json)   json=1 ;;
+      *) usage_err "init: unknown option: $a" "skytest init --help" ;;
+    esac
+  done
+  local src; src=$(src_data)
+  [ -d "$src" ] || die "Data dir not found at $src"
+
+  local nplug nbsa ndll migrated
+  nplug=$(collect_vanilla_plugins "$src" | wc -l)
+  nbsa=$(collect_vanilla_bsas "$src" | wc -l)
+  ndll=$(find "$src/SKSE/Plugins" -maxdepth 1 -name '*.dll' 2>/dev/null | wc -l)
+  [ -L "$DATA" ] && migrated=1 || migrated=0
+
+  local excluded nexcl
+  excluded=$(comm -23 \
+    <(for f in "$src"/*.es[mlp]; do basename "$f"; done | sort -f) \
+    <(collect_vanilla_plugins "$src" | sort -f))
+  nexcl=$(grep -c . <<<"$excluded" || true)
+
+  if [ -n "$json" ]; then
+    printf '{"source":"%s","migrated":%s,"vanilla_plugins":%s,"vanilla_bsas":%s,"startup_dlls":%s,"excluded_count":%s,"base_skse":%s,"excluded_mods":%s}\n' \
+      "$src" "$(jbool "$migrated")" "$nplug" "$nbsa" "$ndll" "$nexcl" \
+      "$(collect_base_skse "$src" | json_arr)" \
+      "$(json_arr <<<"$excluded")"
+    return 0
+  fi
+
+  echo "skytest init — read-only classification (nothing changed)"
+  printf '%-12s %s\n' source "$src"
+  printf '%-12s %s\n' migrated "$([ "$migrated" = 1 ] && echo yes || echo no)"
+  echo
+  printf '%-12s %s plugins, %s BSAs\n' vanilla "$nplug" "$nbsa"
+  printf '%-12s %s\n' "base SKSE" "$(collect_base_skse "$src" | tr '\n' ' ')"
+  printf '%-12s %s now → ~1 (CrashLogger) + mod under test\n' "startup DLL" "$ndll"
+  echo
+  if [ -n "$full" ]; then
+    echo "excluded from tests ($nexcl mod plugins):"
+    grep . <<<"$excluded" | sed 's/^/  - /'
+  else
+    echo "excluded from tests: $nexcl mod plugins  (use --full to list)"
+  fi
+
+  if [ -z "$commit" ]; then
+    echo
+    echo "Would migrate on \`init --commit\`:"
+    echo "  1. mv Data → .profiles/full   2. ln -s full → Data   3. build vanilla (symlinks)"
+    echo "  reverse any time: skytest uninstall"
+    echo
+    echo "Next steps:"
+    echo "  skytest init --commit     apply the migration"
+    echo "  skytest init --full       list the excluded mod plugins"
+    return 0
+  fi
+
+  # --- commit: the one sensitive step, each part verified ---
+  game_running && die "Skyrim is running - close it first."
+  [ -L "$DATA" ] && die "already migrated (Data is a symlink). Nothing to do."
+  [ -d "$DATA" ] || die "Data is not a real directory; aborting."
+
+  local before_count before_du
+  before_count=$(find "$DATA" -mindepth 1 | wc -l)
+  before_du=$(du -sb "$DATA" | cut -f1)
+  say "pre-flight: $before_count entries, $before_du bytes"
+
+  mkdir -p "$PROFILES"
+  backup_plugins
+  cp -f "$PLUGINS_TXT" "$PROFILES/Plugins.txt.orig" 2>/dev/null || true
+  say "backed up Plugins.txt"
+
+  mv "$DATA" "$FULL"
+  ln -s "$FULL" "$DATA"
+  say "Data -> .profiles/full symlink created"
+
+  [ -L "$DATA" ] || die "verify failed: Data is not a symlink"
+  local after_count after_du
+  after_count=$(find -L "$DATA" -mindepth 1 | wc -l)
+  after_du=$(du -sbL "$DATA" | cut -f1)
+  [ "$before_count" = "$after_count" ] || die "verify failed: entry count changed ($before_count -> $after_count)" "skytest uninstall"
+  [ "$before_du" = "$after_du" ] || die "verify failed: size changed" "skytest uninstall"
+  say "verified: entry count + size unchanged through the symlink"
+
+  build_vanilla_profile
+  say "vanilla profile built: $(find "$VANILLA" -type l | wc -l) symlinks"
+
+  echo
+  say "DONE. Launch your normal modded game once to confirm it loads identically."
+  echo
+  echo "Next steps:"
+  echo "  skytest play              launch the full modded game (fast path)"
+  echo "  skytest setup-save        build the base test save for autoload"
+  echo "  skytest uninstall         restore the byte-identical original Data/"
+}
+
+# Launch SKSE and hold the current Data profile until the real game PID exits.
+# $1 = a short label for the "locked" message. Honors SKYTEST_NO_LAUNCH.
+launch_and_hold() {
+  local label="$1"
+  if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then
+    say "profile built. SKYTEST_NO_LAUNCH set - skipping launch."
+    return 0
+  fi
+
+  say "Launching SKSE..."
+  SteamAppId=489830 bash "$LAUNCH" || true   # steam_api64 init needs the appid; don't rely on ambient env
+
+  # The loader and an early launcher stub flash and die within a second or two,
+  # and they also match a 'skyrimse' name search. If we restored on their exit
+  # we'd swap Data mid-launch (SKSE plugins read from one profile, ESPs/save from
+  # 'full' -> crash). So: lock onto a process that SURVIVES a grace window (the
+  # real game lives for minutes), and hold until exactly that PID exits.
+  local grace=10 timeout=240 waited=0 real_pid="" pid g ok
+  say "waiting for the game to stabilize (ignoring the launcher flash)..."
+  while [ "$waited" -lt "$timeout" ]; do
+    if game_running; then
+      pid=$(pgrep -i skyrimse | head -n1)
+      ok=1; g=0
+      while [ "$g" -lt "$grace" ]; do
+        kill -0 "$pid" 2>/dev/null || { ok=0; break; }
+        sleep 1; g=$((g+1)); waited=$((waited+1))
+      done
+      [ "$ok" = 1 ] && { real_pid="$pid"; break; }
+    else
+      sleep 2; waited=$((waited+2))
+    fi
+  done
+
+  if [ -n "$real_pid" ]; then
+    say "game up (pid $real_pid) - $label"
+    while kill -0 "$real_pid" 2>/dev/null; do sleep 3; done
+    say "game exited."
+  else
+    say "WARNING: game never stabilized within ${timeout}s - launch may have failed."
+  fi
+}
+
+cmd_test() {
+  local mod="$1" deps="${2:-}"
+  [ -n "$mod" ] || usage_err "test: missing mod path" "skytest test <mod-dir-or-file> [--with a.dll,b.dll]"
+  [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
+  [ -e "$mod" ] || usage_err "mod path not found: $mod" "skytest test <mod-dir-or-file>"
+  game_running && die "Skyrim is running - close it first."
+  [ -x "$LAUNCH" ] || die "launch-skse.sh not found/executable at $LAUNCH"
+
+  say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
+  build_test_profile "$mod" "$deps"
+  inject_skytestprobe          # runtime probe toolkit, every test (unconditional)
+  backup_plugins
+
+  local lock_msg="test profile locked until you quit."
+  if base_save_exists; then
+    inject_startonsave
+    say "base save '$BASE_SAVE_NAME' found - autoloading it on launch (hold SHIFT to skip to menu)."
+    lock_msg="$lock_msg booting into '$BASE_SAVE_NAME'."
+  else
+    say "no base save '$BASE_SAVE_NAME.ess' - launching to the menu. Build one with: skytest setup-save"
+    lock_msg="$lock_msg (use a NEW GAME; modded saves won't load here.)"
+  fi
+
+  trap 'point_data full; restore_plugins; say "restored: Data -> full, Plugins.txt restored"' EXIT INT TERM
+  write_test_plugins "$mod"
+  point_data test
+  say "Data -> test."
+  launch_and_hold "$lock_msg"
+}
+
+cmd_setup_save() {
+  [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
+  game_running && die "Skyrim is running - close it first."
+  [ -x "$LAUNCH" ] || die "launch-skse.sh not found/executable at $LAUNCH"
+  [ -d "$VANILLA" ] || die "vanilla profile missing." "skytest init --commit"
+
+  if base_save_exists; then
+    say "NOTE: base save '$BASE_SAVE_NAME.ess' already exists; saving again will overwrite it."
+  fi
+
+  # Vanilla only, NO Start On Save -> we land at the menu and drive setup by hand.
+  backup_plugins
+  trap 'point_data full; restore_plugins; say "restored: Data -> full, Plugins.txt restored"' EXIT INT TERM
+  write_vanilla_plugins
+  point_data vanilla
+
+  echo
+  say "=== building the base test save (vanilla + base SKSE only) ==="
+  say "At the main menu, open the console (~) and:"
+  say "   coc qasmoke           # jump straight into Bethesda's dev hall (skips intro)"
+  say "   <place any fixtures>  # e.g. spawn/grab a vanilla NPC, click it, setplayerteammate 1"
+  say "   save $BASE_SAVE_NAME  # exact name - this is what test runs autoload"
+  say "Then quit to desktop. Use ONLY vanilla content so the save loads under any test."
+  echo
+
+  launch_and_hold "setup session - save as '$BASE_SAVE_NAME' then quit."
+
+  if base_save_exists; then
+    say "base save '$BASE_SAVE_NAME.ess' captured. 'skytest test <mod>' will now boot into it."
+    echo
+    echo "Next steps:"
+    echo "  skytest test <mod>        launch a mod, booting into the base save"
+  else
+    say "WARNING: no '$BASE_SAVE_NAME.ess' found - did the in-game 'save $BASE_SAVE_NAME' run?"
+    echo
+    echo "Next steps:"
+    echo "  skytest setup-save        retry — remember to 'save $BASE_SAVE_NAME' before quitting"
+  fi
+}
+
+cmd_normal() {
+  if [ ! -L "$DATA" ]; then say "already normal — Data is the real directory."; return 0; fi
+  point_data full; restore_plugins; say "Data → full"
+}
+
+cmd_play() {
+  # Everyday fast launch of the FULL modded game over the direct SKSE path
+  # (skips Steam Play, which is the real cause of the slow ~2min startup).
+  if [ -L "$DATA" ]; then
+    [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
+    point_data full
+  fi
+  if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then say "would launch full modded game (NO_LAUNCH set)"; return 0; fi
+  say "launching full modded game via the fast direct path..."
+  exec env SteamAppId=489830 bash "$LAUNCH"
+}
+
+cmd_status() {
+  local json=""; [ "${1:-}" = "--json" ] && json=1
+  local migrated tgt base hf hv ht
+  if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")"); else migrated=0; tgt=""; fi
+  base_save_exists && base=1 || base=0
+  [ -d "$FULL" ]    && hf=1 || hf=0
+  [ -d "$VANILLA" ] && hv=1 || hv=0
+  [ -d "$TEST" ]    && ht=1 || ht=0
+
+  if [ -n "$json" ]; then
+    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s}\n' \
+      "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")"
+    return 0
+  fi
+
+  echo "skytest — isolated Skyrim SE mod-test launcher"
+  printf '%-10s %s\n' data "$DATA"
+  if [ "$migrated" = 1 ]; then
+    local profs=""
+    [ "$hf" = 1 ] && profs+="full "; [ "$hv" = 1 ] && profs+="vanilla "; [ "$ht" = 1 ] && profs+="test "
+    printf '%-10s migrated → %s\n' state "$tgt"
+    printf '%-10s %s\n' profiles "${profs:-none}"
+    printf '%-10s %s\n' "base save" "$([ "$base" = 1 ] && echo "$BASE_SAVE_NAME present" || echo "absent — build with: skytest setup-save")"
+    echo
+    echo "Next steps:"
+    [ "$tgt" = test ] && echo "  skytest normal            recover: force Data → full after an interrupted test"
+    echo "  skytest test <mod>        launch vanilla + one mod"
+    echo "  skytest play              launch the full modded game"
+  else
+    printf '%-10s not migrated (Data is the original real directory)\n' state
+    echo
+    echo "Next steps:"
+    echo "  skytest init              preview the one-time migration (read-only)"
+    echo "  skytest play              launch the full modded game as-is"
+  fi
+}
+
+cmd_uninstall() {
+  if [ ! -L "$DATA" ]; then say "already uninstalled — Data is the original real directory."; return 0; fi
+  game_running && die "Skyrim is running - close it first."
+  [ -d "$FULL" ] || die "missing $FULL -- not safe to uninstall automatically."
+  rm "$DATA"
+  mv -T "$FULL" "$DATA"
+  rm -rf "$VANILLA" "$TEST"
+  restore_plugins
+  say "reverted: original Data/ restored, profiles removed."
+}
+
+# --- help --------------------------------------------------------------------
+
+cmd_help() {
+  cat <<'EOF'
+skytest — isolated Skyrim SE mod-test launcher (symlink-profile based)
+
+Usage: skytest <verb> [args]      (no verb → status)
+
+Verbs:
+  status            show current profile state                  [--json]
+  init              preview the one-time migration (read-only)  [--commit --full --json]
+  setup-save        build the base test save (vanilla launch)
+  test <mod>        launch vanilla + one mod                    [--with a.dll,b.dll]
+  play              launch the full modded game (fast path)
+  normal            force Data → full (recover after a crash)
+  uninstall         revert to the original real Data/ directory
+
+  <mod> is also accepted bare:  `skytest path/to/mod`  ==  `skytest test path/to/mod`
+  Run `skytest <verb> --help` for examples.
+EOF
+}
+
+verb_help() {
+  case "$1" in
+    status) cat <<'EOF'
+skytest status — show current profile state (default when no verb is given)
+  --json    machine-readable
+Examples:
+  skytest status
+  skytest status --json
+EOF
+;;
+    init) cat <<'EOF'
+skytest init — classify Data into vanilla/mod split; preview or apply migration
+  --commit  perform the one-time migration (mv Data→full, symlink, build vanilla)
+  --full    list every excluded mod plugin (default shows only the count)
+  --json    machine-readable
+Examples:
+  skytest init
+  skytest init --full
+  skytest init --commit
+EOF
+;;
+    setup-save) cat <<'EOF'
+skytest setup-save — launch vanilla to build the base test save (SkytestBase)
+At the menu: console `coc qasmoke`, place fixtures, `save SkytestBase`, then quit.
+Examples:
+  skytest setup-save
+EOF
+;;
+    test) cat <<'EOF'
+skytest test <mod> — launch vanilla + one mod (boots into the base save if present)
+  <mod>        a Data-shaped folder, or a single .dll/.esp/.esl/.esm file
+  --with a,b   extra framework DLLs to pull from the full profile (prefix match)
+Examples:
+  skytest test build/MyMod
+  skytest test build/MyMod.dll --with SKSE,po3_
+  skytest build/MyMod.dll        # bare shortcut, identical to `test`
+EOF
+;;
+    play) cat <<'EOF'
+skytest play — launch the full modded game over the fast direct SKSE path
+Examples:
+  skytest play
+EOF
+;;
+    normal) cat <<'EOF'
+skytest normal — force Data → full (recover after an interrupted test or crash)
+Examples:
+  skytest normal
+EOF
+;;
+    uninstall) cat <<'EOF'
+skytest uninstall — revert Data to the original real directory, remove profiles
+Examples:
+  skytest uninstall
+EOF
+;;
+    *) cmd_help ;;
+  esac
+}
+
+# --- dispatch ----------------------------------------------------------------
+
+# tool-level help
+case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
+
+# per-verb help: `skytest <verb> --help`
+case "${1:-}" in
+  status|init|setup-save|test|play|normal|uninstall)
+    case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
+esac
+
+case "${1:-}" in
+  ""|status)    cmd_status "${2:-}" ;;
+  init)         shift; cmd_init "$@" ;;
+  setup-save)   cmd_setup_save ;;
+  play)         cmd_play ;;
+  normal)       cmd_normal ;;
+  uninstall)    cmd_uninstall ;;
+  test)
+    shift
+    mod="${1:-}"; deps=""
+    [ "${2:-}" = "--with" ] && deps="${3:-}"
+    cmd_test "$mod" "$deps"
+    ;;
+  -*)           usage_err "unknown option: $1" "skytest help" ;;
+  *)            # bare positional = mod-path shortcut for `test`
+    mod="$1"; deps=""
+    [ "${2:-}" = "--with" ] && deps="${3:-}"
+    cmd_test "$mod" "$deps"
+    ;;
+esac

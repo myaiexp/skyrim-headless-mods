@@ -156,3 +156,29 @@ works straight from the design doc. Deferred beyond v1:
 - **DLL hot-reload of the mod-under-test.** Would kill the remaining restart-on-fix cost;
   generally unsafe (static state, irreversible hooks) — research only if restarts become the
   bottleneck again.
+
+## 2026-06-12 — skytest relocation follow-ups
+
+`skytest` moved from `~/Downloads/skyrim-mods/1-skytest/` into this repo (`skytest/`) so that
+mod-*making* and mod-*managing* are cleanly separated by directory. The move was pure (no script
+changes). Follow-ups it opened up:
+
+- **Merge `headless/` + `skytest/` into one launcher.** Both now live here and both "launch
+  Skyrim": `skytest` owns profile-swapping + lifecycle (launch / wait-for-PID / restore-on-exit)
+  over the *windowed* direct path; `headless/` drives the game with *no display* (gamescope + libei
+  + screenshots). They overlap on launch/lifecycle and are complementary on display/input. Unify so
+  one tool can launch a chosen profile either windowed or headless — `skytest` becomes the profile +
+  lifecycle layer, `headless/` becomes a display/input backend it can target. Do this deliberately
+  as its own pass (design first); the relocation only co-located them, it didn't merge them.
+- **De-duplicate `SkytestProbe.dll`.** Its source is `mods/SkytestProbe/` (tracked); its build
+  output `mods/SkytestProbe/build/SkytestProbe.dll` is gitignored; but `skytest/base-skse/` now holds
+  a **committed copy** of that same build (refreshed by `mods/SkytestProbe/build.sh --stage`). That's
+  a tracked binary duplicating an in-repo build artifact. Option: gitignore `skytest/base-skse/
+  SkytestProbe.{dll,ini.template}` and make `skytest` (or a `make`/`stage` step) copy them from the
+  build on demand, so the canonical copy is the build output, not a vendored duplicate. (`po3_StartOnSave.dll`
+  is genuinely third-party and stays vendored — it has no in-repo source.)
+- **CI-style headless mod check** (was item 4 of the v2 handoff). `skytest` already owns launch +
+  lifecycle; with `headless/` in the same repo, a thin layer could: boot a test profile headless →
+  run a console batch (coc + spawn + assert, via SkytestProbe `exec`) → read `trace.jsonl` → quit,
+  for non-interactive mod smoke tests. Unlocked by the merge above. (Per-mod fixture wiring for this
+  is the "Per-mod fixture autoexec convention" item under the 2026-06-11 SkytestProbe section.)

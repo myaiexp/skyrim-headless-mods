@@ -1,0 +1,13 @@
+[SkytestProbe]
+
+; DirectInput DX scancode for the marker hotkey. Default 87 (0x57) = F11.
+; Examples: 88 = F12, 67 = F9, 88 = F12. Set to 0 to disable the hotkey entirely.
+MarkerHotkey = 87
+
+; Show on-screen notifications (RE::DebugNotification) when probes arm/disarm and
+; markers drop. true/false. Turn off for the full 40-mod profile if it's noisy.
+Notifications = true
+
+; Command-file poll cadence in milliseconds (also the `watch` sampling cadence).
+; ~250 ms = 4 Hz. Lower = snappier live commands at slightly higher idle cost.
+PollIntervalMs = 250

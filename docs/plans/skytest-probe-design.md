@@ -89,10 +89,10 @@ Every command gets an ack line: `{"ack":"<id>","ok":true}` or `{"ack":"<id>","ok
 
 `ref` accepts `player`, `crosshair`, `teammates`, or a hex runtime FormID string (`"0x14"`).
 
-## skytest integration (separate repo, small)
+## skytest integration (same repo, small)
 
-The built DLL is staged at `~/Downloads/skyrim-mods/1-skytest/base-skse/SkytestProbe.dll`
-(+ ini template). `1-skytest/skytest` injects it into the **test profile unconditionally**,
+The built DLL is staged at `skytest/base-skse/SkytestProbe.dll`
+(+ ini template). `skytest/skytest` injects it into the **test profile unconditionally**,
 mirroring the existing StartOnSave symlink injection (but with no save-existence condition);
 the ini is copied **verbatim** (no `sed` substitution, unlike StartOnSave's).
 Full-profile use = normal manual install into the full profile, optional, for DBVO-style cases.
@@ -143,7 +143,7 @@ mod-under-test; main-menu skip; editor-ID ref addressing; a per-mod fixture-auto
 
 - `mods/GhostAllies/` — CMake/toolchain template, logging bootstrap, vtable hooks,
   char-controller collision-group access.
-- **po3 StartOnSave** (`1-skytest/base-skse/`) — the DLL-only + Address-Library-only pattern.
+- **po3 StartOnSave** (`skytest/base-skse/`) — the DLL-only + Address-Library-only pattern.
 - **ConsoleUtilSSE-NG** — console `CompileAndRun` from an SKSE plugin.
 - **CrashLogger** — already in every test profile; its logs complement the trace.
 
