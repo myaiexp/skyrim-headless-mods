@@ -93,14 +93,15 @@ New `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screens
 
 Still open:
 
-- **Rebuild `SkytestBase` vanilla-only.** It was saved with mods (LegacyoftheDragonborn / RaceMenu /
-  XPMSE / …), so autoload stalls at a "missing content" prompt and no test reaches in-world. Fix:
-  `skytest setup-save` → `coc qasmoke` → `save SkytestBase` → quit (the README warns the base save
-  must be vanilla-only). Blocks the two items below.
+- **Isolate the Saves folder per test (shared-folder autoload blocker).** The Saves dir lives in the
+  prefix and is shared across profiles, so a test game's "Continue" auto-checks the newest save (your
+  _main modded_ save) and pops a "missing content" modal that blocks po3 StartOnSave from autoloading
+  `SkytestBase` (which is itself clean — vanilla + Creation Club only). Fix direction: point Saves at
+  an isolated dir for the test (only `SkytestBase` visible), or dismiss the modal once `drive` works.
 - **`drive` keyboard didn't move the menu** in the clean headless run (`Unhandled libei event`,
   gamescope 3.16.23+) though it worked historically (findings #9). `shot` itself is **confirmed**
-  working headless. Retest `drive` against a real in-world scene once `SkytestBase` is rebuilt; also
-  confirm `shot`/`drive` under `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #13.
+  working headless. Retest `drive` against a real in-world scene (unblocked by the Saves-folder fix
+  above); also confirm `shot`/`drive` under `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #13.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.

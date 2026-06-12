@@ -108,12 +108,14 @@ close the game (or kill a stray `SkyrimSE.exe`) and re-run.
 Verified clean (2026-06-12, no game running): `shot` **works headless** — it captured a clear main
 menu — and `ready` polls honestly. Two things are still **open** (see `docs/headless-findings.md`
 #13): (1) `drive` keyboard didn't move the main-menu modal in that run (`Unhandled libei event`;
-worked historically for menu nav in finding #9) — needs an in-world retest; (2) the `SkytestBase`
-save is contaminated with modded content, so autoload can't reach in-world — **rebuild it vanilla-only
-with `skytest setup-save`**, which also unblocks the `drive` in-world test. The `--backend wayland`
-`shot`/`drive` confirmation is likewise pending. The dead-ends behind the whole display/input layer
-are in [`docs/headless-findings.md`](docs/headless-findings.md) — **read it before changing the
-gamescope/libei approach.**
+worked historically for menu nav in finding #9) — needs an in-world retest; (2) the autoload stuck at
+the menu because the **Saves folder is shared across profiles** — a test game's "Continue" auto-checks
+the newest save (your _main modded_ save) and pops a "missing content" modal that blocks po3
+StartOnSave from loading `SkytestBase` (which is itself clean: vanilla + Creation Club only). Fix
+direction: isolate the Saves folder per test, or get `drive` working to dismiss the modal. The
+`--backend wayland` `shot`/`drive` confirmation is likewise pending. The dead-ends behind the whole
+display/input layer are in [`docs/headless-findings.md`](docs/headless-findings.md) — **read it before
+changing the gamescope/libei approach.**
 
 ## Which mode — `test` or `play`?
 

@@ -227,11 +227,20 @@ close it first."_ That removes the whole class of "why is my test black?" confus
   repointed). Unverified whether it's this specific modal, keyboard focus in the session, or a
   libei/gamescope drift since #9 — needs a clean **in-world** scene to test movement/console, which
   the item below currently blocks. Left OPEN.
-- ⚠️ **`SkytestBase.ess` is contaminated with modded content.** The autoload stalls at a "this save
-  relies on missing content" prompt listing `LegacyoftheDragonborn.esm`/`RaceMenu.esp`/`XPMSE.esp`/…
-  — the base save was made with mods present, so it can't load in the vanilla+1 test profile (exactly
-  the failure the README warns about). **Rebuild it vanilla-only:** `skytest setup-save` (it parks
-  `Data → vanilla`), `coc qasmoke`, place fixtures, `save SkytestBase`, quit. Until then no test boots
-  to in-world, which is also what blocks the `drive`-in-world retest above.
+- ⚠️ **Autoload stuck at the menu — the SHARED Saves folder, not a bad base save.** First read blamed
+  a "contaminated SkytestBase"; **wrong.** SkytestBase's master list is vanilla + 5 Creation Club
+  plugins only (`ccBGSSSE001-Fish` / `ccBGSSSE025-AdvDSGS` / `ccQDRSSE001-SurvivalMode` /
+  `ccBGSSSE037-Curios` / `_ResourcePack`), **all present in the test profile** (they're in
+  `Skyrim.ccc`, so `collect_vanilla_plugins` carries them) — it loads clean. The on-screen "missing
+  content" prompt lists _completely different_ mods (`LegacyoftheDragonborn`/`RaceMenu`/`XPMSE`/
+  unofficial patch/…) that are **not in SkytestBase at all**. They're from the user's **main modded
+  save**: the Saves folder lives in the prefix (`…/Documents/My Games/.../Saves`) and is **shared
+  across every profile**, so a vanilla+1 test game's main menu auto-checks the _newest_ save (the main
+  one) for the "Continue" button and pops that modal — which appears to block po3 StartOnSave from
+  cleanly autoloading SkytestBase. Pre-existing skytest-v2 behavior, not the merge; the README already
+  flags the shared-Saves-folder hazard for the "latest save" case. **Fix direction:** isolate the
+  Saves folder per test (so the menu has only SkytestBase to reference), or get `drive` working to
+  dismiss the modal. Until then the autoload can stall whenever a newer modded save exists.
 
-(The `--backend wayland` `shot`/`drive` confirmation is still pending the same clean in-world run.)
+(The `--backend wayland` `shot`/`drive` confirmation, and the `drive`-in-world retest, are still
+pending a clean run that reaches in-world.)
