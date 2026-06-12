@@ -11,3 +11,6 @@ mods/*/plugin/build/
 
 # Working source backups (e.g. pre-cleanup probe builds kept locally)
 *.bak
+
+# skytest's compiled libei input client (rebuild with skytest/eidriver/build.sh)
+skytest/eidriver/eidriver
