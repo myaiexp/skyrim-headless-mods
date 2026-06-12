@@ -59,5 +59,6 @@ setsid bash -c '
     > "$LOG" 2>&1 < /dev/null &
 disown
 
+for _ in {1..20}; do [ -s "$PIDFILE" ] && break; sleep 0.05; done  # let the inner shell write its pid (<1s)
 echo "started (pid $(cat "$PIDFILE" 2>/dev/null)). Skyrim takes ~1-2 min to reach the main menu."
 echo "wait for interactive:  ./ready.sh   |   capture: ./shot.sh /tmp/sky.png"
