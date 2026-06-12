@@ -39,6 +39,7 @@ shopt -s nullglob
 # Resolve through symlinks so PATH installs (e.g. ~/.local/bin/skytest -> repo) still
 # find base-skse/ in the real script directory, not the symlink's location.
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ROOT="/home/mse/.steam/steam/steamapps/common/Skyrim Special Edition"
 DATA="$ROOT/Data"
@@ -59,9 +60,10 @@ SOS_INI_TEMPLATE="$SCRIPT_DIR/base-skse/po3_StartOnSave.ini.template"
 
 # SkytestProbe — the runtime probe toolkit (DLL-only, Address-Library-only). Injected
 # into the test profile unconditionally (no save-existence condition); ini copied
-# verbatim (no sed). Built from ~/Projects/skyrim-headless-mods/mods/SkytestProbe.
-PROBE_DLL="$SCRIPT_DIR/base-skse/SkytestProbe.dll"
-PROBE_INI_TEMPLATE="$SCRIPT_DIR/base-skse/SkytestProbe.ini.template"
+# verbatim (no sed). Read straight from its build output (the canonical copy — no
+# vendored duplicate); build it with mods/SkytestProbe/build.sh.
+PROBE_DLL="$REPO_ROOT/mods/SkytestProbe/build/SkytestProbe.dll"
+PROBE_INI_TEMPLATE="$REPO_ROOT/mods/SkytestProbe/SkytestProbe.ini"
 
 BASE_MASTERS=(Skyrim.esm Update.esm Dawnguard.esm HearthFires.esm Dragonborn.esm)
 
@@ -222,7 +224,7 @@ inject_startonsave() {
 # no sed substitution). Gives every isolated test the runtime probe toolkit — CC writes
 # probe specs to commands.jsonl, the running game writes traces to trace.jsonl (both under
 # the SKSE log dir's skytest/). Degrades to a warning (not a hard failure) if the DLL
-# hasn't been built/staged, so skytest still works without it.
+# hasn't been built yet, so skytest still works without it.
 inject_skytestprobe() {
   if [ ! -f "$PROBE_DLL" ]; then
     say "note: SkytestProbe DLL absent at $PROBE_DLL — skipping probe injection (build it in ~/Projects/skyrim-headless-mods/mods/SkytestProbe)."

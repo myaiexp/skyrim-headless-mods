@@ -91,10 +91,11 @@ Every command gets an ack line: `{"ack":"<id>","ok":true}` or `{"ack":"<id>","ok
 
 ## skytest integration (same repo, small)
 
-The built DLL is staged at `skytest/base-skse/SkytestProbe.dll`
-(+ ini template). `skytest/skytest` injects it into the **test profile unconditionally**,
-mirroring the existing StartOnSave symlink injection (but with no save-existence condition);
-the ini is copied **verbatim** (no `sed` substitution, unlike StartOnSave's).
+`skytest/skytest` reads the built DLL straight from `mods/SkytestProbe/build/SkytestProbe.dll`
+(+ `mods/SkytestProbe/SkytestProbe.ini` as the template — the canonical build output, no vendored
+copy) and injects it into the **test profile unconditionally**, mirroring the existing StartOnSave
+symlink injection (but with no save-existence condition); the ini is copied **verbatim** (no `sed`
+substitution, unlike StartOnSave's).
 Full-profile use = normal manual install into the full profile, optional, for DBVO-style cases.
 
 ## Failure model

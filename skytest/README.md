@@ -59,8 +59,9 @@ in the same dir — arm engine event sinks (`trace`), dump an actor's state incl
 (`dump`), `watch` an actor value, run a console line (`exec`), `anim-trace`, `marker`, `status`;
 F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
 mods. Passive until armed, never crashes on bad input. Built from `../mods/SkytestProbe`
-(`./build.sh --stage` refreshes the staged `base-skse/SkytestProbe.{dll,ini.template}`); contract
-in `../docs/plans/skytest-probe-design.md`. skytest degrades gracefully if the DLL isn't staged.
+(`./build.sh`); skytest reads the DLL + `SkytestProbe.ini` straight from that build output — the
+canonical copy, no vendored duplicate. Contract in `../docs/plans/skytest-probe-design.md`.
+skytest degrades gracefully if the DLL hasn't been built.
 
 ## Notes
 
@@ -84,4 +85,4 @@ in `../docs/plans/skytest-probe-design.md`. skytest degrades gracefully if the D
 | Path | Holds |
 |------|-------|
 | `skytest` | The launcher (626-line bash; self-documenting via `skytest help`). On `PATH` via `~/.local/bin/skytest`. |
-| `base-skse/` | The two SKSE plugins skytest injects into test profiles + their `.ini.template`s: `SkytestProbe.{dll,ini.template}` (built from `../mods/SkytestProbe`) and `po3_StartOnSave.{dll,ini.template}` (third-party, vendored). |
+| `base-skse/` | The third-party SKSE plugin skytest injects into every test profile: `po3_StartOnSave.{dll,ini.template}` (vendored — no in-repo source). SkytestProbe is *not* here; skytest reads it straight from `../mods/SkytestProbe/build/` (the canonical build output). |

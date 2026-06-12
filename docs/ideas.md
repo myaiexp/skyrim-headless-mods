@@ -170,13 +170,12 @@ changes). Follow-ups it opened up:
   one tool can launch a chosen profile either windowed or headless — `skytest` becomes the profile +
   lifecycle layer, `headless/` becomes a display/input backend it can target. Do this deliberately
   as its own pass (design first); the relocation only co-located them, it didn't merge them.
-- **De-duplicate `SkytestProbe.dll`.** Its source is `mods/SkytestProbe/` (tracked); its build
-  output `mods/SkytestProbe/build/SkytestProbe.dll` is gitignored; but `skytest/base-skse/` now holds
-  a **committed copy** of that same build (refreshed by `mods/SkytestProbe/build.sh --stage`). That's
-  a tracked binary duplicating an in-repo build artifact. Option: gitignore `skytest/base-skse/
-  SkytestProbe.{dll,ini.template}` and make `skytest` (or a `make`/`stage` step) copy them from the
-  build on demand, so the canonical copy is the build output, not a vendored duplicate. (`po3_StartOnSave.dll`
-  is genuinely third-party and stays vendored — it has no in-repo source.)
+- **~~De-duplicate `SkytestProbe.dll`~~ — RESOLVED 2026-06-12.** `skytest` now reads the probe DLL +
+  ini straight from its build output (`mods/SkytestProbe/build/SkytestProbe.dll` + `mods/SkytestProbe/
+  SkytestProbe.ini`); the committed copy under `skytest/base-skse/` and `build.sh --stage` are both
+  gone, so the build output is the single canonical copy — no tracked binary duplicate.
+  (`po3_StartOnSave.{dll,ini.template}` stays vendored in `base-skse/` — genuinely third-party, no
+  in-repo source.)
 - **CI-style headless mod check** (was item 4 of the v2 handoff). `skytest` already owns launch +
   lifecycle; with `headless/` in the same repo, a thin layer could: boot a test profile headless →
   run a console batch (coc + spawn + assert, via SkytestProbe `exec`) → read `trace.jsonl` → quit,
