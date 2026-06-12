@@ -43,8 +43,8 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 - **`skytest test <mod>`** (isolated vanilla+1, a **drivable gamescope session** — visible by
   default, `--headless` for no window; then `ready`/`shot`/`drive`/`stop`) for a mod that works
   **standalone** — a new spell, a self-contained DLL/esp. Fast and interference-free. Running a mod
-  in-engine this way is the normal close-out for a change, not a heavyweight detour — the ~1–2 min
-  boot is expected and worth it; the session is detached so you're not blocked while it boots.
+  in-engine this way is the normal close-out for a change, not a detour — and the session is detached,
+  so you fire it off and keep working, then `drive`/`shot`/probe it.
 - **Full-profile install + `skytest play`** for a mod that only manifests **on top of the live
   load order** — patches, or asset overrides of another mod (e.g. a DBVO swf edit that needs DBVO
   and a voice pack present). The vanilla+1 profile can't reproduce it: install into the real game

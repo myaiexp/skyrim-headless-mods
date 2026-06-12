@@ -42,11 +42,9 @@ Building a mod and **not** running it in the engine is the exception, not the ot
 `skytest test <mod>` → `drive`/probe it → confirm it actually does the thing in-engine. Treat it
 as the default close-out for any mod change, the same way you'd run unit tests elsewhere.
 
-Yes, the boot is **~1–2 minutes**. That is expected and worth it — it is the only way to know a
-mod works in the real engine, not just that it compiled. Don't skip the test because it "feels
-heavy"; the boot cost buys real-engine ground truth, and the session is **detached** so you spend
-those minutes doing other things, not blocked at a terminal. The verbs below make reaching for a
-test the path of least resistance.
+It's a real engine launch, not a mock — the only way to know a mod works in the engine, not just
+that it compiled. The session is **detached**: fire it off, keep working, and `drive`/`shot`/probe
+it once it's in-world. The verbs below make reaching for a test the path of least resistance.
 
 ## Drivable test sessions: visible or headless
 

@@ -17,11 +17,15 @@
 #   skytest setup-save          launch vanilla (no mod) to BUILD the base test save:
 #                               at the menu, console `coc qasmoke`, place any fixtures,
 #                               then `save SkytestBase`, quit. Used by the autoload below.
-#   skytest test <mod> [--with a.dll,b.dll]
-#                               launch vanilla + that mod. If the base save exists, boots
-#                               straight into it (Start On Save autoload); else to the menu.
-#                               Restores to full on exit. `skytest <mod>` is a shortcut.
-#   skytest play                launch the FULL modded game over the fast direct path
+#   skytest test <mod> [--with a.dll,b.dll] [--headless]
+#                               start a DETACHED, drivable gamescope test session (vanilla +
+#                               that mod). Boots into the base save if it exists, else the menu.
+#                               Returns once in-world; `skytest <mod>` is a shortcut.
+#   skytest ready [secs]        block until the test session is in-world (probe poll)
+#   skytest shot [out.png]      screenshot the test session    [cropWxH+X+Y] [scaleWxH]
+#   skytest drive <cmd> ...     inject input (tap|seq|key|click|abs|rel|raw)
+#   skytest stop                tear down the test session + restore Data -> full
+#   skytest play                launch the FULL modded game over the fast direct path (blocking)
 #   skytest normal              force Data -> full (recover after a crash)
 #   skytest uninstall           revert to the original real Data/ directory
 #
@@ -570,7 +574,7 @@ cmd_normal() {
 
 cmd_play() {
   # Everyday fast launch of the FULL modded game over the direct SKSE path
-  # (skips Steam Play, which is the real cause of the slow ~2min startup).
+  # (skips Steam Play, which is the real cause of the slow startup).
   guard_no_live_session   # unparking Data -> full out from under a live test session = crash
   guard_no_running_game   # a 2nd instance can't launch anyway — say so cleanly
   if [ -L "$DATA" ]; then

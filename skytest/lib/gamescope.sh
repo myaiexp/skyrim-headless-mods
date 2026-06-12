@@ -91,7 +91,7 @@ gs_launch() {
   local _i
   for _i in {1..40}; do [ -s "$GS_PIDFILE" ] && break; sleep 0.05; done   # inner shell writes its pid (<2s)
   gs_session_alive || { say "WARNING: gamescope pid not recorded — check $GS_LOG"; return 1; }
-  say "started (pid $(gs_session_pid)). Skyrim takes ~1-2 min to reach in-world; poll with: skytest ready"
+  say "started (pid $(gs_session_pid)). Poll for readiness with: skytest ready"
 }
 
 # --- readiness ---------------------------------------------------------------
