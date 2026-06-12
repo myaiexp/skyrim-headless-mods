@@ -163,21 +163,38 @@ works straight from the design doc. Deferred beyond v1:
 mod-*making* and mod-*managing* are cleanly separated by directory. The move was pure (no script
 changes). Follow-ups it opened up:
 
-- **Merge `headless/` + `skytest/` into one launcher.** Both now live here and both "launch
-  Skyrim": `skytest` owns profile-swapping + lifecycle (launch / wait-for-PID / restore-on-exit)
-  over the *windowed* direct path; `headless/` drives the game with *no display* (gamescope + libei
-  + screenshots). They overlap on launch/lifecycle and are complementary on display/input. Unify so
-  one tool can launch a chosen profile either windowed or headless — `skytest` becomes the profile +
-  lifecycle layer, `headless/` becomes a display/input backend it can target. Do this deliberately
-  as its own pass (design first); the relocation only co-located them, it didn't merge them.
+- **~~Merge `headless/` + `skytest/` into one launcher~~ — DESIGNED 2026-06-12**
+  (`docs/plans/headless-skytest-merge-design.md`), not yet built. A *test session* runs under
+  gamescope (visible `--backend wayland` or `--headless`) — detached, drivable (`skytest shot`/
+  `drive`/`ready`/`stop`), restore-on-`stop`; `play`/`normal` keep the bare direct fast path
+  (blocking, restore-on-exit, not drivable). The visible test runs under gamescope so `drive`/`shot`
+  reuse the exact headless machinery; `--headless` just swaps the backend string. `headless/` retires
+  into `skytest/lib/gamescope.sh` + `skytest/eidriver/`. Implementation plan is the next step.
 - **~~De-duplicate `SkytestProbe.dll`~~ — RESOLVED 2026-06-12.** `skytest` now reads the probe DLL +
   ini straight from its build output (`mods/SkytestProbe/build/SkytestProbe.dll` + `mods/SkytestProbe/
   SkytestProbe.ini`); the committed copy under `skytest/base-skse/` and `build.sh --stage` are both
   gone, so the build output is the single canonical copy — no tracked binary duplicate.
   (`po3_StartOnSave.{dll,ini.template}` stays vendored in `base-skse/` — genuinely third-party, no
   in-repo source.)
-- **CI-style headless mod check** (was item 4 of the v2 handoff). `skytest` already owns launch +
-  lifecycle; with `headless/` in the same repo, a thin layer could: boot a test profile headless →
-  run a console batch (coc + spawn + assert, via SkytestProbe `exec`) → read `trace.jsonl` → quit,
-  for non-interactive mod smoke tests. Unlocked by the merge above. (Per-mod fixture wiring for this
-  is the "Per-mod fixture autoexec convention" item under the 2026-06-11 SkytestProbe section.)
+- **CI-style headless mod check** (was item 4 of the v2 handoff). A thin layer: boot a test profile
+  headless → run a console batch (coc + spawn + assert, via SkytestProbe `exec`) → read `trace.jsonl`
+  → quit, for non-interactive mod smoke tests. **Unblocked once the merge (now DESIGNED, above)
+  lands** — it composes the merge's detached headless launch + `skytest ready`/`exec`/`stop`
+  primitives into one blocking smoke verb (e.g. `skytest smoke <mod> <batch>`). (Per-mod fixture
+  wiring for this is the "Per-mod fixture autoexec convention" item under the 2026-06-11 SkytestProbe
+  section.)
+
+## 2026-06-12 — headless+skytest merge follow-ups
+
+Deferred out of the merge design (`docs/plans/headless-skytest-merge-design.md`, "merge only" scope):
+
+- **Input recording / playback.** The motivating use case for `shot`/`drive` being first-class
+  skytest verbs. CC drives a (visible) gamescope test session to a target state — e.g. navigate
+  menus, click a discovered map marker — using screenshots as the authoring aid (*see* where the
+  marker is, decide the click). The input step sequence is **recorded** to a file, then **replayed**
+  deterministically to re-reach that state for testing/probing (replay → probe the result, no human
+  in the loop). Its own design space, deferred deliberately: the step-file format, how playback
+  re-times/re-syncs steps, how it tolerates the game booting slower one run to the next, and the
+  screenshot-assisted authoring loop. The merge shapes `drive` to stay replay-friendly so this layer
+  bolts on without reworking the input path. Pairs with the SKSE ground-truth tie-in (probe `status`
+  as the per-step sync gate instead of fixed sleeps).
