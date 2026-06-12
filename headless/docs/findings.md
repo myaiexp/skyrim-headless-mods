@@ -168,3 +168,20 @@ Three separate ways the "is it up / is it ready?" question bit us, and the fixes
    (`inWorld`/`is3DLoaded`/`mainMenu`/`loadingMenu`) — `inWorld` is the exact gate the probe's `exec`
    uses, so the two can't disagree. `./ready.sh` polls it and blocks until `inWorld:true`. Don't gate
    readiness on any pgrep.
+
+## 12. Steam blocks a 2nd game instance — so stop.sh tears down by session, not pattern
+
+Tested directly: with a normal Steam-launched Skyrim already running, `./launch.sh` brings up its
+gamescope + Proton scaffolding (`python3` + `steam.exe`) but **the game never spawns** — no
+`SkyrimSE.exe` under the headless session, no swapchain in the log. Proton's `steam.exe` wrapper
+won't start a second copy of an appid Steam already considers running; the first game is unaffected.
+
+Consequence for teardown: the usual thing you clean up is a *blocked* headless launch (gamescope +
+proton idling) sitting next to your real game — where the **only** `SkyrimSE.exe` is your game. So
+the old `stop.sh` (`pkill -9 -f SkyrimSE.exe` + `pkill -9 wineserver`) would have killed **your
+game** and its wineserver, not the headless scaffolding. → **Fix:** `stop.sh` kills everything in
+the gamescope **session** (via the pidfile's session-leader pid), taking down the headless tree but
+leaving a game you're playing in the same prefix alone; broad pattern-kill is only the no-pidfile
+fallback. Verified live: blocked launch alongside a running game → `./stop.sh` removed the headless
+session and left the game running, exit 0. (Its liveness re-check tests the exact pid, not a cmdline
+grep — else it self-matches per #11, which it did on the first cut.)

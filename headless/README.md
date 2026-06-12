@@ -35,7 +35,7 @@ failed) are in [`docs/findings.md`](docs/findings.md) — **read that before cha
 | `ready.sh`         | Block until **fully in-world** (interactive) — polls SkytestProbe `status` for `inWorld:true`. Use this instead of `pgrep SkyrimSE.exe` (it spawns late) to know when to drive. |
 | `shot.sh`          | `SIGUSR2` → newest gamescope AVIF → PNG (optional crop/scale).                                                                                                                  |
 | `drive.sh`         | Friendly wrapper over `src/eidriver` (`tap enter`, `seq down down enter`, `click x y`, `abs x y`, `rel`).                                                                       |
-| `stop.sh`          | Kill the session cleanly.                                                                                                                                                       |
+| `stop.sh`          | Kill the session cleanly — by gamescope **session** (pidfile), so it's safe alongside a Skyrim you're playing in the same prefix (Steam blocks a 2nd game anyway; finding #12). |
 | `src/eidriver.c`   | The libei input client. Keyboard ✅, mouse ✅ (absolute click via relative).                                                                                                    |
 | `src/build.sh`     | `gcc` + `pkg-config libei-1.0`. No sudo.                                                                                                                                        |
 | `docs/design.md`   | Architecture + why each piece.                                                                                                                                                  |
