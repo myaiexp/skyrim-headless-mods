@@ -82,17 +82,21 @@ the toggle **hotkey** wired into the existing `AttackInputSink`. Zero new user d
 
 ## 2026-06-09 — headless driver (testing harness)
 
-New top-level `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screenshot it
-(SIGUSR2→AVIF), inject isolated input via **libei**. Full rationale + dead-ends + status live in
-`headless/docs/{design,findings,status}.md` — this is just the index pointer.
+New `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screenshot it
+(SIGUSR2→AVIF), inject isolated input via **libei**.
 
-Open work (detail in `headless/docs/status.md`):
+> **Superseded 2026-06-12:** `headless/` was merged into `skytest/` — one tool, where `test` runs a
+> drivable gamescope session (visible by default, `--headless` for no window). The dead-ends doc moved
+> to `skytest/docs/headless-findings.md`; the design/status content folded into `skytest/README.md`.
+> The libei **pointer** dead-end is resolved (relative motion, measured 1:1 — findings #9), and the
+> end-to-end keyboard run works (`skytest ready`/`drive`).
 
-- **libei pointer doesn't land in-game** (keyboard does). Chase: gamescope's unbounded abs-region
-  scaling; confirm pointer/button caps on the bound device; start_emulating/frame timing; whether
-  Skyrim needs the pointer "entered" before it reacts.
-- **End-to-end keyboard run**: nav → Load → save → in-game → `M` map → dismiss the confirmation box
-  (likely solves the `OneClickMap` chore without a mouse).
+Still open:
+
+- **Headless `shot` returns black** (in-world _and_ menus) even though the game runs and `drive`/probe
+  both work — gamescope isn't compositing the game surface into the SIGUSR2 buffer under the `headless`
+  backend. Confirm `shot` under the `wayland` backend (different present path), then debug the headless
+  path. Detail: `skytest/docs/headless-findings.md` #13.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.
@@ -113,8 +117,8 @@ shipped, verified in-game. Deferred:
   (`mods/DBVODialogueTweaks/plugin/`) already installs the enabling primitive: a **MinHook entry detour**
   on `Actor::SpeakSoundFunction` (`RELOCATION_ID(36541, 37542)`, the general per-actor voice path) that
   captures the player line's `BSSoundHandle`. **Gotcha learned the hard way:** CommonLibSSE-NG's
-  `write_branch<5>` is a *call-site* primitive (it decodes the existing instruction's rel32) and CANNOT
-  hook a function *entry* — doing so returns a garbage "original" pointer and CTDs on first call; use
+  `write_branch<5>` is a _call-site_ primitive (it decodes the existing instruction's rel32) and CANNOT
+  hook a function _entry_ — doing so returns a garbage "original" pointer and CTDs on first call; use
   MinHook (or hook a call-site). Cut-on-skip is then `handle.Stop()` / `FadeOutAndRelease()` on that
   captured handle when v1's skip fires — removes the audio-tail overlap v1 accepts. The same hook can
   also read the line's `.fuz`/`.xwm` duration for exact NPC-reply scheduling (eliminates the wpm guess,
@@ -127,7 +131,7 @@ shipped, verified in-game. Deferred:
 - **Boost-clamp: RESOLVED → slider capped at 0–100%.** In-game 150% testing confirmed
   `BSSoundHandle::SetVolume(>1.0)` does **not** amplify — 150% was indistinguishable from 100% (engine
   handle volumes are 0.0–1.0 multipliers). Attenuation works fully (50% quieter, 0% silent, NPC reply
-  unchanged, survives save/reload). The slider now caps at 100%. If voice *boost* is ever wanted it needs
+  unchanged, survives save/reload). The slider now caps at 100%. If voice _boost_ is ever wanted it needs
   a different gain path (re-encode the Karat pack louder offline, or a custom audio output model) — not
   worth it for the "tame it" goal. See `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value
   mapping & the boost caveat".
@@ -160,11 +164,11 @@ works straight from the design doc. Deferred beyond v1:
 ## 2026-06-12 — skytest relocation follow-ups
 
 `skytest` moved from `~/Downloads/skyrim-mods/1-skytest/` into this repo (`skytest/`) so that
-mod-*making* and mod-*managing* are cleanly separated by directory. The move was pure (no script
+mod-_making_ and mod-_managing_ are cleanly separated by directory. The move was pure (no script
 changes). Follow-ups it opened up:
 
 - **~~Merge `headless/` + `skytest/` into one launcher~~ — DESIGNED 2026-06-12**
-  (`docs/plans/headless-skytest-merge-design.md`), not yet built. A *test session* runs under
+  (`docs/plans/headless-skytest-merge-design.md`), not yet built. A _test session_ runs under
   gamescope (visible `--backend wayland` or `--headless`) — detached, drivable (`skytest shot`/
   `drive`/`ready`/`stop`), restore-on-`stop`; `play`/`normal` keep the bare direct fast path
   (blocking, restore-on-exit, not drivable). The visible test runs under gamescope so `drive`/`shot`
@@ -172,7 +176,7 @@ changes). Follow-ups it opened up:
   into `skytest/lib/gamescope.sh` + `skytest/eidriver/`. Implementation plan is the next step.
 - **~~De-duplicate `SkytestProbe.dll`~~ — RESOLVED 2026-06-12.** `skytest` now reads the probe DLL +
   ini straight from its build output (`mods/SkytestProbe/build/SkytestProbe.dll` + `mods/SkytestProbe/
-  SkytestProbe.ini`); the committed copy under `skytest/base-skse/` and `build.sh --stage` are both
+SkytestProbe.ini`); the committed copy under `skytest/base-skse/` and `build.sh --stage` are both
   gone, so the build output is the single canonical copy — no tracked binary duplicate.
   (`po3_StartOnSave.{dll,ini.template}` stays vendored in `base-skse/` — genuinely third-party, no
   in-repo source.)
@@ -190,7 +194,7 @@ Deferred out of the merge design (`docs/plans/headless-skytest-merge-design.md`,
 
 - **Input recording / playback.** The motivating use case for `shot`/`drive` being first-class
   skytest verbs. CC drives a (visible) gamescope test session to a target state — e.g. navigate
-  menus, click a discovered map marker — using screenshots as the authoring aid (*see* where the
+  menus, click a discovered map marker — using screenshots as the authoring aid (_see_ where the
   marker is, decide the click). The input step sequence is **recorded** to a file, then **replayed**
   deterministically to re-reach that state for testing/probing (replay → probe the result, no human
   in the loop). Its own design space, deferred deliberately: the step-file format, how playback

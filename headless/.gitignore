@@ -1,6 +1,0 @@
-# compiled input client (rebuild with src/build.sh)
-src/eidriver
-# scratch capture artifacts
-*.avif
-*.png
-*.log

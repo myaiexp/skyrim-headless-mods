@@ -185,3 +185,36 @@ leaving a game you're playing in the same prefix alone; broad pattern-kill is on
 fallback. Verified live: blocked launch alongside a running game → `./stop.sh` removed the headless
 session and left the game running, exit 0. (Its liveness re-check tests the exact pid, not a cmdline
 grep — else it self-matches per #11, which it did on the first cut.)
+
+## 13. OPEN — under `--backend headless`, the SIGUSR2 capture is black IN-WORLD (menus too)
+
+Surfaced 2026-06-12 while functionally verifying the skytest merge (`skytest test <mod> --headless`
+→ `ready` → `shot`). The game genuinely runs: SkytestProbe `status` reports `inWorld:true /
+is3DLoaded:true / no menus`, and libei input lands (`drive tap …` connects to `gamescope-0-ei`,
+binds caps, sends the event). **But every `shot` returns the *identical* ~1215-byte AVIF, mean
+≈8/255 — uniformly black** — across in-world, the Esc system menu, *and* the world map. Same empty
+buffer each time, regardless of game state. The gamescope log shows `xwm: got the same buffer
+committed twice, ignoring`, i.e. it isn't receiving fresh game frames to composite. So under the
+headless backend, gamescope is **not compositing the game surface into the SIGUSR2 capture buffer**
+in this config — the screenshot path runs (it writes an AVIF), the content is just blank.
+
+Two things narrow it:
+- A separate gamescope AVIF from earlier the same day decoded to a **real colour frame** (mean ~4556,
+  sRGB), so the SIGUSR2→AVIF→PNG path itself works on this machine — the blank is upstream, in what
+  gamescope has to composite under `--backend headless`.
+- **Every prior "headless screenshot works" claim in this repo was at the MAIN MENU** (a pure
+  Scaleform UI layer, no live 3D world) — see the old status notes folded into `../README.md`. The
+  live 3D world (and its overlay menus) was apparently never screenshot-verified headless. So this is
+  most likely a long-standing gap, not a regression — and **not** introduced by the merge (the shot
+  logic is ported verbatim from `shot.sh`, only its pid/paths repointed).
+
+**Consequence + workaround (until debugged):**
+- Headless **drive + probe** testing is fully viable *blind*: drive inputs, then read ground truth
+  from SkytestProbe's `trace.jsonl` (`status`/`dump`/`watch`) — which works headless. Don't rely on
+  `shot` for headless visual confirmation yet.
+- For **eyes**, use the visible backend: `skytest test <mod>` (default `--backend wayland`, a window
+  nested in Hyprland) — its present path differs and may capture real frames. Confirming `shot`
+  (SIGUSR2) under `--backend wayland` is the design's open item (`--sdl` is the next fallback).
+- Worth a dedicated look later: gamescope version/flags for headless compositing, whether a forced
+  vblank/present source helps, and whether the main-menu (no-3D) frame still captures under headless
+  now (isolates "3D layer not composited" vs "nothing composited").
