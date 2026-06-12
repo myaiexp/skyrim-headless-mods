@@ -123,6 +123,17 @@ skse_env_export() {
 # `[ -x launch-skse.sh ]` guard now that skytest no longer shells out to that script).
 skse_launch_ready() { [ -x "$PROTON" ] && [ -f "$LOADER" ]; }
 
+# The only safety net for the detached test model: refuse whenever a gamescope test
+# session is live and the verb would either launch a second one (double-parking Data)
+# or unpark Data -> full out from under it (the cross-profile crash — SKSE plugins from
+# one profile, ESPs/save from another). Applied wherever Data would move or a launch
+# would start. Checked BEFORE game_running so its clearer message wins (the live test
+# session is itself a running SkyrimSE.exe, so game_running is true too).
+guard_no_live_session() {
+  gs_session_alive && die "a test session is live (pid $(gs_session_pid))" "skytest stop"
+  return 0
+}
+
 # --- classification (whitelist) ----------------------------------------------
 
 # vanilla plugin basenames present in $1 (base masters + Skyrim.ccc, CRLF-safe)
@@ -432,10 +443,10 @@ cmd_test() {
   [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
-  game_running && die "Skyrim is running - close it first."
   # Refuse BEFORE rebuilding/parking the profile — a second launch over a live session
   # would double-park Data with no trap to undo it (detached model has no auto-restore).
-  gs_session_alive && die "a test session is already live (pid $(gs_session_pid))" "skytest stop"
+  guard_no_live_session
+  game_running && die "Skyrim is running - close it first."
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
 
   say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
@@ -494,6 +505,7 @@ cmd_stop() {
 
 cmd_setup_save() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
+  guard_no_live_session   # would launch a 2nd game over the live test session
   game_running && die "Skyrim is running - close it first."
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
   [ -d "$VANILLA" ] || die "vanilla profile missing." "skytest init --commit"
@@ -534,12 +546,14 @@ cmd_setup_save() {
 
 cmd_normal() {
   if [ ! -L "$DATA" ]; then say "already normal — Data is the real directory."; return 0; fi
+  guard_no_live_session   # forcing Data -> full under a live test session = cross-profile crash
   point_data full; restore_plugins; say "Data → full"
 }
 
 cmd_play() {
   # Everyday fast launch of the FULL modded game over the direct SKSE path
   # (skips Steam Play, which is the real cause of the slow ~2min startup).
+  guard_no_live_session   # unparking Data -> full out from under a live test session = crash
   if [ -L "$DATA" ]; then
     [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
     point_data full
@@ -552,16 +566,18 @@ cmd_play() {
 
 cmd_status() {
   local json=""; [ "${1:-}" = "--json" ] && json=1
-  local migrated tgt base hf hv ht
+  local migrated tgt base hf hv ht sess_pid=""
   if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")"); else migrated=0; tgt=""; fi
   base_save_exists && base=1 || base=0
   [ -d "$FULL" ]    && hf=1 || hf=0
   [ -d "$VANILLA" ] && hv=1 || hv=0
   [ -d "$TEST" ]    && ht=1 || ht=0
+  gs_session_alive  && sess_pid="$(gs_session_pid)"   # live detached gamescope test session?
 
   if [ -n "$json" ]; then
-    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s}\n' \
-      "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")"
+    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"session":{"alive":%s,"pid":"%s"}}\n' \
+      "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")" \
+      "$([ -n "$sess_pid" ] && echo true || echo false)" "$sess_pid"
     return 0
   fi
 
@@ -573,10 +589,16 @@ cmd_status() {
     printf '%-10s migrated → %s\n' state "$tgt"
     printf '%-10s %s\n' profiles "${profs:-none}"
     printf '%-10s %s\n' "base save" "$([ "$base" = 1 ] && echo "$BASE_SAVE_NAME present" || echo "absent — build with: skytest setup-save")"
+    printf '%-10s %s\n' session "$([ -n "$sess_pid" ] && echo "live test session (pid $sess_pid)" || echo "no test session")"
     echo
     echo "Next steps:"
-    [ "$tgt" = test ] && echo "  skytest normal            recover: force Data → full after an interrupted test"
-    echo "  skytest test <mod>        launch vanilla + one mod"
+    if [ "$tgt" = test ] && [ -n "$sess_pid" ]; then
+      echo "  skytest stop              end the live test session + restore Data → full"
+      echo "  skytest shot <out.png>    screenshot it    |    skytest drive …   inject input"
+    elif [ "$tgt" = test ]; then
+      echo "  skytest normal            recover: force Data → full after an interrupted test"
+    fi
+    echo "  skytest test <mod>        start a drivable test session"
     echo "  skytest play              launch the full modded game"
   else
     printf '%-10s not migrated (Data is the original real directory)\n' state
@@ -589,6 +611,7 @@ cmd_status() {
 
 cmd_uninstall() {
   if [ ! -L "$DATA" ]; then say "already uninstalled — Data is the original real directory."; return 0; fi
+  guard_no_live_session   # uninstall mv's FULL back over Data — same unpark hazard
   game_running && die "Skyrim is running - close it first."
   [ -d "$FULL" ] || die "missing $FULL -- not safe to uninstall automatically."
   rm "$DATA"
