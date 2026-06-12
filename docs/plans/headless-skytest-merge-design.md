@@ -79,8 +79,11 @@ skytest stop                                            # tear down the test ses
 
 Both paths run the identical proton invocation — verified: `launch-skse.sh` (windowed) and
 `headless/launch.sh` both do `proton run skse64_loader.exe` with the same `STEAM_COMPAT_DATA_PATH`
-/ `STEAM_COMPAT_CLIENT_INSTALL_PATH` and `SteamAppId=489830`. The merge introduces one
-`launch_skse_core` helper (env + proton invocation):
+/ `STEAM_COMPAT_CLIENT_INSTALL_PATH` and `SteamAppId=489830`. **One divergence to resolve when
+building `launch_skse_core`:** `headless/launch.sh` exports *both* `SteamAppId` and `SteamGameId`,
+while skytest's direct path (`launch_and_hold`) sets only `SteamAppId`. The unified helper must
+decide deliberately whether `SteamGameId` is needed (headless thought it was) so it isn't silently
+dropped for one path. The merge introduces one `launch_skse_core` helper (env + proton invocation):
 
 - **direct (`play`/`normal`)** runs `launch_skse_core` bare;
 - **gamescope (`test`)** runs `gamescope --backend <wayland|headless> -W -H -- launch_skse_core`,
@@ -114,6 +117,12 @@ covered by an `EXIT` trap, so the footgun "forgot to `stop`, `Data` stuck on `te
 2. The launching verbs already `die` if a game is running; this is extended to detect a live
    **gamescope test session** (live pidfile) and refuse a second launch, pointing at `skytest stop`.
 
+Both are **net-new behavior**, not tweaks: today's `cmd_status` has no pidfile awareness, and the
+launch guard only checks `game_running` (a running game), not a live detached gamescope session.
+The plan must treat "teach `cmd_status` about the gamescope pidfile" and "extend the launch guard to
+detect a live gamescope session" as explicit, separate steps — they are the *only* safety net
+replacing the lost windowed-`test` EXIT-trap auto-restore.
+
 A blocking launcher does **not** prevent driving — `drive`/`shot` work via the socket/pidfile
 regardless of whether the launching command is still in the foreground. Detached is required only so
 that *the agent that launched* can issue the next command; the human-watch case works identically.
@@ -146,7 +155,8 @@ skytest/
 ```
 
 - The standalone `headless/{launch,ready,shot,drive,stop}.sh` retire — logic absorbed into
-  `lib/gamescope.sh`. `eidriver.c` + its `build.sh` move to `skytest/eidriver/`.
+  `lib/gamescope.sh`. `eidriver.c` + its `build.sh` move from `headless/src/` to `skytest/eidriver/`;
+  `lib/gamescope.sh`'s `EIDRIVER` path must be repointed from `$HERE/src/eidriver` to the new dir.
 - `headless/docs/findings.md` is the must-keep (it documents *why each approach failed* — read it
   before changing the gamescope/libei approach). It moves to `skytest/docs/headless-findings.md`.
   `headless/docs/{design,status}.md`: fold the still-live bits into the rewritten `skytest/README.md`
