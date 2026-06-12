@@ -1,6 +1,6 @@
 # Findings — dead-ends and the reasons (read before changing the approach)
 
-Every wall hit while building this, and *why* it's a wall. The point is to not re-pay for these.
+Every wall hit while building this, and _why_ it's a wall. The point is to not re-pay for these.
 
 ## 1. XTEST into a nested gamescope leaks to your real cursor
 
@@ -14,16 +14,16 @@ headless inner `:1` left the real `:0` pointer coordinates **identical** = isola
 ## 2. XTEST absolute positioning can't drive Skyrim's cursor
 
 Even isolated, XTEST only sends **absolute** X pointer events. Skyrim uses **relative/raw** mouse
-mode, so Wine converts each absolute warp into a *delta from the previous position*. The cursor's
+mode, so Wine converts each absolute warp into a _delta from the previous position_. The cursor's
 true position is decoupled and unknown; large warps accumulate and clamp in a corner. Origin-reset
-tricks + sensitivity guessing didn't make it reliable. → This is *why* we abandoned XTEST for
+tricks + sensitivity guessing didn't make it reliable. → This is _why_ we abandoned XTEST for
 input and moved to **libei** (relative-native). XTEST is fine for nothing here.
 
 ## 3. A second headless Hyprland/sway compositor — Hyprland crashes headless
 
 Tried standing up a second compositor (own seat, own socket) to host the game. `grim` + `wtype`
 worked against it — **but it wasn't actually headless**: launched with `WAYLAND_DISPLAY` in the
-env, Hyprland created a *nested window* (monitor `WAYLAND-1`) on the real desktop, and the user's
+env, Hyprland created a _nested window_ (monitor `WAYLAND-1`) on the real desktop, and the user's
 keyboard reached it by focus. Scrubbing the env and forcing headless **crashed**: `CBackend::create()
 failed`. Reason: modern Hyprland uses the **aquamarine** backend (not wlroots), so `WLR_BACKENDS=headless`
 is ignored, and aquamarine's headless backend won't initialize without the DRM master that the live
@@ -63,21 +63,21 @@ No passwordless sudo, no askpass — `xdotool`/`ydotool` wouldn't install. → E
 
 ## 8. Skyrim hides the menu cursor — no visual cursor feedback
 
-The main-menu mouse cursor is hidden in most states, so you can't *see* where the pointer is to
+The main-menu mouse cursor is hidden in most states, so you can't _see_ where the pointer is to
 calibrate. Frame-diffing to locate it fails too: the main menu has an **animated fog/smoke**
 background, so two frames differ across a huge area, not just the cursor. → Use **semantic** signals
 (does a menu item highlight / a submenu open / a screen change), not cursor-spotting.
 
-## 9. RESOLVED — libei *relative* pointer drives Skyrim; *absolute* is inert by design
+## 9. RESOLVED — libei _relative_ pointer drives Skyrim; _absolute_ is inert by design
 
 Settled empirically (2026-06-09, reproduced in the headless menu). Both halves are now proven:
 
 **Absolute (`ei_device_pointer_motion_absolute`) does nothing — and the old "scaling" theory was wrong.**
 gamescope's abs region is `INT32_MAX × INT32_MAX` (literally named `"Mr. Worldwide"`, offset 0) but
-it is **decorative** — gamescope does *not* normalise against it. On `POINTER_MOTION_ABSOLUTE` it
+it is **decorative** — gamescope does _not_ normalise against it. On `POINTER_MOTION_ABSOLUTE` it
 passes the value **verbatim** to `wlserver_mousewarp(x,y)` (assign → clamp to focused surface), so
 the correct abs value is just the raw output pixel. There was never a scaling factor to derive. The
-real blocker: gamescope's absolute warp emits only an **absolute** Wayland pointer event, *never*
+real blocker: gamescope's absolute warp emits only an **absolute** Wayland pointer event, _never_
 `relative-pointer-v1`. Skyrim runs **raw/relative mouse even in menus**, so it ignores absolute
 motion entirely. Proof: warping onto `LOAD` (`abs 1200 554`) left the highlight on `CONTINUE` —
 zero effect. (Source: gamescope 3.16.23 `InputEmulation.cpp` / `wlserver.cpp`.)
@@ -90,14 +90,15 @@ misread: the cursor had moved but parked **off the bottom-right edge** (positive
 clamp there), so it looked like no cursor at all.
 
 **Two corrections to older notes:**
-- The menu cursor is the **arrow sprite** and is *always present* — it does **not** idle-fade
-  (supersedes finding #8's "hidden cursor"). It only *looks* absent when relative deltas have parked
+
+- The menu cursor is the **arrow sprite** and is _always present_ — it does **not** idle-fade
+  (supersedes finding #8's "hidden cursor"). It only _looks_ absent when relative deltas have parked
   it off the bottom-right edge; nudge `rel` up-left and it reappears.
 - **Cursor position persists across separate `eidriver` invocations** — gamescope keeps cursor state
   between libei sessions (`stop_emulating` doesn't reset it). So `rel`-position in one call then
   `click` in the next lands correctly; you don't have to do move+click in one process.
 
-→ **Consequence for the API:** "click at pixel (x,y)" cannot ride raw libei *absolute*, but it rides
+→ **Consequence for the API:** "click at pixel (x,y)" cannot ride raw libei _absolute_, but it rides
 **relative** trivially. Sensitivity was **measured exactly 1:1** — `rel D` moves the cursor `D`
 pixels, linear, isotropic, no acceleration (swept 200/400/600 on both axes, landed dead-on; my earlier
 "~0.6–0.9, non-uniform" guess was eyeball noise off scaled screenshots). So **open-loop is exact** and
@@ -109,11 +110,11 @@ opened the Load screen. Keyboard remains the deterministic path for anything men
 ### 9b. Skyrim caps a single oversized relative delta — move in modest steps
 
 Hit while implementing the above. `moveto` first homed with one giant `rel(-8192,-8192)` to slam the
-cursor to (0,0). The *visible/hover* cursor went to the right place (the target item highlighted), but
-**clicks silently missed** — opened nothing. A *modest* home (`rel(-1400,-800)`, or repeated
+cursor to (0,0). The _visible/hover_ cursor went to the right place (the target item highlighted), but
+**clicks silently missed** — opened nothing. A _modest_ home (`rel(-1400,-800)`, or repeated
 `rel(-1500,-1000)`) clicked correctly every time. So Skyrim's raw-input integration **caps/rejects a
 single relative delta above ~1400-ish**: gamescope's compositor cursor (which drives the highlight)
-still moves 1:1 and clamps fine, but Skyrim's *internal* cursor — the click hit-test point — under-moves
+still moves 1:1 and clamps fine, but Skyrim's _internal_ cursor — the click hit-test point — under-moves
 and desyncs from it. → Fix: never send one big delta. `eidriver` now chunks every move into
 ≤1000-px steps with a short pump between (`rel_step`), so home-overshoot and long `moveto`s stay in the
 safe regime. (This also means a future >~1400-wide resolution won't silently re-break clicks.)
@@ -124,11 +125,12 @@ Hit while testing the OneClickMap loop (load → `M` → click a discovered mark
 **map**, a cursor at/near a screen edge **pans the map view** (it's a click-drag-able pannable surface,
 not a fixed menu). So the absolute primitive's clamp-to-corner home (`abs`/`clickat`, which slam to
 (0,0)) is **destructive on the map**: it pans the view, so the target pixel no longer points at the
-marker, and the click lands on bare terrain → Skyrim places a *"Custom Destination"* flag instead of
+marker, and the click lands on bare terrain → Skyrim places a _"Custom Destination"_ flag instead of
 selecting the location. (Menus are unaffected — they don't pan.)
 
 → **Map interaction recipe (verified, traveled to Dustman's Cairn):**
-1. Position with **bare relative nudges** (`drive.sh rel dx dy`) — *no* home, and keep clear of the
+
+1. Position with **bare relative nudges** (`drive.sh rel dx dy`) — _no_ home, and keep clear of the
    screen edges so the view doesn't pan. The cursor's on-screen position persists between invocations,
    so nudge → screenshot → nudge again works.
 2. **Verify with the marker's name tooltip.** Hovering a discovered marker pops its name + status
@@ -146,8 +148,8 @@ the player) instead of the corner home.
 
 Three separate ways the "is it up / is it ready?" question bit us, and the fixes now baked in:
 
-1. **`pgrep -f "gamescope --backend headless"` self-matches.** `-f` matches the *whole cmdline* of
-   *every* process — including an editor on `launch.sh`, or a shell command you typed that contained
+1. **`pgrep -f "gamescope --backend headless"` self-matches.** `-f` matches the _whole cmdline_ of
+   _every_ process — including an editor on `launch.sh`, or a shell command you typed that contained
    that phrase. The launch guard fired on a phantom "already running". The bracket trick doesn't save
    you (a plain phrase still matches). → **Fix:** `launch.sh` writes the real gamescope pid to
    `/tmp/headless-skyrim.pid` and the guard checks `kill -0 <pid>` + `/proc/<pid>/cmdline` is
@@ -157,12 +159,12 @@ Three separate ways the "is it up / is it ready?" question bit us, and the fixes
    `setsid()` as a process-group leader, so it **forks** the real process and exits — `$!` is the
    wrapper, already dead, useless for a pidfile. And gamescope's process name isn't exactly
    `gamescope`, so `-x` whiffs (we used to match `-W 1280 -H 720` instead). → **Fix:** launch via an
-   inner `setsid bash -c 'echo $$ > pidfile; exec gamescope …'`. The pid is recorded *before* the
+   inner `setsid bash -c 'echo $$ > pidfile; exec gamescope …'`. The pid is recorded _before_ the
    `exec`, and `exec` means gamescope **inherits** it — so the pidfile holds the true compositor pid.
 
 3. **"In-world" has no process signal — and the main menu looks ready.** `SkyrimSE.exe` spawns
    minutes into the Proton boot, so an early `pgrep SkyrimSE.exe` false-negatives mid-load. Worse,
-   the main menu *looks* ready (main thread free → `status` acks there) and `parentCell`/`gameActive`
+   the main menu _looks_ ready (main thread free → `status` acks there) and `parentCell`/`gameActive`
    both flip true mid-load, too early. The only reliable "fully interactive" signal is the player's
    **`Is3DLoaded()`**. → **Fix:** `SkytestProbe`'s `status` now reports a `world` block
    (`inWorld`/`is3DLoaded`/`mainMenu`/`loadingMenu`) — `inWorld` is the exact gate the probe's `exec`
@@ -176,7 +178,7 @@ gamescope + Proton scaffolding (`python3` + `steam.exe`) but **the game never sp
 `SkyrimSE.exe` under the headless session, no swapchain in the log. Proton's `steam.exe` wrapper
 won't start a second copy of an appid Steam already considers running; the first game is unaffected.
 
-Consequence for teardown: the usual thing you clean up is a *blocked* headless launch (gamescope +
+Consequence for teardown: the usual thing you clean up is a _blocked_ headless launch (gamescope +
 proton idling) sitting next to your real game — where the **only** `SkyrimSE.exe` is your game. So
 the old `stop.sh` (`pkill -9 -f SkyrimSE.exe` + `pkill -9 wineserver`) would have killed **your
 game** and its wineserver, not the headless scaffolding. → **Fix:** `stop.sh` kills everything in
@@ -186,35 +188,35 @@ fallback. Verified live: blocked launch alongside a running game → `./stop.sh`
 session and left the game running, exit 0. (Its liveness re-check tests the exact pid, not a cmdline
 grep — else it self-matches per #11, which it did on the first cut.)
 
-## 13. OPEN — under `--backend headless`, the SIGUSR2 capture is black IN-WORLD (menus too)
+## 13. A black `shot` means the game never spawned in the session — a Skyrim was ALREADY running
 
-Surfaced 2026-06-12 while functionally verifying the skytest merge (`skytest test <mod> --headless`
-→ `ready` → `shot`). The game genuinely runs: SkytestProbe `status` reports `inWorld:true /
-is3DLoaded:true / no menus`, and libei input lands (`drive tap …` connects to `gamescope-0-ei`,
-binds caps, sends the event). **But every `shot` returns the *identical* ~1215-byte AVIF, mean
-≈8/255 — uniformly black** — across in-world, the Esc system menu, *and* the world map. Same empty
-buffer each time, regardless of game state. The gamescope log shows `xwm: got the same buffer
-committed twice, ignoring`, i.e. it isn't receiving fresh game frames to composite. So under the
-headless backend, gamescope is **not compositing the game surface into the SIGUSR2 capture buffer**
-in this config — the screenshot path runs (it writes an AVIF), the content is just blank.
+Surfaced **and misdiagnosed then corrected** 2026-06-12 while functionally verifying the skytest
+merge. First read: "`--backend headless` doesn't composite the game surface" — `skytest test <mod>
+--headless` → `ready` reported `inWorld:true`, `drive` connected to `gamescope-0-ei`, yet every
+`shot` returned the _identical_ ~1215-byte black AVIF (mean ≈8/255), across in-world, the Esc menu,
+_and_ the map. **That conclusion was wrong.** The real cause was finding #12 + a shared-channel trap:
 
-Two things narrow it:
-- A separate gamescope AVIF from earlier the same day decoded to a **real colour frame** (mean ~4556,
-  sRGB), so the SIGUSR2→AVIF→PNG path itself works on this machine — the blank is upstream, in what
-  gamescope has to composite under `--backend headless`.
-- **Every prior "headless screenshot works" claim in this repo was at the MAIN MENU** (a pure
-  Scaleform UI layer, no live 3D world) — see the old status notes folded into `../README.md`. The
-  live 3D world (and its overlay menus) was apparently never screenshot-verified headless. So this is
-  most likely a long-standing gap, not a regression — and **not** introduced by the merge (the shot
-  logic is ported verbatim from `shot.sh`, only its pid/paths repointed).
+- **A real Skyrim (the user's) was already running** the whole time. Steam blocks a 2nd instance of
+  the appid (#12), so the test session's gamescope came up but **the game never spawned inside it** —
+  the gamescope log shows Vulkan/Xwayland/libei init then _nothing_: no DXVK, no swapchain, one empty
+  `xwm: got the same buffer committed twice`, then only screenshots + `gamescope_ei: Unhandled libei
+event!`. An empty compositor → a black frame. Nothing wrong with the SIGUSR2 path.
+- **`ready` was a false positive.** The probe channel (`commands.jsonl`/`trace.jsonl`) lives in the
+  prefix's SKSE log dir, which is **shared across every game in the prefix** — not per session. So the
+  _other_ running game (probe-bearing) answered the `status` pings, and `gs_wait_ready` (which reads
+  `grep '"src":"status"' | tail -1`, not matched to its own command id) reported in-world about the
+  **wrong game**. `drive`'s libei events went to the empty session (`Unhandled`), not that game.
 
-**Consequence + workaround (until debugged):**
-- Headless **drive + probe** testing is fully viable *blind*: drive inputs, then read ground truth
-  from SkytestProbe's `trace.jsonl` (`status`/`dump`/`watch`) — which works headless. Don't rely on
-  `shot` for headless visual confirmation yet.
-- For **eyes**, use the visible backend: `skytest test <mod>` (default `--backend wayland`, a window
-  nested in Hyprland) — its present path differs and may capture real frames. Confirming `shot`
-  (SIGUSR2) under `--backend wayland` is the design's open item (`--sdl` is the next fallback).
-- Worth a dedicated look later: gamescope version/flags for headless compositing, whether a forced
-  vblank/present source helps, and whether the main-menu (no-3D) frame still captures under headless
-  now (isolates "3D layer not composited" vs "nothing composited").
+**Root gap (now fixed):** `game_running()` used to comm-match (`pgrep -i skyrimse`), but a wine/proton
+game's comm is often `Main`, so it **didn't see the already-running game** and `cmd_test` proceeded
+into the doomed launch. It now cmdline-matches `pgrep -f 'SkyrimSE\.exe'` (self/parent excluded per
+#11; the launcher uses `skse64_loader.exe`, so it's matched only once the game truly spawns), and
+`test`/`play`/`setup-save`/`uninstall`/`init` refuse up front: _"Skyrim is already running (pid N) —
+close it first."_ That removes the whole class of "why is my test black?" confusion.
+
+**Still genuinely open (untouched by the above):** headless `shot` capturing a **real in-world frame**
+is _unverified_ — both verification launches were blocked by the running game, so no frame was ever a
+true negative. A separate AVIF from earlier the same day decoded to a real colour frame (mean ~4556,
+sRGB), so the path works in general. **Re-test with no other Skyrim running** (the new guard makes
+that the only valid way) before trusting — or distrusting — headless `shot`. The design's `--backend
+wayland` `shot`/`drive` confirmation is likewise still pending a clean, game-free run.

@@ -99,7 +99,25 @@ json_arr() {
   printf '%s]' "$out"
 }
 
-game_running() { pgrep -i 'skyrimse' >/dev/null 2>&1; }  # match process name, not cmdlines (avoids self-match)
+# Is a Skyrim game process running? Match the SkyrimSE.exe *cmdline*, not the comm:
+# a wine/proton game's comm is often "Main", so the old `pgrep -i skyrimse` (comm-match)
+# silently MISSED an already-running game and let a doomed 2nd launch proceed — Steam
+# blocks a 2nd instance of the appid, so the gamescope session came up empty/black and
+# the shared-channel probe answered `ready` about the *other* game (findings #12/#13).
+# The gamescope/proton launcher references skse64_loader.exe (not SkyrimSE.exe), so it's
+# matched only once the game actually spawns. Self/parent excluded so the cmdline grep
+# can't self-match (findings #11). Echoes the matching pid(s), newest-relevant first.
+running_game_pids() { pgrep -f 'SkyrimSE\.exe' 2>/dev/null | grep -vw "$$" | grep -vw "${PPID:-0}" || true; }
+game_running() { [ -n "$(running_game_pids | head -1)" ]; }
+
+# Refuse up front when a Skyrim is already running — the #1 source of "why is my test
+# black?" confusion: a 2nd instance can't launch (Steam blocks the appid), so the session
+# is empty. Names the pid so you can spot a stray/orphaned one.
+guard_no_running_game() {
+  local p; p="$(running_game_pids | head -1)"
+  [ -n "$p" ] && die "Skyrim is already running (pid $p) — close it first; a 2nd instance can't launch." "close that game, then re-run"
+  return 0
+}
 
 # Where the real, full Data currently lives: FULL if migrated, else DATA.
 src_data() { if [ -L "$DATA" ]; then printf '%s' "$FULL"; else printf '%s' "$DATA"; fi; }
@@ -342,7 +360,7 @@ cmd_init() {
   fi
 
   # --- commit: the one sensitive step, each part verified ---
-  game_running && die "Skyrim is running - close it first."
+  guard_no_running_game
   [ -L "$DATA" ] && die "already migrated (Data is a symlink). Nothing to do."
   [ -d "$DATA" ] || die "Data is not a real directory; aborting."
 
@@ -402,7 +420,7 @@ launch_and_hold() {
   say "waiting for the game to stabilize (ignoring the launcher flash)..."
   while [ "$waited" -lt "$timeout" ]; do
     if game_running; then
-      pid=$(pgrep -i skyrimse | head -n1)
+      pid=$(running_game_pids | head -n1)
       ok=1; g=0
       while [ "$g" -lt "$grace" ]; do
         kill -0 "$pid" 2>/dev/null || { ok=0; break; }
@@ -446,7 +464,7 @@ cmd_test() {
   # Refuse BEFORE rebuilding/parking the profile — a second launch over a live session
   # would double-park Data with no trap to undo it (detached model has no auto-restore).
   guard_no_live_session
-  game_running && die "Skyrim is running - close it first."
+  guard_no_running_game
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
 
   say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
@@ -506,7 +524,7 @@ cmd_stop() {
 cmd_setup_save() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   guard_no_live_session   # would launch a 2nd game over the live test session
-  game_running && die "Skyrim is running - close it first."
+  guard_no_running_game
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
   [ -d "$VANILLA" ] || die "vanilla profile missing." "skytest init --commit"
 
@@ -554,6 +572,7 @@ cmd_play() {
   # Everyday fast launch of the FULL modded game over the direct SKSE path
   # (skips Steam Play, which is the real cause of the slow ~2min startup).
   guard_no_live_session   # unparking Data -> full out from under a live test session = crash
+  guard_no_running_game   # a 2nd instance can't launch anyway — say so cleanly
   if [ -L "$DATA" ]; then
     [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
     point_data full
@@ -612,7 +631,7 @@ cmd_status() {
 cmd_uninstall() {
   if [ ! -L "$DATA" ]; then say "already uninstalled — Data is the original real directory."; return 0; fi
   guard_no_live_session   # uninstall mv's FULL back over Data — same unpark hazard
-  game_running && die "Skyrim is running - close it first."
+  guard_no_running_game
   [ -d "$FULL" ] || die "missing $FULL -- not safe to uninstall automatically."
   rm "$DATA"
   mv -T "$FULL" "$DATA"

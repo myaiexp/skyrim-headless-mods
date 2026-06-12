@@ -96,15 +96,19 @@ caught by **visibility**, not trapping:
   pointing at `skytest stop`. (Unparking `Data` while the live session still reads `Data → test` is
   the cross-profile crash: SKSE plugins from one profile, ESPs/save from another.)
 
-### Screenshot caveat (open item)
+### Don't run a test while another Skyrim is open
 
-Right now, under **`--backend headless`** the `shot` frame comes back **black** even though the game
-is genuinely in-world and `drive`/probe both work — gamescope isn't compositing the game surface into
-the SIGUSR2 buffer in that mode (see `docs/headless-findings.md` #13; it's pre-existing, not the
-merge). Until that's debugged: for headless runs, use the **probe** (`trace.jsonl` via `status` /
-`dump` / `watch`) as ground truth and drive _blind_; for **eyes**, use the visible default
-(`skytest test <mod>`, `--backend wayland`), whose present path differs. Confirming `shot` under
-`wayland` is the remaining open item. The dead-ends behind all of this are in
+A test session **can't spawn the game if any Skyrim is already running** — Steam blocks a 2nd
+instance of the appid, so gamescope comes up empty and `shot` is **black** (and `ready` can falsely
+pass, because the probe's `commands.jsonl`/`trace.jsonl` is shared prefix-wide and the _other_ game
+answers it — see `docs/headless-findings.md` #13). `test`/`play`/`setup-save` now **refuse up front**
+with _"Skyrim is already running (pid N) — close it first"_, so this shouldn't bite you; if it does,
+close the game (or kill a stray `SkyrimSE.exe`) and re-run.
+
+Still genuinely open: a clean, game-free run hasn't yet confirmed `shot` captures a real **in-world**
+frame under either backend (`headless` and `wayland`) — both verification attempts were blocked by a
+running game. Until then, for headless runs lean on the **probe** (`trace.jsonl` via `status` /
+`dump` / `watch`) as ground truth. The dead-ends behind the whole display/input layer are in
 [`docs/headless-findings.md`](docs/headless-findings.md) — **read it before changing the
 gamescope/libei approach.**
 

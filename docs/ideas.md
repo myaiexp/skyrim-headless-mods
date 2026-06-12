@@ -93,10 +93,11 @@ New `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screens
 
 Still open:
 
-- **Headless `shot` returns black** (in-world _and_ menus) even though the game runs and `drive`/probe
-  both work — gamescope isn't compositing the game surface into the SIGUSR2 buffer under the `headless`
-  backend. Confirm `shot` under the `wayland` backend (different present path), then debug the headless
-  path. Detail: `skytest/docs/headless-findings.md` #13.
+- **Verify `shot` captures a real in-world frame** (both backends). The "headless shot is black"
+  scare was misdiagnosed — it was a Skyrim already running blocking the 2nd instance (the session was
+  empty), now guarded against (`skytest` refuses when a game is up). A clean, game-free run still
+  hasn't _confirmed_ `shot` shows real in-world content under `headless` or `wayland` — do that once.
+  Detail: `skytest/docs/headless-findings.md` #13.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.
