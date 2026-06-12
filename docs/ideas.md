@@ -93,11 +93,14 @@ New `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screens
 
 Still open:
 
-- **Verify `shot` captures a real in-world frame** (both backends). The "headless shot is black"
-  scare was misdiagnosed — it was a Skyrim already running blocking the 2nd instance (the session was
-  empty), now guarded against (`skytest` refuses when a game is up). A clean, game-free run still
-  hasn't _confirmed_ `shot` shows real in-world content under `headless` or `wayland` — do that once.
-  Detail: `skytest/docs/headless-findings.md` #13.
+- **Rebuild `SkytestBase` vanilla-only.** It was saved with mods (LegacyoftheDragonborn / RaceMenu /
+  XPMSE / …), so autoload stalls at a "missing content" prompt and no test reaches in-world. Fix:
+  `skytest setup-save` → `coc qasmoke` → `save SkytestBase` → quit (the README warns the base save
+  must be vanilla-only). Blocks the two items below.
+- **`drive` keyboard didn't move the menu** in the clean headless run (`Unhandled libei event`,
+  gamescope 3.16.23+) though it worked historically (findings #9). `shot` itself is **confirmed**
+  working headless. Retest `drive` against a real in-world scene once `SkytestBase` is rebuilt; also
+  confirm `shot`/`drive` under `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #13.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.

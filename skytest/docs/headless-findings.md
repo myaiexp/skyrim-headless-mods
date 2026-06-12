@@ -214,9 +214,24 @@ into the doomed launch. It now cmdline-matches `pgrep -f 'SkyrimSE\.exe'` (self/
 `test`/`play`/`setup-save`/`uninstall`/`init` refuse up front: _"Skyrim is already running (pid N) —
 close it first."_ That removes the whole class of "why is my test black?" confusion.
 
-**Still genuinely open (untouched by the above):** headless `shot` capturing a **real in-world frame**
-is _unverified_ — both verification launches were blocked by the running game, so no frame was ever a
-true negative. A separate AVIF from earlier the same day decoded to a real colour frame (mean ~4556,
-sRGB), so the path works in general. **Re-test with no other Skyrim running** (the new guard makes
-that the only valid way) before trusting — or distrusting — headless `shot`. The design's `--backend
-wayland` `shot`/`drive` confirmation is likewise still pending a clean, game-free run.
+**Clean re-test (2026-06-12, no other game running):**
+
+- ✅ **`shot` works headless.** With nothing blocking, the game spawned and `shot` captured a clear,
+  readable **main menu** — 675 KB AVIF, mean ~2633 (sRGB), vs the 1215-byte mean-8 black frame when
+  blocked. So `--backend headless` composites and captures fine; the earlier black was 100% the
+  appid-block. `ready` also behaved honestly (`booting → main-menu`, no false in-world).
+- ⚠️ **`drive` (keyboard) did NOT move the menu.** `eidriver` connected and sent, but the main-menu
+  "missing content" modal didn't respond to `tab`/`esc`/`enter` (probe stayed `mainMenu:true`), and
+  `gamescope_ei: Unhandled libei event!` logged on each send — on the same gamescope 3.16.23+ where
+  finding #9 proved keyboard nav worked. **Not a merge regression** (eidriver is byte-identical, only
+  repointed). Unverified whether it's this specific modal, keyboard focus in the session, or a
+  libei/gamescope drift since #9 — needs a clean **in-world** scene to test movement/console, which
+  the item below currently blocks. Left OPEN.
+- ⚠️ **`SkytestBase.ess` is contaminated with modded content.** The autoload stalls at a "this save
+  relies on missing content" prompt listing `LegacyoftheDragonborn.esm`/`RaceMenu.esp`/`XPMSE.esp`/…
+  — the base save was made with mods present, so it can't load in the vanilla+1 test profile (exactly
+  the failure the README warns about). **Rebuild it vanilla-only:** `skytest setup-save` (it parks
+  `Data → vanilla`), `coc qasmoke`, place fixtures, `save SkytestBase`, quit. Until then no test boots
+  to in-world, which is also what blocks the `drive`-in-world retest above.
+
+(The `--backend wayland` `shot`/`drive` confirmation is still pending the same clean in-world run.)

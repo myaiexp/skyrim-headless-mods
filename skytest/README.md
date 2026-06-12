@@ -105,11 +105,14 @@ answers it — see `docs/headless-findings.md` #13). `test`/`play`/`setup-save` 
 with _"Skyrim is already running (pid N) — close it first"_, so this shouldn't bite you; if it does,
 close the game (or kill a stray `SkyrimSE.exe`) and re-run.
 
-Still genuinely open: a clean, game-free run hasn't yet confirmed `shot` captures a real **in-world**
-frame under either backend (`headless` and `wayland`) — both verification attempts were blocked by a
-running game. Until then, for headless runs lean on the **probe** (`trace.jsonl` via `status` /
-`dump` / `watch`) as ground truth. The dead-ends behind the whole display/input layer are in
-[`docs/headless-findings.md`](docs/headless-findings.md) — **read it before changing the
+Verified clean (2026-06-12, no game running): `shot` **works headless** — it captured a clear main
+menu — and `ready` polls honestly. Two things are still **open** (see `docs/headless-findings.md`
+#13): (1) `drive` keyboard didn't move the main-menu modal in that run (`Unhandled libei event`;
+worked historically for menu nav in finding #9) — needs an in-world retest; (2) the `SkytestBase`
+save is contaminated with modded content, so autoload can't reach in-world — **rebuild it vanilla-only
+with `skytest setup-save`**, which also unblocks the `drive` in-world test. The `--backend wayland`
+`shot`/`drive` confirmation is likewise pending. The dead-ends behind the whole display/input layer
+are in [`docs/headless-findings.md`](docs/headless-findings.md) — **read it before changing the
 gamescope/libei approach.**
 
 ## Which mode — `test` or `play`?
