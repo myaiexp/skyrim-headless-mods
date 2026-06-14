@@ -4,7 +4,9 @@
 #include <MinHook.h>
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
+#include <thread>
 
 namespace
 {
@@ -28,16 +30,17 @@ namespace
 	static RE::BSSoundHandle g_playerLine;
 
 	// v5 — reply-on-line-end watcher state. The speak-sound hook ARMS when it captures a player DBVO
-	// line; a self-re-arming SKSE task (WatchReplyTick, main thread) polls the retained handle and, on
-	// the playing→stopped transition, tells the swf to fire the NPC reply (FireReplyNow). atomics
-	// because the threads differ: the hook (game/VM thread) arms, the main-thread task reads+clears,
-	// and the skip path + dialogue-menu-close sink disarm. g_sawPlaying latches once the handle is seen
-	// playing, so the arm-before-audio-starts sliver can't read as "already ended". g_watchScheduled
-	// keeps exactly one re-arming tick chain alive across re-arms.
+	// line; a single detached poll thread (ReplyWatchThread, started at kDataLoaded) watches the
+	// retained handle and, on the playing→stopped transition, marshals the swf "fire reply" call to
+	// the main thread via ONE AddTask. The poll lives OFF the main thread with an explicit sleep —
+	// an earlier main-thread self-re-arming AddTask loop FROZE the game for the whole line, because
+	// SKSE drains its task queue to empty, so a task that re-queues itself spins the frame. IsValid/
+	// IsPlaying are soundID-keyed audio-manager calls safe off the main thread (v4's CutPlayerLine
+	// precedent); only the GFx invoke must be on the main thread. atomics: the hook arms, the poll
+	// thread reads+clears, the skip path + menu-close sink disarm. g_sawPlaying latches once the
+	// handle is seen playing, so the arm-before-audio-starts sliver can't read as "already ended".
 	static std::atomic<bool> g_replyArmed{ false };
 	static std::atomic<bool> g_sawPlaying{ false };
-	static std::atomic<bool> g_watchScheduled{ false };
-	void WatchReplyTick();  // fwd decl — the speak-sound hook schedules it on arm
 
 	// Route spdlog (what SKSE::log::* uses) to <My Games>/SKSE/DBVODialogueTweaks.log so the
 	// plugin leaves a visible trace that it loaded.
@@ -115,16 +118,11 @@ namespace
 					std::scoped_lock l{ g_playerLineMtx };
 					g_playerLine = *a_handle;
 				}
-				// Arm the v5 reply watcher for this line: reset the start-race latch, mark armed, and
-				// schedule the watcher exactly once (a re-arm while a chain is live is absorbed by the
-				// CAS — the running tick picks up this new handle under the mutex). AddTask is
-				// thread-safe to call from the hook thread; the tick itself runs on the main thread.
+				// Arm the v5 reply watcher for this line: reset the start-race latch, then mark armed.
+				// The detached poll thread is already running (started at kDataLoaded) and picks this
+				// up on its next tick — nothing is scheduled on the hook thread.
 				g_sawPlaying = false;
 				g_replyArmed = true;
-				bool expected = false;
-				if (g_watchScheduled.compare_exchange_strong(expected, true)) {
-					SKSE::GetTaskInterface()->AddTask([]() { WatchReplyTick(); });
-				}
 			}
 			return r;
 		}
@@ -178,30 +176,34 @@ namespace
 		menu->uiMovie->InvokeNoReturn("_root.DialogueMenu_mc.dbvoOnPlayerLineEnded", nullptr, 0);
 	}
 
-	// One tick of the v5 reply watcher, run as an SKSE task on the main thread. While armed it re-arms
-	// itself each frame; on the observed playing→stopped transition it fires the reply once and stops.
-	// Every path either re-schedules or clears g_watchScheduled before returning — no orphaned chain.
-	void WatchReplyTick()
+	// The v5 reply watcher — a single detached thread started once at kDataLoaded, looping for the
+	// game's lifetime (like SkytestProbe's poll thread). It sleeps every tick so it never saturates a
+	// core and is a near-no-op while idle. While armed it polls the retained handle off the main
+	// thread; on the observed playing→stopped transition it claims the fire exactly once (atomic
+	// exchange) and marshals FireReplyNow to the main thread via ONE AddTask (Scaleform must be touched
+	// there). ~30 ms cadence adds at most a frame of latency to the gap — negligible vs the gap slider.
+	void ReplyWatchThread()
 	{
-		if (!g_replyArmed.load()) {
-			g_watchScheduled = false;
-			return;
+		using namespace std::chrono_literals;
+		for (;;) {
+			std::this_thread::sleep_for(30ms);
+			if (!g_replyArmed.load()) {
+				continue;
+			}
+			bool playing = false;
+			{
+				std::scoped_lock l{ g_playerLineMtx };
+				playing = g_playerLine.IsValid() && g_playerLine.IsPlaying();
+			}
+			if (playing) {
+				g_sawPlaying = true;
+				continue;
+			}
+			if (g_sawPlaying.load() && g_replyArmed.exchange(false)) {
+				// playing→stopped after the line was seen playing: fire the reply once.
+				SKSE::GetTaskInterface()->AddTask([]() { FireReplyNow(); });
+			}
 		}
-		bool playing = false;
-		{
-			std::scoped_lock l{ g_playerLineMtx };
-			playing = g_playerLine.IsValid() && g_playerLine.IsPlaying();
-		}
-		if (playing) {
-			g_sawPlaying = true;
-		}
-		if (g_sawPlaying.load() && !playing) {
-			g_replyArmed = false;
-			g_watchScheduled = false;
-			FireReplyNow();
-			return;
-		}
-		SKSE::GetTaskInterface()->AddTask([]() { WatchReplyTick(); });
 	}
 
 	// Cut the player's own in-flight DBVO line (fired when v1's skip advances the menu). Fade the
@@ -369,6 +371,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 					ui->AddEventSink<RE::MenuOpenCloseEvent>(DBVOMenuSink::GetSingleton());
 					SKSE::log::info("DBVODialogueTweaks: dialogue-menu close sink registered");
 				}
+				// Start the single detached reply-watch poll thread (kDataLoaded fires once per
+				// process, so this runs exactly once). Off-main-thread polling — see ReplyWatchThread.
+				std::thread(ReplyWatchThread).detach();
+				SKSE::log::info("DBVODialogueTweaks: reply-watch poll thread started");
 			}
 		});
 	} else {

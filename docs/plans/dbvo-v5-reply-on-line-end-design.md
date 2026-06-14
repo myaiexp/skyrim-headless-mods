@@ -170,9 +170,20 @@ v2/v4), not vanilla+1. Install the built swf + DLL + MCM over the live DBVO+Kara
 
 ## Open items to confirm during planning
 
-- **Per-frame watcher mechanism.** The plugin currently has no update hook (only the SpeakSound hook +
-  a mod-event sink). Pick the lightest main-thread per-frame tick — a `Main::Update` hook (Address
-  Library id) or the SKSE task interface re-armed each frame. Decide in the plan; the design only
-  requires "a cheap main-thread poll while armed."
-- **`GFxMovie::Invoke` signature / movie lookup** for "Dialogue Menu" — confirm the exact CommonLib
-  call and that a no-arg AS2 method is invokable this way.
+- **~~Per-frame watcher mechanism~~ — RESOLVED (and corrected, see Dead-ends).** Shipped as a single
+  **detached poll thread** (off the main thread, ~30 ms sleep), NOT a main-thread tick.
+- **~~`GFxMovie::Invoke` signature / movie lookup~~ — RESOLVED.** `RE::UI::GetSingleton()->GetMenu(
+  RE::DialogueMenu::MENU_NAME)->uiMovie->InvokeNoReturn("_root.DialogueMenu_mc.dbvoOnPlayerLineEnded",
+  nullptr, 0)`, on the main thread. Verified against the fetched CommonLib headers and at runtime.
+
+## Dead-ends (do not re-try)
+
+- **Watcher as a self-re-arming `SKSE::GetTaskInterface()->AddTask` loop on the main thread — FROZE the
+  game** for the entire player-line duration (verified in-game 2026-06-14). SKSE drains its task queue
+  to empty each pass, so a task that re-queues itself spins the frame and never yields — the freeze
+  lasted exactly the armed window, then released when the line ended and the watcher disarmed. **Fix:**
+  poll on a **detached thread** with an explicit `sleep_for` (so it can never saturate the main thread),
+  and marshal only the one-shot `FireReplyNow` (the Scaleform call) back to the main thread via a single
+  `AddTask` — the proven SkytestProbe pattern. `IsValid()`/`IsPlaying()` on the handle are soundID-keyed
+  audio-manager calls safe off the main thread (v4's `CutPlayerLine` precedent), so the poll itself
+  needs no marshalling. Lesson: never use a self-re-arming SKSE task as a per-frame tick.

@@ -4,7 +4,8 @@
 the SKSE plugin watches the retained `g_playerLine` handle and, the moment it stops, tells the swf to
 fire the NPC reply after a small configurable gap.
 
-**Architecture:** The DLL owns the *when* (a self-re-arming `SKSE` task polls the handle while armed;
+**Architecture:** The DLL owns the *when* (a detached poll thread watches the handle while armed — see
+the Task 3 correction; the original main-thread `AddTask` loop froze the game and was replaced;
 on the playing→stopped transition it invokes a new swf method via Scaleform). The swf owns the *how*
 (it already knows how to fire `topicClicked`) and keeps a generous internal backstop so dialogue never
 hangs if no end-signal arrives. The MCM drops the now-meaningless per-word knob and repurposes the pad
@@ -131,6 +132,13 @@ save/reload; the voice-volume slider is unchanged.
 ---
 
 ### Task 3: SKSE plugin — arm / watch / fire / disarm  [Mode: Direct]
+
+> **CORRECTION (2026-06-14, post-ship):** the watcher below was first built as a **main-thread
+> self-re-arming `AddTask` loop** (the `g_watchScheduled` / `WatchReplyTick` code in this task) and it
+> **froze the game for the whole player line** — SKSE drains its task queue to empty, so a self-re-queuing
+> task spins the frame. **Shipped mechanism = a single detached poll thread** (off the main thread,
+> ~30 ms `sleep_for`) that marshals only the one-shot `FireReplyNow` to the main thread via one `AddTask`.
+> `g_watchScheduled` is gone. See the design doc's "Dead-ends" section; `main.cpp` is the source of truth.
 
 **Files:**
 - Modify: `mods/DBVODialogueTweaks/plugin/src/main.cpp`
