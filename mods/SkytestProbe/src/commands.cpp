@@ -33,6 +33,16 @@ namespace
 		auto it = j.find(k);
 		return (it != j.end() && it->is_boolean()) ? it->get<bool>() : def;
 	}
+	bool JHasNum(const json& j, const char* k)
+	{
+		auto it = j.find(k);
+		return it != j.end() && it->is_number();
+	}
+	double JNum(const json& j, const char* k, double def = 0.0)
+	{
+		auto it = j.find(k);
+		return (it != j.end() && it->is_number()) ? it->get<double>() : def;
+	}
 	std::vector<std::string> JStrArr(const json& j, const char* k)
 	{
 		std::vector<std::string> v;
@@ -211,6 +221,80 @@ namespace
 				case engine::ExecResult::kEmpty:
 					trace::Ack(id, false, "exec: empty command line");
 					break;
+				}
+			});
+			return;
+		}
+
+		if (c == "give-spell") {
+			const std::string ref  = JStr(cmd, "ref", "player");
+			const std::string sp   = JStr(cmd, "spell");
+			const std::string hand = JStr(cmd, "hand", "right");
+			if (sp.empty()) {
+				trace::Ack(id, false, "give-spell: missing spell formID (e.g. \"0x0001C789\")");
+				return;
+			}
+			RE::FormID fid = 0;
+			try {
+				fid = static_cast<RE::FormID>(std::stoul(sp, nullptr, 16));
+			} catch (const std::exception&) {
+				trace::Ack(id, false, "give-spell: bad spell formID: " + sp);
+				return;
+			}
+			engine::Hand h = engine::Hand::kRight;
+			if (hand == "left") {
+				h = engine::Hand::kLeft;
+			} else if (hand == "both") {
+				h = engine::Hand::kBoth;
+			} else if (hand != "right") {
+				trace::Ack(id, false, "give-spell: hand must be right|left|both");
+				return;
+			}
+			EnqueueMain([id, ref, fid, h]() {
+				auto* r     = engine::ResolveOne(ref);
+				auto* actor = r ? r->As<RE::Actor>() : nullptr;
+				if (!actor) {
+					trace::Ack(id, false, "give-spell: unresolvable actor " + ref);
+					return;
+				}
+				std::string err;
+				if (engine::GiveSpell(actor, fid, h, err)) {
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "give-spell: " + err);
+				}
+			});
+			return;
+		}
+
+		if (c == "set-av") {
+			const std::string ref = JStr(cmd, "ref", "player");
+			const std::string av  = JStr(cmd, "av");
+			if (av.empty()) {
+				trace::Ack(id, false, "set-av: missing av (e.g. \"magicka\")");
+				return;
+			}
+			if (!JHasNum(cmd, "value")) {
+				trace::Ack(id, false, "set-av: missing numeric value");
+				return;
+			}
+			const float val = static_cast<float>(JNum(cmd, "value"));
+			EnqueueMain([id, ref, av, val]() {
+				auto* r     = engine::ResolveOne(ref);
+				auto* actor = r ? r->As<RE::Actor>() : nullptr;
+				if (!actor) {
+					trace::Ack(id, false, "set-av: unresolvable actor " + ref);
+					return;
+				}
+				RE::ActorValue avEnum = engine::ResolveActorValue(av);
+				if (avEnum == RE::ActorValue::kNone) {
+					trace::Ack(id, false, "set-av: unknown actor value " + av);
+					return;
+				}
+				if (engine::SetAV(actor, avEnum, val)) {
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "set-av: failed (no AV owner)");
 				}
 			});
 			return;

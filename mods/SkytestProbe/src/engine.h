@@ -56,6 +56,22 @@ namespace engine
 	};
 	ExecResult RunConsoleCommand(const std::string& a_line);
 
+	// Headless cast-setup helpers (main-thread only, null-safe). These exist because
+	// console exec (CompileAndRun) AVs in a console-less test session — direct engine
+	// calls are the reliable headless path for the spell/AV setup a cast test needs.
+	enum class Hand
+	{
+		kRight,
+		kLeft,
+		kBoth
+	};
+	// Add a_spellID to a_actor's spell list (if missing) and equip it to the hand(s).
+	// Returns false with a reason in a_err if the actor/spell/equip-manager is unavailable.
+	bool GiveSpell(RE::Actor* a_actor, RE::FormID a_spellID, Hand a_hand, std::string& a_err);
+	// Set an actor value's base AND refill its current to that value (so e.g. magicka
+	// 1000 is immediately castable; 0 drains it for the magicka-out test). false if null.
+	bool SetAV(RE::Actor* a_actor, RE::ActorValue a_av, float a_value);
+
 	// Snapshot one actor into a trace "dump"-shaped line (src tags the producer:
 	// "dump" for the command, "f11" for the hotkey auto-dump). avs = extra actor
 	// values to include beyond health/magicka/stamina.
