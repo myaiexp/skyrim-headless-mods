@@ -285,10 +285,20 @@ swf+DLL+esp mod that *is* standalone vanilla+1-testable.
 
 ## 2026-06-14 — AutoCastSpell (deferred phases)
 
-State: **v1 designed** (`docs/plans/autocastspell-design.md`), v1 = always-on standalone SKSE DLL
-that auto-recasts a held fire-and-forget spell in a loop (spell analog of AutoFireBow), per hand,
-dual-cast via both held. Deferred out of v1:
+State: **v1 SHIPPED & verified in-engine** (`mods/AutoCastSpell/`, always-on standalone SKSE DLL;
+spell analog of AutoFireBow). Hold a fire-and-forget spell → auto-fires at full charge, loops until
+released, per hand / dual-cast. The loop is driven by polling `RE::MagicCaster::state` (no "spell
+charged" anim event exists): kReady→synthetic release, re-arm on the next charge + a release-nudge
+fallback. Verified: right/left/both loops, concentration excluded, magicka-out clean stall.
+Deferred out of v1:
 
+- **Replace the load-bearing per-cycle logging with explicit pacing.** The loop currently *depends*
+  on the per-cycle `SKSE::log::info` calls: their `flush_on(info)` disk-flush spaces the synthetic
+  injects from the state re-reads, which the timing-sensitive recharge needs. Stripping the logging
+  regressed the loop (7 casts → 2). It works, but it's fragile (a read-only log dir or an spdlog flush
+  change would alter timing) and it spams the log every cast. Replace the flush-as-pacing with an
+  explicit, deliberate delay/spacing in `CheckCasters` (or spread the inject vs. re-read across poll
+  ticks), then drop the verbose logging — and re-validate on real hardware with the *same* hold test.
 - **SkyUI MCM (the config follow-up).** Mirror AutoFireBow's MCM: master on/off, a toggle hotkey,
   and a **min-cast-delay** cadence cap. The cadence cap matters more here than for the bow — magicka
   drains fast, so the first MCM knob is the per-cast delay to avoid dumping the whole pool instantly.

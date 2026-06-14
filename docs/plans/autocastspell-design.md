@@ -1,5 +1,15 @@
 # AutoCastSpell — auto-recast held fire-and-forget spells — design
 
+> **OUTCOME (2026-06-14): shipped & verified in-engine** (`mods/AutoCastSpell/`). One design
+> assumption below was **wrong** and corrected in-build: the loop could NOT be keyed off anim events
+> like AutoFireBow's `BowDrawn`, because **there is no "spell charged" anim event** — the charge
+> period is animation-silent (probe confirmed: `BeginCastRight/Left` and `M{R,L}h_SpellFire_Event`
+> exist; the candidate `MRh_SpellReadyOut` does not). The shipped mod instead **polls
+> `RE::MagicCaster::state` (~25 Hz)**: fire on `kReady`, re-arm on the next charge, with a
+> release-nudge fallback. Also note the recharge is **timing-sensitive** (see `docs/ideas.md` — the
+> per-cycle logging is currently load-bearing pacing). The rest of the design (per-hand, FF-type
+> gate, synthetic release to fire, dual-cast via both held) held up.
+
 **Goal:** hold the cast control with a fire-and-forget spell equipped → the engine auto-recasts it in
 a loop (charge → release → recharge → release …), exactly like AutoFireBow does for the bow, until
 the control is released. Per hand, independent, so a right-hand loop, a left-hand loop, and held-both
