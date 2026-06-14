@@ -125,16 +125,21 @@ shipped, verified in-game. Deferred:
   modify-and-release with credit, and DBVO is a frozen target (~3 yr, won't bitrot) — see mod README
   "Permissions". Release pass = ship the built modified swf + ESL + MCM, credit the DBVO author, write a
   Nexus page, and test beyond the DBVO+Karat setup (a few more voice packs). No architectural change.
-- **v3+ — cut the player voice on skip (hook now live).** v3's volume-slider DLL
-  (`mods/DBVODialogueTweaks/plugin/`) already installs the enabling primitive: a **MinHook entry detour**
-  on `Actor::SpeakSoundFunction` (`RELOCATION_ID(36541, 37542)`, the general per-actor voice path) that
-  captures the player line's `BSSoundHandle`. **Gotcha learned the hard way:** CommonLibSSE-NG's
-  `write_branch<5>` is a _call-site_ primitive (it decodes the existing instruction's rel32) and CANNOT
-  hook a function _entry_ — doing so returns a garbage "original" pointer and CTDs on first call; use
-  MinHook (or hook a call-site). Cut-on-skip is then `handle.Stop()` / `FadeOutAndRelease()` on that
-  captured handle when v1's skip fires — removes the audio-tail overlap v1 accepts. The same hook can
-  also read the line's `.fuz`/`.xwm` duration for exact NPC-reply scheduling (eliminates the wpm guess,
-  supersedes v2's heuristic).
+- **v3+ → v4 — cut the voice on skip: SHIPPED (2026-06-14, verified in-game).** Both halves done:
+  the **player line** is cut on skip (the v3 `Actor::SpeakSoundFunction` hook now retains the line's
+  `BSSoundHandle` → `FadeOutAndRelease` on skip), and the **NPC reply** is cut on new-topic interrupt —
+  including multi-segment replies — via the speaker's `ExtraSayToTopicInfo.sound` +
+  `Actor::PauseCurrentDialogue`. Full architecture **and the dead-ends** (`PauseCurrentDialogue` only
+  _pauses_; `HighProcessData::soundHandles` aren't the topic voice; the NPC reply isn't a DBVO
+  SpeakSound) live in `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
+  - **NPC neutral expression on cut.** When the NPC reply is cut, the actor's face freezes in its last
+    speaking frame for ~1–2 s until the engine resets it — looks a bit stupid. Reset the speaker's
+    expression to neutral in `CutNpcReply()` when the cut fires (the speaker actor is already resolved
+    there; needs the right face/facegen-anim reset call — research the expression-reset path). Small
+    but noticeable.
+  - **Exact `.fuz`-duration NPC-reply scheduling.** Unrelated to cutting: the same SpeakSound hook that
+    retains the player handle can also read the line's `.fuz`/`.xwm` duration and schedule the NPC
+    reply to land exactly when it ends — eliminates v2's wpm guess, supersedes the heuristic.
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 

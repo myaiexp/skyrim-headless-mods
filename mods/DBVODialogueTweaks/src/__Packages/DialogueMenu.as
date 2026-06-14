@@ -248,6 +248,7 @@ class DialogueMenu extends MovieClip
       this.TopicListHolder.TextCopy_mc.textField.SetText(this.TopicListHolder.List_mc.selectedEntry.text);
       var _loc3_ = this.TopicListHolder.TextCopy_mc._y - this.TopicListHolder.List_mc._y - this.TopicListHolder.List_mc.Entry4._y;
       this.TopicListHolder.TextCopy_mc.textField._y = 6.25 - _loc3_;
+      skse.SendModEvent("CutNpcDBVOReply","");
       this.initDBVO();
    }
    function initDBVO()
@@ -284,6 +285,7 @@ class DialogueMenu extends MovieClip
    {
       if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timerBool && this.timer != undefined && getTimer() - this.skipArmedAt >= DialogueMenu.SKIP_DEBOUNCE_MS)
       {
+         skse.SendModEvent("CutPlayerDBVOLine","");
          clearTimeout(this.timer);
          this.timer = undefined;
          this.topicClicked();

@@ -4,6 +4,7 @@
 #include <MinHook.h>
 
 #include <atomic>
+#include <mutex>
 
 namespace
 {
@@ -14,6 +15,17 @@ namespace
 	// at this value), 0.0 = silent, 2.0 = double. atomic because the Papyrus VM thread writes it
 	// while the game thread (inside the speak-sound hook) reads it.
 	static std::atomic<float> g_dbvoVolume{ 1.0f };
+
+	// Retained copy of the player's CURRENTLY-PLAYING DBVO line handle, captured in the speak-sound
+	// hook below. DBVO plays the player line via console Player.SpeakSound, a free-standing
+	// BSSoundHandle the swf/Papyrus can't reach — so to cut it on skip we keep a by-value copy here
+	// (the handle is a 12-byte POD whose identity is soundID; every method re-resolves the live sound
+	// by that id in BSAudioManager, so a copy made earlier still controls the line). Each new player
+	// line overwrites it, so only the most-recent line is cuttable — exactly the skip scope. Guarded
+	// by a plain mutex (POD copy, not lock-free): the game thread writes it in the hook, the
+	// mod-event sink thread reads+cuts it on skip.
+	static std::mutex g_playerLineMtx;
+	static RE::BSSoundHandle g_playerLine;
 
 	// Route spdlog (what SKSE::log::* uses) to <My Games>/SKSE/DBVODialogueTweaks.log so the
 	// plugin leaves a visible trace that it loaded.
@@ -86,6 +98,9 @@ namespace
 			const bool r = original(a_this, a_path, a_handle, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
 			if (a_this && a_this->IsPlayerRef() && a_path && a_handle && a_handle->IsValid() && is_dbvo_path(a_path)) {
 				a_handle->SetVolume(g_dbvoVolume.load());
+				// Keep this line's handle so a later skip can cut it (see g_playerLine).
+				std::scoped_lock l{ g_playerLineMtx };
+				g_playerLine = *a_handle;
 			}
 			return r;
 		}
@@ -121,6 +136,84 @@ namespace
 		}
 		SKSE::log::info("DBVODialogueTweaks: speak-sound entry hook installed (MinHook)");
 	}
+
+	// Cut the player's own in-flight DBVO line (fired when v1's skip advances the menu). Fade the
+	// retained handle rather than hard-Stop (a mid-waveform Stop clicks; a short fade doesn't) and
+	// reset the slot so we never re-cut a recycled soundID. FadeOutAndRelease/IsPlaying are
+	// soundID-keyed audio-manager calls that enqueue onto the audio worker thread, so this is safe
+	// to call directly from the mod-event sink thread (no task-interface marshalling needed).
+	void CutPlayerLine()
+	{
+		std::scoped_lock l{ g_playerLineMtx };
+		if (g_playerLine.IsValid() && g_playerLine.IsPlaying()) {
+			g_playerLine.FadeOutAndRelease(30);
+		}
+		g_playerLine = RE::BSSoundHandle{};
+	}
+
+	// Cut the NPC's in-flight reply (player picked a NEW topic mid-reply). The per-line topic voice
+	// handle lives on the speaking actor's ExtraSayToTopicInfo extra-data (.sound) — NOT on
+	// HighProcessData::soundHandles (those stay empty for topic voice) and NOT reachable by
+	// PauseCurrentDialogue alone (it only PAUSES — see ExtraSayToTopicInfo::voicePaused — so a
+	// multi-segment reply keeps sounding). Both dead-ends were tried in-game. So: fade that .sound
+	// to silence the segment that's PLAYING, AND PauseCurrentDialogue to stop the reply advancing to
+	// further segments — the fade kills what's playing, Pause kills what's next. Marshalled onto the
+	// main game thread (raw engine state). speaker falls back to lastSpeaker (menu mid-close, NPC
+	// still talking); the IsPlaying guard makes this a no-op when no reply is in flight.
+	void CutNpcReply()
+	{
+		SKSE::GetTaskInterface()->AddTask([]() {
+			auto* mtm = RE::MenuTopicManager::GetSingleton();
+			if (!mtm) {
+				return;
+			}
+			auto ref = mtm->speaker.get();
+			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
+			if (!actor) {
+				auto lref = mtm->lastSpeaker.get();
+				actor = lref ? lref->As<RE::Actor>() : nullptr;
+			}
+			if (!actor) {
+				return;
+			}
+			if (auto* say = actor->extraList.GetByType<RE::ExtraSayToTopicInfo>()) {
+				if (say->sound.IsValid() && say->sound.IsPlaying()) {
+					say->sound.FadeOutAndRelease(30);
+				}
+			}
+			actor->PauseCurrentDialogue();
+		});
+	}
+
+	// One sink for the swf's skip mod events — no Papyrus relay. DialogueMenu.swf fires
+	// "CutPlayerDBVOLine" (player skip) and "CutNpcDBVOReply" (new-topic select) via
+	// skse.SendModEvent; we dispatch each to its cut. Registered at kDataLoaded (the mod-callback
+	// event source isn't up before game data loads).
+	class DBVOEventSink : public RE::BSTEventSink<SKSE::ModCallbackEvent>
+	{
+	public:
+		static DBVOEventSink* GetSingleton()
+		{
+			static DBVOEventSink singleton;
+			return &singleton;
+		}
+
+		RE::BSEventNotifyControl ProcessEvent(const SKSE::ModCallbackEvent* a_event,
+			RE::BSTEventSource<SKSE::ModCallbackEvent>*) override
+		{
+			if (a_event) {
+				if (a_event->eventName == "CutPlayerDBVOLine") {
+					CutPlayerLine();
+				} else if (a_event->eventName == "CutNpcDBVOReply") {
+					CutNpcReply();
+				}
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
+
+	private:
+		DBVOEventSink() = default;
+	};
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as SKSEPlugin_Version +
@@ -147,6 +240,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		}
 	} else {
 		SKSE::log::error("DBVODialogueTweaks: Papyrus interface is null");
+	}
+
+	// Hook the swf's skip mod events into the cut functions. The mod-callback event source isn't
+	// live until game data has loaded, so defer AddEventSink to the kDataLoaded message.
+	if (auto* messaging = SKSE::GetMessagingInterface()) {
+		messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
+			if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+				if (auto* source = SKSE::GetModCallbackEventSource()) {
+					source->AddEventSink(DBVOEventSink::GetSingleton());
+					SKSE::log::info("DBVODialogueTweaks: skip-cut mod-event sink registered");
+				}
+			}
+		});
+	} else {
+		SKSE::log::error("DBVODialogueTweaks: Messaging interface is null");
 	}
 
 	return true;
