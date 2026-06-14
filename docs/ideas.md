@@ -148,9 +148,13 @@ shipped, verified in-game. Deferred:
   SpeakSound; and the facegen freeze — the NPC mouth/face freezes open on cut and is reset to neutral
   in `CutNpcReply()` via a lock-guarded snap `Reset`) live in
   `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
-  - **Exact `.fuz`-duration NPC-reply scheduling.** Unrelated to cutting: the same SpeakSound hook that
-    retains the player handle can also read the line's `.fuz`/`.xwm` duration and schedule the NPC
-    reply to land exactly when it ends — eliminates v2's wpm guess, supersedes the heuristic.
+  - **Exact NPC-reply scheduling — DESIGNED 2026-06-14 as v5** (`docs/plans/dbvo-v5-reply-on-line-end-design.md`),
+    not yet built. Realized as **end-detection** rather than duration-prediction: a main-thread per-frame
+    watcher on the retained `g_playerLine` handle fires the reply (via a GFx invoke into the swf) the
+    moment the line stops playing, after a small configurable gap. Drops v2's ms-per-word slider,
+    repurposes the pad slider as the trailing gap, keeps a generous internal swf backstop for the
+    missing-audio case. Duration-prediction (read the `.fuz`/`.xwm` length up front) is kept in the
+    design as a fallback only if detection proves flaky in-game.
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 
