@@ -1,15 +1,19 @@
 # GhostAllies — design
 
 **Status:** v1 ✅ shipped (arrows through nearest follower). **v2 ✅ shipped & verified in-game
-(2026-06-08, v0.7.0).** Verified: arrows + Firebolt (missile) physically pass through; whole-party
-ghost-group enroll/restore works (`bhkCharacterController` slot 0x09 write, no crash); the player's
-continuous spells (Flames/Sparks) deal **no friendly damage** to teammates. Two mechanisms:
-(1) the **systemGroup stamp** = true pass-through for discrete projectiles (arrows, aimed missiles);
-(2) a **`MagicTarget::AddTarget` refusal** = no hostile-magic damage to teammates, which covers the
-continuous streams the stamp can't (their damage flows through the magic layer, not collision).
-Known cosmetic limitation: a continuous stream's *visual* may still clip a teammate's shield/weapon
-collidable (only the char-controller is ghosted) — no gameplay effect. See "## v2 design". Pivoted
-away from the original collision-filter approach (see "Pivot" below).
+(final: 2026-06-14, v0.9.0).** Two mechanisms, both verified:
+(1) the **systemGroup stamp** = true pass-through for **discrete** projectiles — arrows + aimed
+spells (Firebolt) physically pass through the whole party to hit the enemy behind (`bhkCharacterController`
+slot 0x09 ghost-group write, enroll/restore confirmed, no crash);
+(2) a **`MagicTarget::AddTarget` refusal** = the player's hostile magic deals **no friendly damage**
+to teammates (covers continuous streams Flames/Sparks, whose damage flows through the magic layer).
+**Parked as structurally infeasible:** making **continuous streams** (Flames/Sparks =
+`FlameProjectile`/`BeamProjectile`) physically *pass through* a teammate. Unlike discrete
+projectiles, those subclasses expose no collision-point vfunc (slot `0xBE`); their stop point is
+computed inside non-virtual `UpdateImpl` via a **layer**-filtered world cast that ignores systemGroup
+entirely — no Address-Library-resolvable seam, and no existing mod does it (see "## v2 design" §2b).
+So for streams the practical outcome is "no friendly damage," not pass-through. Pivoted away from the
+original collision-filter approach (see "Pivot" below).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)
@@ -168,13 +172,13 @@ best design, not merely the tidy one.
 |------|---------|-------|
 | `ArrowProjectile`  | ✅ **verified in-game** (2026-06-08) | arrows/bolts (was v1); confirmed still phasing after the Task 1 hook move to `UpdateImpl`. |
 | `MissileProjectile`| ✅ **verified in-game** (2026-06-08) | aimed bolt spells — **Firebolt confirmed phasing**. Ice Spike/Fireball same class, expected identical. The core spell ask, working. |
-| `FlameProjectile`  | ✅ **no friendly damage** (verified) | Flames: stamp doesn't gate it (continuous), but the `MagicTarget::AddTarget` refusal (Task 5) drops the damage — verified in-game (`AddTarget refusing player hostile effects on teammate Lydia`). No true visual pass-through (a stream visually touches); cosmetic shield-clip possible. |
-| `BeamProjectile`   | ✅ **no friendly damage** (verified) | Sparks: same as flame — handled by the AddTarget refusal, not the stamp. |
+| `FlameProjectile`  | ⚠️ **no friendly damage only** (verified) | Flames: the stamp can't gate a continuous stream; `MagicTarget::AddTarget` refusal (Task 5) drops the damage (verified). **Does NOT pass through** — stops at the ally, enemy behind unhit (verified). Pass-through parked as infeasible (§2b). |
+| `BeamProjectile`   | ⚠️ **no friendly damage only** (verified) | Sparks: same as flame — damage refused via AddTarget; no pass-through (infeasible, §2b). |
 | `ConeProjectile`   | ✅ no friendly damage (by mechanism) | cone spells — continuous; covered by the same AddTarget refusal. Untested (no spell available) but identical path to flame/beam. |
 | `GrenadeProjectile`| ❌ deferred | runes / lobbed; different (arc, placed) collision feel — out of scope |
 | `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
 
-### 2b. Continuous spells — solved at the magic layer (Tasks 4–5, verified)
+### 2b. Continuous spells — damage refused (works), pass-through infeasible (parked)
 
 Flame/beam/cone are continuous-collision streams. In-game the stamp **fires on them** (the phantom
 exists, the group is written) **but the follower still takes damage** — their damage isn't gated by
@@ -198,12 +202,30 @@ The two mechanisms are complementary: the **stamp** gives discrete projectiles *
 for everything the stamp can't physically phase (continuous streams, and incidentally any other
 player hostile magic that reaches a teammate).
 
-**Known cosmetic limitation (not worth chasing):** a continuous stream's *visual* can still stop on
-a teammate's equipped **shield/weapon or ragdoll** collidable, because the ghost-group write only
-stamps the **char-controller**, not the actor's other collision bodies. No gameplay effect (damage
-is refused regardless). A fix would mean walking each teammate's 3D to stamp every equipment/ragdoll
-rigid body and redoing it on equip changes — disproportionate for a cosmetic clip. Deferred
-(`docs/ideas.md`).
+**Continuous streams do NOT pass through — parked as structurally infeasible (2026-06-14).** The
+goal is pass-through (the stream reaches the enemy *behind* the ally); "no friendly damage" is only
+the side effect. In-game the stream is stopped at the ally and does **not** damage an enemy behind
+her. Two further attempts were made and rejected:
+
+3. **v0.8.0 (reverted): ghost ALL the ally's collision bodies**, not just the char-controller — walk
+   `Actor::Get3D()` and stamp the systemGroup onto every `bhkRigidBody` (ragdoll/biped + equipped
+   shield/weapon). Tested in-game: **still blocked.** Reverted in v0.9.0 (it bought nothing and only
+   added risk from mutating every follower collision body).
+4. **Research verdict (definitive):** unlike discrete projectiles (Arrow/Missile/Cone), which expose
+   a per-frame collision-point handler at vtable slot **`0xBE`** (`HandleHits` /
+   `OnXxxCollision(Projectile*, hkpAllCdPointCollector*)`) where a mod can erase contacts to get true
+   pass-through, **`FlameProjectile`/`BeamProjectile` override no such vfunc**. Their stop point is
+   computed inside the **non-virtual** body of `UpdateImpl` via a world cast filtered by collision
+   **layer** (`bhkPickData`/`hkpWorldRayCastInput.filterInfo`), which **ignores the systemGroup**
+   entirely — that's why every systemGroup approach (phantom, char-controller, all bodies) failed.
+   No Address-Library-resolvable seam gates the stream's stop point; the only levers
+   (`AddImpact` 0xBD, `RunTargetPick` 0xB7, `MagicTarget::AddTarget`) govern damage or homing, never
+   the stop point. **No existing mod makes concentration streams pass through allies** — and the one
+   co-op mod that hooks `0xBE` for discrete pass-through deliberately skips flame/beam because the
+   seam isn't there. The only remaining options (temporarily flipping the ally's collision *layer*
+   during the cast — high blast radius; or trampolining the internal cast call, which needs Ghidra
+   disassembly of the 1.6.1170 binary) are experimental/out of scope. **Parked.** For streams the
+   shipped outcome is "no friendly damage" (the AddTarget refusal above), not pass-through.
 
 ### 3. Whole-party multi-follower (folded in — will remain untested)
 

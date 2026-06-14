@@ -4,9 +4,9 @@ Future work, deferred features, and things worth revisiting. Each entry is WHAT,
 
 ## 2026-06-08 — GhostAllies (projectiles phase through followers)
 
-State: **v1 shipped** (player arrows through nearest follower). **v2 designed** (`docs/plans/
-ghost-allies-design.md` → "## v2 design") and consumes the former "spells" item plus most of
-"broaden target set" via whole-party multi-follower. Still deferred after v2:
+State: **v1 + v2 shipped & verified in-game (v0.9.0, 2026-06-14)** (`docs/plans/
+ghost-allies-design.md`). v2 delivered: arrows + aimed spells (Firebolt) pass through the whole
+party; the player's hostile magic deals no friendly damage to teammates. Still deferred / parked:
 
 - **Runes + wall spells.** `GrenadeProjectile` (runes / lobbed) and `BarrierProjectile` (wall
   spells) are explicitly out of v2 scope — different (arc / placed) collision feel. Add later by
@@ -18,17 +18,23 @@ ghost-allies-design.md` → "## v2 design") and consumes the former "spells" ite
   which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
   already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
   decision below).
-- **~~Continuous spells (flame/beam/cone) don't phase via the stamp~~ — RESOLVED 2026-06-08.**
-  Fixed at the magic layer in v2 Task 5: hook `MagicTarget::AddTarget` and refuse player hostile
-  effects on teammates (Flames/Sparks verified dealing no friendly damage). `AddImpact` (0xBD) was
-  tried first and disproven (it fired/skipped but damage persisted — streams don't damage via
-  AddImpact). See `docs/plans/ghost-allies-design.md` §2b.
-- **Cosmetic: continuous-stream visual clips a teammate's shield/weapon collidable.** The ghost-group
-  write only stamps the **char-controller**, so a stream's _visual_ can still stop on the follower's
-  equipped shield/weapon or ragdoll collision body (no damage — that's refused at AddTarget). Fixing
-  would require walking each teammate's 3D to stamp every equipment/ragdoll rigid body and redoing it
-  on equip changes — judged not worth it for a cosmetic clip. Revisit only if it looks bad enough in
-  normal play to matter.
+- **Continuous spells (Flames/Sparks): damage refused ✅, true pass-through PARKED (infeasible).**
+  Damage is handled — `MagicTarget::AddTarget` refusal drops the player's hostile effects on
+  teammates (verified; `AddImpact` 0xBD was tried first and disproven). But making the *stream pass
+  through* the ally to hit the enemy behind is **structurally infeasible** (researched 2026-06-14, 4
+  failed attempts incl. ghosting all the ally's rigid bodies, reverted in v0.9.0):
+  `FlameProjectile`/`BeamProjectile` expose **no collision-point vfunc (slot 0xBE)** — their stop
+  point is baked in non-virtual `UpdateImpl` via a **layer**-filtered cast that ignores systemGroup,
+  and no mod has ever done it. Only experimental levers remain (flip the ally's collision *layer*
+  during the cast — high blast radius; or Ghidra-disassemble `UpdateImpl` to trampoline the internal
+  cast). See `docs/plans/ghost-allies-design.md` §2b. Don't retry the systemGroup family for streams.
+- **ConeProjectile DOES expose 0xBE — cone pass-through could be feasible later.** Unlike flame/beam,
+  `ConeProjectile` overrides the `0xBE` collision-point handler
+  (`OnXxxCollision(Projectile*, hkpAllCdPointCollector*)`), so a cone spell could get *true*
+  pass-through by hooking 0xBE and erasing teammate contacts (the community-standard discrete
+  pass-through hook). Untested (no cone spell on hand). That same 0xBE contact-erase hook is also the
+  cleaner/proper mechanism for arrow/missile pass-through than the current systemGroup stamp
+  (precedents: D7ry/valhallaCombat, the local co-op mod) — worth knowing if the stamp ever regresses.
 
 **Dropped, not deferred:** two-way phasing (follower-fired projectiles through the player).
 Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real
