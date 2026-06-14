@@ -16,16 +16,21 @@ using Mutagen.Bethesda.Skyrim;
 // (ID 0, name "PlayerAlias") forced to PlayerRef (Skyrim.esm:0x14) and hosting the named
 // local script. This naturally adds Skyrim.esm as a master.
 //
+// Pass --esl to set the light-master (ESL) header flag, so the plugin doesn't consume one of
+// the 254 regular load-order slots. These script-host plugins add a single quest (FormID in the
+// 0x800 range already), so they're always ESL-eligible. ESL changes the in-game FormIDs, so only
+// flag a plugin this way BEFORE it ships — flipping it later invalidates existing saves.
+//
 // Usage:
-//   dotnet run -- <out.esp> <QuestEditorID> <ScriptName> [FullName] [--player-alias <AliasScriptName>]
+//   dotnet run -- <out.esp> <QuestEditorID> <ScriptName> [FullName] [--player-alias <AliasScriptName>] [--esl]
 // Example:
 //   dotnet run -- RapidBowHoldQuest.esp RapidBowHoldQuest RapidBowHoldScript RapidBowHold
-//   dotnet run -- MyMCM.esp MyMCMQuest MyMCMScript "My MCM" --player-alias SKI_PlayerLoadGameAlias
+//   dotnet run -- MyMCM.esp MyMCMQuest MyMCMScript "My MCM" --player-alias SKI_PlayerLoadGameAlias --esl
 
 if (args.Length < 3)
 {
     System.Console.Error.WriteLine(
-        "usage: EspGen <out.esp> <QuestEditorID> <ScriptName> [FullName] [--player-alias <AliasScriptName>]");
+        "usage: EspGen <out.esp> <QuestEditorID> <ScriptName> [FullName] [--player-alias <AliasScriptName>] [--esl]");
     return 1;
 }
 
@@ -37,6 +42,7 @@ var scriptName = args[2];
 // FullName is the first arg after ScriptName that is not the --player-alias flag (or its value).
 string? fullNameArg = null;
 string? playerAliasScript = null;
+var esl = false;
 for (var i = 3; i < args.Length; i++)
 {
     if (args[i] == "--player-alias")
@@ -47,6 +53,10 @@ for (var i = 3; i < args.Length; i++)
             return 1;
         }
         playerAliasScript = args[++i];
+    }
+    else if (args[i] == "--esl")
+    {
+        esl = true;
     }
     else if (fullNameArg is null)
     {
@@ -110,10 +120,17 @@ if (playerAliasScript is not null)
 
 mod.Quests.Add(quest);
 
+// Light-master (ESL) flag: no load-order slot consumed. Set last, just before write.
+if (esl)
+{
+    mod.IsSmallMaster = true;
+}
+
 mod.WriteToBinary(outPath);
 var aliasNote = playerAliasScript is not null
     ? $", + player alias hosting {playerAliasScript}"
     : "";
+var eslNote = esl ? " [ESL]" : "";
 System.Console.WriteLine(
-    $"Wrote {outPath}: quest {quest.EditorID} [{quest.FormKey}] hosting script {scriptName}{aliasNote}");
+    $"Wrote {outPath}{eslNote}: quest {quest.EditorID} [{quest.FormKey}] hosting script {scriptName}{aliasNote}");
 return 0;
