@@ -128,7 +128,7 @@ else                                        -> raise Move/Leave/Remove (box #4)
 
 **Constraints:**
 - State only what was actually verified in-game. If Mase did not run a given scenario, say "built, untested" — do not claim verification that didn't happen (repo convention; matches GhostAllies' honest status lines).
-- No mase.fi logging, no `git deployboth` (Skyrim workspace rule).
+- No deploy/changelog automation, no `git deployboth` (Skyrim workspace rule).
 
 **Verification:** `git status` clean after commit; README table renders (run `prettier --write README.md` if the table was edited).
 

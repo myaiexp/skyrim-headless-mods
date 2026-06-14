@@ -63,9 +63,11 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   (Bethesda vanilla stubs + `.flg`, SKSE sources, CK compiler binary) is git-ignored and populated
   locally (see each dir's `README.md`); license is **MIT** (`LICENSE`). Old commits still contain
   those files — **accepted, no history rewrite** (they ship with the game / are widely mirrored).
-  Repo is **cleared to go public**; flip with `gh repo edit --visibility public` when ready.
-- **No mase.fi logging for Skyrim.** Do **not** run `git deployboth` or `mase-fi-update` — this
-  overrides the global "log features / run deployboth" rules. (Same as the managing repo.)
+  Bundled third-party assets are cleared too: DBVO's `dialoguemenu.swf`/`.as` (DBVO grants
+  modding + release with credit) and `skytest/base-skse/po3_StartOnSave.dll` (powerofthree's
+  permissive terms). Repo is **cleared to go public**; flip with `gh repo edit --visibility public`.
+- **No deploy/changelog automation for Skyrim.** Don't run `git deployboth` or any site-update
+  logging here — plain commits + `git push origin` only. (Same as the managing repo.)
 - **Two CC sessions may touch a Skyrim folder at once — stage precisely** by filename
   (`git add <path> …`); never `git add -A`/`-u`/`.`. Check `git status` first, add only what's yours.
 - Follow the global per-project doc convention: design → `docs/plans/<topic>-design.md`, plan →

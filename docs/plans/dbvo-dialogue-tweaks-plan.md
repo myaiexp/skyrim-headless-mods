@@ -195,9 +195,9 @@ SE `Interface/dialoguemenu.swf`, skytest full profile (DBVO + Karat) for in-game
 
 ## Notes
 
-- **Permissions:** the rebuilt swf is a derivative of DBVO's asset — personal use only, do not
-  redistribute (repo is private). Already noted in the mod README.
-- **No mase.fi logging, no `git deployboth`** for Skyrim work (per project CLAUDE.md). Plain commits;
+- **Permissions:** the rebuilt swf is a derivative of DBVO's asset, redistributable under DBVO's
+  permission grant (modify + release, with credit). See the mod README's Permissions section.
+- **No deploy/changelog automation** for Skyrim work (per project CLAUDE.md). Plain commits;
   `git push origin` is allowed for this repo but not required by the plan.
 
 ---
