@@ -60,6 +60,11 @@ hold cast (hand H)                  → engine begins charging H's spell
 release cast (H)                    → H's loop ends
 ```
 
+The diagram's three hooks map 1:1 to the three rows of the anim-event table below (arm / release /
+re-press) — there is no fourth event. The re-press hook **re-checks H's held flag at fire time**: a
+release landing mid-cast cleanly ends the loop (the exact guard AutoFireBow's `g_enabled &&
+AttackHeld()` re-press gate provides).
+
 ## Components (one `main.cpp`, mirroring AutoFireBow)
 
 - **`CastInputSink`** (`BSTEventSink<InputEvent*>` on `BSInputDeviceManager`) — tracks the held state
@@ -78,7 +83,8 @@ release cast (H)                    → H's loop ends
 ## Scope — gate on cast *type*, derived, not a hardcoded list
 
 The loop arms for a hand only when that hand's equipped spell is **fire-and-forget**
-(`MagicSystem::CastingType::kFireAndForget`), read from the equipped form each cycle. This is the
+(`MagicSystem::CastingType::kFireAndForget`), evaluated at the per-hand **arm ("begin cast") event**
+each cycle from that hand's equipped form. This is the
 list-free definition of "charge then release to cast" and is future-proof — any modded FF spell just
 works. It automatically excludes:
 
@@ -97,7 +103,9 @@ bow's `BowDraw`/`BowDrawn` have magic analogs; the **likely** candidate tags are
 | `BowDrawn`  | `MRh_SpellReadyOut` / `MLh_SpellReadyOut`                   | charged → release  |
 | arrow-launch hook | `MRh_SpellFire_Event` / `MLh_SpellFire_Event`         | fired → re-press   |
 
-The exact tags/casing are **not trusted** until logged in-game. The plan's **first task** logs every
+All three rows are **equally provisional** — `BeginCastRight`'s cleaner form does not make it more
+reliable than the `MRh_`-prefixed candidates; the exact tags/casing are **not trusted** until logged
+in-game. The plan's **first task** logs every
 animation-graph event during a manual charged cast (via SkytestProbe) and pins down the real strings
 before wiring the loop. That same probe answers the deeper gamble: **does a synthetic release
 actually fire a charged spell** the way it looses a bow, or is the cast path welded to physical device

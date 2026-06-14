@@ -278,3 +278,22 @@ Directions: (a) have `build.sh` emit one **Data-shaped** staging dir (e.g. `buil
 `--with` plus a Data-shaped dir for the rest. Lower priority for DBVODialogueTweaks itself — it needs
 DBVO + a voice pack present, so it's a **full-profile** test regardless — but it bites any future
 swf+DLL+esp mod that *is* standalone vanilla+1-testable.
+
+## 2026-06-14 — AutoCastSpell (deferred phases)
+
+State: **v1 designed** (`docs/plans/autocastspell-design.md`), v1 = always-on standalone SKSE DLL
+that auto-recasts a held fire-and-forget spell in a loop (spell analog of AutoFireBow), per hand,
+dual-cast via both held. Deferred out of v1:
+
+- **SkyUI MCM (the config follow-up).** Mirror AutoFireBow's MCM: master on/off, a toggle hotkey,
+  and a **min-cast-delay** cadence cap. The cadence cap matters more here than for the bow — magicka
+  drains fast, so the first MCM knob is the per-cast delay to avoid dumping the whole pool instantly.
+  Bolts on cleanly once the v1 loop is proven (AutoFireBow's exact evolution: always-on → MCM).
+- **Magicka-out "still-held" watchdog.** v1 stalls the loop mid-stream when a charge can't be
+  afforded (the engine never emits the "charged" event, so no release/re-press) — the player releases
+  and re-presses to resume once magicka regens. A watchdog that re-attempts the charge while the
+  control is still held would auto-resume on regen without the manual re-press. Adds off-thread-safe
+  timing (enqueue the retry press on the game thread); deferred as a polish nicety, not v1.
+- **Public Nexus release.** Like the other mods, a clean separate pass once the loop is proven
+  in-game — write a page, test beyond the Firebolt close-out (a few more FF spell types: runes,
+  summons, dual-cast). No architectural change.
