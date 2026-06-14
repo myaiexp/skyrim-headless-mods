@@ -71,6 +71,15 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   (`git add <path> …`); never `git add -A`/`-u`/`.`. Check `git status` first, add only what's yours.
 - Follow the global per-project doc convention: design → `docs/plans/<topic>-design.md`, plan →
   `-plan.md`, deferred work/tech-debt → `docs/ideas.md`.
+- **Don't "clean up" working code unprompted.** Once a mod is verified in-engine, don't refactor,
+  tidy, or strip it (logging, comments) unless asked — these mods are timing-sensitive and can
+  regress invisibly (AutoCastSpell's recharge leaned on its per-cycle log flush for pacing; removing
+  it cut the loop from 7 casts to 2). If you do touch it, re-run the **same** in-engine test that
+  proved it; on any regression, **restore the known-good build first** — don't pivot to a weaker
+  design unless Mase chose that.
+- **Describe a skytest session as _detached_, never by duration or "heaviness."** Don't say "takes a
+  while" / "heavy" — say what it does and that you fire it off and keep working. (Mirrors the global
+  "no duration/work-amount framing" rule.)
 
 ## Pointers
 
