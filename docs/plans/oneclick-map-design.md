@@ -1,10 +1,66 @@
 # OneClickMap — design
 
-**Status:** approved 2026-06-09, not yet built.
+**Status:** ~~approved 2026-06-09, not yet built~~ → **finishing 2026-06-14.** Instant fast-travel
+already works in-game; the build is being made shippable via a MinHook entry detour. **Read the
+"Mechanism update (2026-06-14)" section below first — it supersedes the scope/mechanism sections
+beneath it**, which are kept as the original design record.
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain.
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE.
 **Name:** `OneClickMap` — **locked** (drives `mods/OneClickMap/`, `CMakeLists.txt` target,
 `build.sh`, and `OneClickMap.log`; renaming later means touching all four, so pin it at step 0).
+
+## Mechanism update (2026-06-14) — scope cut + MinHook entry detour (supersedes the sections below)
+
+Two things changed after the in-game probing recorded in `oneclick-map-handoff.md`:
+
+**Scope collapsed to a single branch.** In the live game only two map-click outcomes actually
+occur: a **discovered/travelable** click (wants instant travel) and **everything else**, which
+already routes through `MapMenu::PlaceMarker` and is **already one-click-correct in vanilla**
+(instant place when no marker; Move/Leave/Remove when one exists). So the three-way dispatch, the
+`52208/53095` click-handler hook, and the popup-#4-invocation "open question" below are **not
+needed** — the only code is "discovered click → instant travel." Non-travel clicks never reach the
+plugin.
+
+**Hook point + mechanism.** Intercept `MessageBoxData::QueueMessage` (`RELOCATION_ID(51422, 52271)`),
+the single chokepoint that hands a box to the UI, and gate on the callback's vtable:
+
+- `callback` is `FastTravelConfirmCallback` **and** the cursor marker is `kCanTravelTo` →
+  `Run(kUnk1)` (drives the trip + closes the map), return **without** calling the original →
+  the box never renders (true pre-render suppression, no flash).
+- anything else → call the original `QueueMessage` → 100% vanilla.
+
+The detour uses **MinHook** (FetchContent, mirroring DBVO v4's verified idiom: `MH_Initialize` →
+`MH_CreateHook` → `MH_EnableHook`, original stored as the relocated-prologue trampoline). This is
+the fix for the stopgap build's one bug: NG's `write_branch<5>` cannot relocate a function prologue,
+so its pass-through `func` was a wild pointer that crashed on the first non-fast-travel box. MinHook
+relocates the prologue → valid `original` → the pass-through is safe.
+
+### Alternatives considered
+
+- **Path C — let the box render, auto-click "Yes"** (the handoff's then-recommended path, written
+  before MinHook was in the repo). Rejected once MinHook landed: `MessageBoxMenu` exposes **no**
+  reference to its `MessageBoxData`/callback (header-confirmed), so C would *still* need a
+  QueueMessage/format-call hook to capture the callback — and on top of that adds a ~1-frame box
+  flash plus a fragile click→menu-open correlation. MinHook keeps the proven detect/drive logic,
+  suppresses pre-render (no flash), and reuses an in-repo, in-game-verified pattern.
+- **Path A (return-address probe → `write_call`) / Path B (hand-rolled prologue relocation)** —
+  both obsolete now that MinHook (a real entry-detour) is a vendored, in-game-proven dependency
+  here (DBVO v4).
+
+### Files
+
+- `mods/OneClickMap/src/main.cpp` — swap the install body to MinHook; rename `func` → `original`;
+  delete the now-false "KNOWN LIMITATION — CRASHES" comment; refresh the header comment.
+- `mods/OneClickMap/CMakeLists.txt` — add the MinHook `FetchContent` block + `minhook` to
+  `target_link_libraries` (copy DBVO's).
+
+### Test (in-game, the part only the user can run)
+
+1. `./mods/OneClickMap/build.sh --install`, fully restart the game.
+2. Open map, click a **discovered** marker → instant travel, no box *(regression — already worked)*.
+3. Trigger a **non-travel** box → **no crash** *(the whole fix)* — e.g. try to fast-travel with
+   enemies nearby, or hit a quit/exit confirm; the box appears and behaves vanilla.
+4. Click an **undiscovered** location → vanilla marker-place still works.
 
 ## Goal
 
