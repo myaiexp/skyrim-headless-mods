@@ -36,8 +36,10 @@ gameplay shows follower projectiles blocking/hitting the player often enough to 
 
 ## 2026-06-09 — OneClickMap (skip world-map popups)
 
-State: **v1 designed** (`docs/plans/oneclick-map-design.md`), not yet built. v1 is unconditional,
-no config. Deferred:
+State: **v1 shipped + verified in-game 2026-06-14** (`docs/plans/oneclick-map-design.md`).
+Discovered-marker click → instant fast-travel, no confirm box; all other boxes pass through
+vanilla. Built on a MinHook entry detour of `MessageBoxData::QueueMessage` (replaced the stopgap
+`write_branch<5>` build that crashed on non-travel boxes). v1 is unconditional, no config. Deferred:
 
 - **Modifier-key escape hatch.** v1 permanently trades away two vanilla options: "Place Marker" on
   a _discovered_ location (you always travel instead), and "Place marker? Yes/No" on an undiscovered
