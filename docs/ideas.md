@@ -257,3 +257,24 @@ values), both headless via the Papyrus VM, targeting the full profile. Deferred:
 - **`skytest playtest --probe`.** Inject SkytestProbe into the otherwise-pristine full `playtest`
   session so MCM reveal needs no manual install of the probe into the full profile. A skytest-side
   convenience, not part of the probe feature.
+
+## 2026-06-14 — skytest test mis-stages split-output mods (e.g. DBVODialogueTweaks)
+
+`skytest test <mod>` expects the mod arg to be a single artifact (`.dll`/`.esp`) **or a Data-shaped
+folder** — `build_test_profile` (`skytest:221-229`) just mirrors `find "$mod" -type f` verbatim into
+the test profile, assuming every file already sits at its `Data/`-relative path. DBVODialogueTweaks
+fits neither: its outputs are split across `build/` (`Interface/`, `Scripts/`, the `.esp`) and
+`plugin/build/` (the DLL), and the repo dir itself isn't Data-shaped. So
+`skytest test mods/DBVODialogueTweaks` symlinks repo files (`src/`, `docs/`, `build.sh`) into the
+profile at junk paths, places the esp at `Data/build/DBVODialogueTweaks.esp` (game can't find it), and
+**never stages the DLL** (it lives outside any path skytest mirrors to `SKSE/Plugins/`). Observed
+2026-06-14: in a `skytest test mods/DBVODialogueTweaks --headless` run, SkytestProbe/CrashLogger logged
+fresh but `DBVODialogueTweaks.dll` never loaded (its SKSE log stayed stale). Even pointing at `build/`
+alone would still miss the DLL (`plugin/build/`).
+
+Directions: (a) have `build.sh` emit one **Data-shaped** staging dir (e.g. `build/Data/` with
+`SKSE/Plugins/<dll>` + `Interface/` + `Scripts/` + the `.esp`) and point `skytest test` at that;
+(b) teach skytest to assemble a mod's Data image from build.sh's known outputs; or (c) pass the DLL via
+`--with` plus a Data-shaped dir for the rest. Lower priority for DBVODialogueTweaks itself — it needs
+DBVO + a voice pack present, so it's a **full-profile** test regardless — but it bites any future
+swf+DLL+esp mod that *is* standalone vanilla+1-testable.
