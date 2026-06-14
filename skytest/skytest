@@ -62,7 +62,16 @@ TEST="$PROFILES/test"
 CCC="$SKYDIR/Skyrim.ccc"
 PREFIX="$STEAM/steamapps/compatdata/$APPID/pfx/drive_c/users/steamuser"
 PLUGINS_TXT="$PREFIX/AppData/Local/Skyrim Special Edition/Plugins.txt"
-SAVES_DIR="$PREFIX/Documents/My Games/Skyrim Special Edition/Saves"
+MYGAMES="$PREFIX/Documents/My Games/Skyrim Special Edition"
+SAVES_DIR="$MYGAMES/Saves"
+# Saves isolation (#13 fix): a test boots with the engine's save path redirected to
+# this isolated dir, holding ONLY a copy of the base save — so po3 StartOnSave's
+# "newest save" autoload can't grab one of the real ~350 modded saves (which would pop
+# a missing-content modal and never reach SkytestBase). See isolate_saves().
+SAVES_TEST_DIR="$MYGAMES/Saves_skytest"
+SKYRIM_INI="$MYGAMES/Skyrim.ini"
+INI_BAK="$PROFILES/Skyrim.ini.skytest-bak"
+SAVES_ISO_FLAG="$PROFILES/.saves-isolated"
 
 # The gamescope test-session backend (sourced, never executed). Provides gs_launch /
 # gs_wait_ready / gs_shot / gs_drive / gs_stop / gs_session_alive — all operating on one
@@ -301,6 +310,46 @@ inject_skytestprobe() {
   [ -f "$PROBE_INI_TEMPLATE" ] && cp -f "$PROBE_INI_TEMPLATE" "$TEST/SKSE/Plugins/SkytestProbe.ini"
 }
 
+# Insert (or replace) SLocalSavePath under [General] in Skyrim.ini. Value comes via the
+# environment (NOT awk -v) so a trailing backslash in the Windows-style path is taken
+# literally rather than processed as an escape.
+set_ini_save_path() {
+  SKYTEST_SAVEPATH="$1" awk '
+    /^[[:space:]]*SLocalSavePath[[:space:]]*=/ { next }                       # drop any existing
+    { print }
+    /^\[General\]/ && !ins { print "SLocalSavePath=" ENVIRON["SKYTEST_SAVEPATH"]; ins=1 }
+  ' "$SKYRIM_INI" > "$SKYRIM_INI.skytest.tmp" && mv -f "$SKYRIM_INI.skytest.tmp" "$SKYRIM_INI"
+}
+
+# Redirect this test session's save path to an isolated dir holding only the base save,
+# so StartOnSave autoloads SkytestBase (the only — hence newest — save) instead of a real
+# modded save. COPIES the base save in (never moves/symlinks it — the real one stays
+# untouchable). Reverted by deisolate_saves on stop; guarded in play/normal/uninstall so
+# the full modded game can never launch with the path still redirected.
+isolate_saves() {
+  base_save_exists || return 0
+  deisolate_saves          # clear any stale isolation (e.g. a crashed prior run) first
+  [ -f "$SKYRIM_INI" ] || { say "note: $SKYRIM_INI missing — skipping saves isolation"; return 0; }
+  mkdir -p "$SAVES_TEST_DIR"
+  cp -f "$SAVES_DIR/$BASE_SAVE_NAME.ess" "$SAVES_TEST_DIR/"
+  [ -f "$SAVES_DIR/$BASE_SAVE_NAME.skse" ] && cp -f "$SAVES_DIR/$BASE_SAVE_NAME.skse" "$SAVES_TEST_DIR/"
+  cp -f "$SKYRIM_INI" "$INI_BAK"
+  set_ini_save_path 'Saves_skytest\'
+  echo "$SAVES_TEST_DIR" > "$SAVES_ISO_FLAG"
+  say "saves isolated -> Saves_skytest (only $BASE_SAVE_NAME visible to the test)"
+}
+
+# Revert saves isolation: restore the original Skyrim.ini (exact, from backup) and drop
+# the isolated dir. Idempotent — a no-op when no isolation is active. Safe to call from
+# every teardown/recovery path.
+deisolate_saves() {
+  [ -f "$SAVES_ISO_FLAG" ] || return 0
+  [ -f "$INI_BAK" ] && mv -f "$INI_BAK" "$SKYRIM_INI"
+  rm -rf "$SAVES_TEST_DIR"
+  rm -f "$SAVES_ISO_FLAG"
+  say "saves de-isolated -> save path restored to Saves"
+}
+
 # --- commands ----------------------------------------------------------------
 
 cmd_init() {
@@ -485,6 +534,7 @@ cmd_test() {
 
   if base_save_exists; then
     inject_startonsave
+    isolate_saves   # redirect save path so StartOnSave can't grab a real modded save (#13)
     say "base save '$BASE_SAVE_NAME' found - autoloading it on launch (hold SHIFT to skip to menu)."
   else
     say "no base save '$BASE_SAVE_NAME.ess' - launching to the menu (use a NEW GAME). Build one with: skytest setup-save"
@@ -529,6 +579,7 @@ cmd_stop() {
   gs_stop || true                      # gs_stop warns on its own stderr if a straggler survived
   point_data full
   restore_plugins
+  deisolate_saves
   say "restored: Data -> full, Plugins.txt restored"
 }
 
@@ -576,7 +627,7 @@ cmd_setup_save() {
 cmd_normal() {
   if [ ! -L "$DATA" ]; then say "already normal — Data is the real directory."; return 0; fi
   guard_no_live_session   # forcing Data -> full under a live test session = cross-profile crash
-  point_data full; restore_plugins; say "Data → full"
+  point_data full; restore_plugins; deisolate_saves; say "Data → full"
 }
 
 cmd_play() {
@@ -588,6 +639,7 @@ cmd_play() {
     [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
     point_data full
   fi
+  deisolate_saves   # never launch the full game with the save path still redirected (#13)
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then say "would launch full modded game (NO_LAUNCH set)"; return 0; fi
   say "launching full modded game via the fast direct path..."
   skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
@@ -629,9 +681,10 @@ cmd_playtest() {
 
 cmd_status() {
   local json=""; [ "${1:-}" = "--json" ] && json=1
-  local migrated tgt base hf hv ht sess_pid=""
+  local migrated tgt base hf hv ht sess_pid="" iso
   if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")"); else migrated=0; tgt=""; fi
   base_save_exists && base=1 || base=0
+  [ -f "$SAVES_ISO_FLAG" ] && iso=1 || iso=0
   [ -d "$FULL" ]    && hf=1 || hf=0
   [ -d "$VANILLA" ] && hv=1 || hv=0
   [ -d "$TEST" ]    && ht=1 || ht=0
@@ -653,6 +706,7 @@ cmd_status() {
     printf '%-10s %s\n' profiles "${profs:-none}"
     printf '%-10s %s\n' "base save" "$([ "$base" = 1 ] && echo "$BASE_SAVE_NAME present" || echo "absent — build with: skytest setup-save")"
     printf '%-10s %s\n' session "$([ -n "$sess_pid" ] && echo "live test session (pid $sess_pid)" || echo "no test session")"
+    [ "$iso" = 1 ] && printf '%-10s %s\n' saves "isolated -> Saves_skytest$([ -z "$sess_pid" ] && echo '  (stale — recover with: skytest normal)')"
     echo
     echo "Next steps:"
     if [ "$tgt" = test ] && [ -n "$sess_pid" ]; then
@@ -681,6 +735,7 @@ cmd_uninstall() {
   mv -T "$FULL" "$DATA"
   rm -rf "$VANILLA" "$TEST"
   restore_plugins
+  deisolate_saves
   say "reverted: original Data/ restored, profiles removed."
 }
 
