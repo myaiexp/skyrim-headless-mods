@@ -466,6 +466,12 @@ cmd_test() {
   [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
+  # Resolve to an absolute path: build_test_profile symlinks $mod verbatim into the
+  # profile's SKSE/Plugins, so a RELATIVE arg (e.g. `mods/X/build/X.dll`, which passes
+  # the -e check from CWD) would create a symlink that dangles relative to the Plugins
+  # dir — and SKSE silently SKIPS a dangling plugin (no load, no error). Absolutizing
+  # here makes the README's relative-path examples work and kills that silent footgun.
+  mod="$(realpath "$mod")"
   # Refuse BEFORE rebuilding/parking the profile — a second launch over a live session
   # would double-park Data with no trap to undo it (detached model has no auto-restore).
   guard_no_live_session
