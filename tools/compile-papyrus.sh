@@ -25,10 +25,15 @@ export WINEPREFIX="$WINEPREFIX_PAPYRUS" WINEDEBUG=-all WINEDLLOVERRIDES="mscoree
 # compile-time only — runtime .pex comes from the user's SkyUI), then SKSE (its versions
 # win for SKSE functions), then the vanilla base tree (fills the rest of the type graph),
 # then the folder holding TESV_Papyrus_Flags.flg.
+# Delete any prior .pex first so the existence check below is a true freshness gate.
+# PapyrusCompiler.exe exits 0 even when compilation fails, and its output is piped through
+# grep (whose status we discard) — so without this, a leftover .pex from an earlier build
+# would let a failed compile pass silently and ship the stale binary.
+rm -f "$OUT_DIR/$SCRIPT.pex"
 cd "$COMPILER_DIR"
 wine PapyrusCompiler.exe "$SCRIPT" \
   -f=TESV_Papyrus_Flags.flg \
   -i="$(winpath "$SRC_DIR");$(winpath "$SRCROOT/skyui");$(winpath "$SRCROOT/skse");$(winpath "$SRCROOT/vanilla");$(winpath "$SRCROOT")" \
   -o="$(winpath "$OUT_DIR")" 2>&1 | grep -viE 'pci id|libEGL|gmisc-win32|assertion' || true
 
-[ -f "$OUT_DIR/$SCRIPT.pex" ] || { echo "ERROR: $SCRIPT.pex was not produced" >&2; exit 1; }
+[ -f "$OUT_DIR/$SCRIPT.pex" ] || { echo "ERROR: $SCRIPT.pex was not produced — compile failed (see output above)" >&2; exit 1; }
