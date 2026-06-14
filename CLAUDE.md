@@ -59,12 +59,11 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 ## Working norms
 
 - **Git: this repo HAS a remote** (`origin` → GitHub) — commit **and** `git push origin`, unlike the
-  local-only `~/Downloads/skyrim-mods/`. The repo is currently **private** but is being readied for
-  open-source: all third-party IP — Bethesda vanilla stubs + `.flg`, SKSE sources, and the CK
-  compiler binary — is now git-ignored and populated locally (see each dir's `README.md`); the
-  license is **MIT** (`LICENSE`). **One item remains before flipping public:** the git **history**
-  still contains the old stubs/binary — either accept it (they're widely mirrored, ship with the
-  game) or publish from a fresh/squashed history.
+  local-only `~/Downloads/skyrim-mods/`. The tree is **clean for open-source**: all third-party IP
+  (Bethesda vanilla stubs + `.flg`, SKSE sources, CK compiler binary) is git-ignored and populated
+  locally (see each dir's `README.md`); license is **MIT** (`LICENSE`). Old commits still contain
+  those files — **accepted, no history rewrite** (they ship with the game / are widely mirrored).
+  Repo is **cleared to go public**; flip with `gh repo edit --visibility public` when ready.
 - **No mase.fi logging for Skyrim.** Do **not** run `git deployboth` or `mase-fi-update` — this
   overrides the global "log features / run deployboth" rules. (Same as the managing repo.)
 - **Two CC sessions may touch a Skyrim folder at once — stage precisely** by filename
