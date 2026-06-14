@@ -8,20 +8,19 @@
 #include <thread>
 
 // AutoCastSpell — auto-recast a held fire-and-forget spell, the spell analog of
-// AutoFireBow.
+// AutoFireBow. Hold a cast control with a fire-and-forget spell equipped and the engine
+// loops charge -> fire -> recharge until the control is released. Per hand, independent
+// (holding both naturally dual-casts when the perk applies).
 //
-// Confirmed anim events (in-engine probe, 2026-06-14, vanilla+AutoCastSpell, Firebolt):
-//   charge-start (arm)         right: "BeginCastRight"        left: "BeginCastLeft"
-//   fired (-> re-press)        right: "MRh_SpellFire_Event"   left: "MLh_SpellFire_Event"
-//   charged-ready (-> release): NO SUCH ANIM EVENT. The whole charge period is
-//     animation-silent (BeginCast -> [hold, no event] -> SpellFire on release). So the
-//     loop can't learn "spell is charged" from an anim event the way AutoFireBow used
-//     "BowDrawn". Instead we POLL the hand's RE::MagicCaster::state for kReady — the
-//     engine's real charge-complete signal — and inject the synthetic release then.
-//
-// Task 2 (this build) is the make-or-break GATE: detect kReady, inject ONE synthetic
-// release per hold, and confirm the engine actually fires a genuinely-charged spell on
-// synthetic input. No re-press / loop yet (that is Task 3).
+// Loop, driven off RE::MagicCaster::state polled ~25 Hz (there is NO "spell charged" anim
+// event — the charge period is animation-silent, so anim events can't drive it):
+//   kReady (fully charged)  -> inject a synthetic RELEASE -> the spell fires
+//   new charge after a fire  -> re-arm (mirrors AutoFireBow re-arming on each BowDraw); a
+//                               held button usually auto-recharges like a held bow re-draws
+//   stuck idle after a fire  -> two-step release->press re-tap nudges the next charge
+// The per-cycle logging is intentionally kept: besides the trace it paces the recharge
+// (the flush spaces the synthetic injects from the state re-reads); stripping it
+// regressed the loop. Keep it unless you replace it with explicit pacing.
 
 namespace
 {
@@ -42,13 +41,12 @@ namespace
 		                              : RE::MagicSystem::CastingSource::kLeftHand;
 	}
 
-	// Held state of each cast control, from raw input (read by the poll thread → atomic).
 	std::atomic<bool> g_held[kHandCount] = {};
-	// One synthetic release per hold (game-thread only; re-armed on physical release).
-	bool g_firedThisHold[kHandCount] = {};
-	// True only while we dispatch our own synthetic ButtonEvent, so CastInputSink skips it
-	// (else our fake release would flip the held-state the loop gates on). SendEvent fans
-	// out inline on the main thread, so a plain flag is enough.
+	bool g_firedThisCycle[kHandCount] = {};
+	int  g_ticksSinceFire[kHandCount] = {};
+	bool g_releasedForRecharge[kHandCount] = {};
+	int  g_ticksSinceRelease[kHandCount] = {};
+	int  g_lastState[kHandCount] = { -1, -1 };
 	std::atomic<bool> g_injecting{ false };
 	std::atomic<bool> g_pollerStarted{ false };
 
@@ -68,9 +66,8 @@ namespace
 
 	// Drive the engine's real cast pipeline with a synthetic cast-control button event, so
 	// the cast runs on the genuinely-charged spell the held button already built (honest
-	// magnitude/perks). pressed=false => release (value 0, IsUp) to fire; pressed=true =>
-	// fresh press (value 1, IsDown) to recharge. Mirrors AutoFireBow's SendSyntheticAttack,
-	// parameterized per hand. Call on the game thread.
+	// magnitude/perks/dual-cast). pressed=false => release (value 0, IsUp) to fire on full
+	// charge; pressed=true => fresh press (value 1, IsDown) to recharge. Game thread only.
 	void SendSyntheticCast(Hand a_hand, bool a_pressed)
 	{
 		auto* idm = RE::BSInputDeviceManager::GetSingleton();
@@ -90,9 +87,7 @@ namespace
 		RE::free(be);
 	}
 
-	// Game thread: for each held hand whose spell has reached full charge (caster state
-	// kReady) and that hasn't fired yet this hold, inject the synthetic release. This is
-	// the kReady-poll replacement for the missing "charged" anim event.
+	// Game thread: the loop, per held hand, off the caster state.
 	void CheckCasters()
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
@@ -100,26 +95,75 @@ namespace
 			return;
 		}
 		for (int i = 0; i < kHandCount; ++i) {
-			if (!g_held[i].load() || g_firedThisHold[i]) {
+			if (!g_held[i].load()) {
 				continue;
 			}
-			const Hand hand = static_cast<Hand>(i);
-			auto* caster = player->GetMagicCaster(SourceFor(hand));
+			const Hand hand   = static_cast<Hand>(i);
+			auto*      caster = player->GetMagicCaster(SourceFor(hand));
 			if (!caster) {
 				continue;
 			}
-			if (caster->state.get() == RE::MagicCaster::State::kReady) {
-				g_firedThisHold[i] = true;
-				SKSE::log::info("AutoCastSpell: {} reached kReady -> injecting synthetic release",
-					ControlFor(hand));
+			const auto state = caster->state.get();
+			const int  st    = static_cast<int>(state);
+			if (st != g_lastState[i]) {
+				SKSE::log::info("state: {} {} -> {}", ControlFor(hand), g_lastState[i], st);
+				g_lastState[i] = st;
+			}
+
+			if (g_firedThisCycle[i]) {
+				++g_ticksSinceFire[i];
+			}
+			if (g_releasedForRecharge[i]) {
+				++g_ticksSinceRelease[i];
+			}
+
+			constexpr int kRechargeDelayTicks  = 25;  // ~1s: let the cast fully wind down
+			constexpr int kReleaseToPressTicks = 5;   // ~200ms gap so the engine registers "up"
+			const bool idle = state == RE::MagicCaster::State::kNone ||
+			                  state == RE::MagicCaster::State::kUnk01;
+			const bool charging = state == RE::MagicCaster::State::kUnk02 ||
+			                      state == RE::MagicCaster::State::kCharging;
+
+			// Re-arm as soon as a fresh charge starts after our fire — whether the engine
+			// auto-recharged the still-held button or the two-step fallback did. Without it
+			// the loop fires once then sits charged (the "only fires once when held" bug).
+			if (g_firedThisCycle[i] && charging) {
+				g_firedThisCycle[i]      = false;
+				g_releasedForRecharge[i] = false;
+				SKSE::log::info("loop: {} new charge -> re-armed", ControlFor(hand));
+			}
+
+			if (state == RE::MagicCaster::State::kReady && !g_firedThisCycle[i]) {
+				auto* spell = caster->currentSpell;
+				const bool ff = spell && spell->GetCastingType() == RE::MagicSystem::CastingType::kFireAndForget;
+				if (ff) {
+					g_firedThisCycle[i]      = true;
+					g_releasedForRecharge[i] = false;
+					g_ticksSinceFire[i]      = 0;
+					SKSE::log::info("loop: {} kReady -> release (fire)", ControlFor(hand));
+					SendSyntheticCast(hand, false);
+				}
+			} else if (g_firedThisCycle[i] && !g_releasedForRecharge[i] &&
+					   g_ticksSinceFire[i] >= kRechargeDelayTicks && idle) {
+				// Cast wound down without a fresh charge: release to break the post-cast state,
+				// then (step 2) a fresh press a few frames later.
+				g_releasedForRecharge[i] = true;
+				g_ticksSinceRelease[i]   = 0;
+				SKSE::log::info("loop: {} idle (state {}) -> recharge step1: release",
+					ControlFor(hand), st);
 				SendSyntheticCast(hand, false);
+			} else if (g_releasedForRecharge[i] && g_ticksSinceRelease[i] >= kReleaseToPressTicks) {
+				g_firedThisCycle[i]      = false;
+				g_releasedForRecharge[i] = false;
+				SKSE::log::info("loop: {} recharge step2: press", ControlFor(hand));
+				SendSyntheticCast(hand, true);
 			}
 		}
 	}
 
 	// Pace the caster-state poll off-thread (SKSE task re-enqueue drains within a single
-	// frame, so it can't space work across frames). The thread only enqueues a game-thread
-	// CheckCasters while a cast control is actually held; it touches no game state itself.
+	// frame, so it can't space work across frames). Only enqueues a game-thread check while
+	// a cast control is held; touches no game state itself.
 	void StartPoller()
 	{
 		if (g_pollerStarted.exchange(true)) {
@@ -138,7 +182,7 @@ namespace
 	}
 
 	// Tracks held-state of the two cast controls from raw input, skipping our own injected
-	// events. Re-arms the per-hold fire guard on physical release.
+	// events. Clears the per-cycle guards on physical release so the loop ends cleanly.
 	class CastInputSink : public RE::BSTEventSink<RE::InputEvent*>
 	{
 	public:
@@ -175,7 +219,8 @@ namespace
 					const bool pressed = btn->IsPressed();
 					g_held[idx].store(pressed);
 					if (!pressed) {
-						g_firedThisHold[idx] = false;  // re-arm for the next hold
+						g_firedThisCycle[idx]      = false;
+						g_releasedForRecharge[idx] = false;
 					}
 				}
 			}
@@ -183,73 +228,17 @@ namespace
 		}
 	};
 
-	// Logs the confirmed cast lifecycle tags so the gate result is visible: a
-	// SpellFire_Event after our "injecting synthetic release" line — while the button is
-	// still physically held — is proof the synthetic release fired a charged spell.
-	class SpellLoopSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
-	{
-	public:
-		static SpellLoopSink* GetSingleton()
-		{
-			static SpellLoopSink singleton;
-			return &singleton;
-		}
-
-		RE::BSEventNotifyControl ProcessEvent(
-			const RE::BSAnimationGraphEvent*               a_event,
-			RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_source) override
-		{
-			(void)a_source;
-			if (!a_event) {
-				return RE::BSEventNotifyControl::kContinue;
-			}
-			const char* tag = a_event->tag.c_str();
-			if (!tag) {
-				return RE::BSEventNotifyControl::kContinue;
-			}
-			if (std::strcmp(tag, "BeginCastRight") == 0 || std::strcmp(tag, "BeginCastLeft") == 0 ||
-				std::strcmp(tag, "MRh_SpellFire_Event") == 0 || std::strcmp(tag, "MLh_SpellFire_Event") == 0 ||
-				std::strcmp(tag, "CastStop") == 0) {
-				SKSE::log::info("anim: {}", tag);
-			}
-			return RE::BSEventNotifyControl::kContinue;
-		}
-	};
-
-	bool g_inputSinkAdded = false;
-	bool g_animSinkAdded = false;
-
-	void EnsureAnimSink(int a_attemptsLeft)
-	{
-		if (g_animSinkAdded) {
-			return;
-		}
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (player && player->AddAnimationGraphEventSink(SpellLoopSink::GetSingleton())) {
-			g_animSinkAdded = true;
-			SKSE::log::info("AutoCastSpell: anim-graph sink attached on player");
-			return;
-		}
-		if (a_attemptsLeft > 0) {
-			if (auto* task = SKSE::GetTaskInterface()) {
-				task->AddTask([a_attemptsLeft]() { EnsureAnimSink(a_attemptsLeft - 1); });
-			}
-		} else {
-			SKSE::log::warn("AutoCastSpell: gave up attaching anim-graph sink (player 3D never ready)");
-		}
-	}
-
 	void RegisterSinks()
 	{
-		if (!g_inputSinkAdded) {
-			if (auto* idm = RE::BSInputDeviceManager::GetSingleton()) {
-				idm->AddEventSink(CastInputSink::GetSingleton());
-				g_inputSinkAdded = true;
-				SKSE::log::info("AutoCastSpell: input sink registered");
-			}
+		static bool registered = false;
+		if (registered) {
+			return;
 		}
-		g_animSinkAdded = false;
-		EnsureAnimSink(600);
+		if (auto* idm = RE::BSInputDeviceManager::GetSingleton()) {
+			idm->AddEventSink(CastInputSink::GetSingleton());
+			registered = true;
+			SKSE::log::info("AutoCastSpell: cast-control input sink registered");
+		}
 		StartPoller();
 	}
 
@@ -267,7 +256,7 @@ namespace
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 2, 0 },
+	.Version = REL::Version{ 1, 0, 7 },
 	.Name = "AutoCastSpell",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -277,8 +266,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("AutoCastSpell {} loaded — caster-state-poll synthetic-release gate (Task 2)",
-		REL::Version{ 0, 2, 0 }.string());
+	SKSE::log::info("AutoCastSpell {} loaded — hold a fire-and-forget spell to auto-recast (per hand)",
+		REL::Version{ 1, 0, 7 }.string());
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 	return true;
 }
