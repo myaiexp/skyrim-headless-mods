@@ -101,14 +101,20 @@ New `headless/` subsystem: run Skyrim invisibly in headless `gamescope`, screens
 Still open:
 
 - **Isolate the Saves folder per test (shared-folder autoload blocker).** The Saves dir lives in the
-  prefix and is shared across profiles, so a test game's "Continue" auto-checks the newest save (your
-  _main modded_ save) and pops a "missing content" modal that blocks po3 StartOnSave from autoloading
-  `SkytestBase` (which is itself clean — vanilla + Creation Club only). Fix direction: point Saves at
-  an isolated dir for the test (only `SkytestBase` visible), or dismiss the modal once `drive` works.
-- **`drive` keyboard didn't move the menu** in the clean headless run (`Unhandled libei event`,
-  gamescope 3.16.23+) though it worked historically (findings #9). `shot` itself is **confirmed**
-  working headless. Retest `drive` against a real in-world scene (unblocked by the Saves-folder fix
-  above); also confirm `shot`/`drive` under `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #13.
+  prefix and is shared across profiles, so a vanilla+1 `test` game's "Continue" auto-checks the newest
+  save (your _main modded_ save) and pops a "missing content" modal that blocks po3 StartOnSave from
+  autoloading `SkytestBase` (which is itself clean — vanilla + Creation Club only). Fix direction:
+  point Saves at an isolated dir for the test (only `SkytestBase` visible), or dismiss the modal once
+  precise menu `drive` works. **Note (2026-06-14):** `skytest playtest` (drivable _full_ profile)
+  sidesteps this for MCM / load-order-dependent tests — the full load order matches the real saves, so
+  `CONTINUE` loads with no modal. The isolation fix is still wanted for vanilla+1 `test` autoload.
+- **~~`drive` keyboard didn't move the menu~~ — RESOLVED 2026-06-14 (keyboard).** In-world keyboard
+  driving is confirmed end-to-end via `playtest` (main-menu `CONTINUE` → confirm → save load →
+  in-world → journal, every `drive tap` registering); #13's failure was the no-content _modal_
+  swallowing keys, not keyboard in general. **Still open:** precise in-menu **mouse** clicks — the
+  #9b cursor desync still misses (couldn't click the Journal's SYSTEM tab to reach Mod Configuration),
+  so visual MCM screenshots need the cursor-sync fix. Also still pending: `shot`/`drive` under
+  `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #14.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.
