@@ -49,7 +49,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # headless backend all already point here; deriving every path from STEAM kills the old
 # dual /.steam/steam vs /.local/share/Steam scheme (they symlink to the same install).
 # SKYDIR is the game dir (was ROOT).
-STEAM="/home/mse/.local/share/Steam"
+STEAM="${STEAM:-$HOME/.local/share/Steam}"
 APPID="489830"
 SKYDIR="$STEAM/steamapps/common/Skyrim Special Edition"
 PROTON="$STEAM/steamapps/common/Proton - Experimental/proton"

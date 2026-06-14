@@ -21,3 +21,8 @@ skytest/eidriver/eidriver
 tools/papyrus-sources/vanilla/
 tools/papyrus-sources/skse/
 tools/papyrus-sources/TESV_Papyrus_Flags.flg
+
+# Bethesda's Creation Kit Papyrus compiler binary + its DLLs — also third-party IP.
+# Populate from your own game install — see tools/papyrus-compiler/README.md.
+tools/papyrus-compiler/*
+!tools/papyrus-compiler/README.md

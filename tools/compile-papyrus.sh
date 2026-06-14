@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compile one Papyrus script to .pex using the in-repo compiler + source trees, via wine.
-# Fully self-contained: needs only `wine` on the host (the compiler + vanilla/SKSE sources
-# live in this repo).
+# Needs `wine` on the host plus the locally-populated compiler + vanilla/SKSE source trees
+# (both git-ignored third-party IP — see tools/papyrus-{compiler,sources}/README.md).
 #
 # usage: compile-papyrus.sh <ScriptName> <src-dir-containing-the-psc> <out-dir>
 set -euo pipefail
