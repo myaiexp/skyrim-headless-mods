@@ -62,6 +62,49 @@ relocates the prologue → valid `original` → the pass-through is safe.
    enemies nearby, or hit a quit/exit confirm; the box appears and behaves vanilla.
 4. Click an **undiscovered** location → vanilla marker-place still works.
 
+## Reference — verified address book + gotchas (folded from the retired handoff, 2026-06-14)
+
+The OneClickMap handoff doc was retired once v1 shipped; its load-bearing reference is preserved
+here. All values confirmed in-game on v1.6.1170 or against NG headers.
+
+### Address book
+
+| Thing | Value / locator | Notes |
+|-------|-----------------|-------|
+| `MessageBoxData::QueueMessage` (the hook target) | `RELOCATION_ID(51422, 52271)` | non-virtual member; `this` = `MessageBoxData*` in RCX. Detoured at entry via MinHook. |
+| `MessageBoxData::callback` (the vtable gate) | `BSTSmartPointer<IMessageBoxCallback>` @ offset `0x40` | `.get()` → raw callback ptr; compare `*(uintptr_t*)cb` to `FastTravelConfirmCallback::VTABLE[0]`. |
+| `FastTravelConfirmCallback` | members `MapMenu* mapMenu`@0x10, `cursorPosX`@0x18, `cursorPosY`@0x1C; `Run` is vtable slot **0x1** | the confirm box's callback. |
+| Travel-drive primitive | `callback->Run(IMessageBoxCallback::Message::kUnk1)` | kUnk1 = "Yes/travel"; **drives the trip AND closes the map.** Do NOT also send `kHide` — it cancels the trip ("map closes, no travel"). |
+| Cursor marker travelable? | `cb->mapMenu->GetRuntimeData().mapMarker.get().get()` → `extraList.GetByType<ExtraMapMarker>()->mapData->flags.any(MapMarkerData::Flag::kCanTravelTo)` | discovered-vs-not test; customMarker flips it correctly. |
+| `playerMapMarker` (custom marker exists?) | `PlayerCharacter::GetSingleton()->GetInfoRuntimeData().playerMapMarker` | NB: `GetInfoRuntimeData()`, **not** `GetPlayerRuntimeData()`. Unused by v1 — kept for the deferred modifier-key / marker work. |
+| MapMenu click handler | `RELOCATION_ID(52208, 53095)` | only direct `E8→QueueMessage` is at **+0x2BD** (a non-confirm box); prompt-format call at `+OFFSET_3(0x342, 0x3A6, 0x3D9)`. Not hooked by v1. |
+| `MapMenu::PlaceMarker` | `RELOCATION_ID(52226, 53113)` | where non-travelable clicks route — already one-click-correct vanilla; deliberately NOT hooked. |
+| Place-marker callback class | `PlacePlayerMarkerCallbackFunctor` | the empty-ground placement path; one-click vanilla already. |
+
+### Toolchain gotchas
+
+- Editor/LSP shows false `SKSE/SKSE.h not found` / `undeclared RE/SKSE/REL` diagnostics (no
+  FetchContent include paths). **Ignore them; trust `./build.sh`.**
+- `CMakeLists.txt` must keep the `rapidcsv` FetchContent block even though OneClickMap has no CSV
+  use — CommonLibSSE-NG itself references `RAPIDCSV_INCLUDE_DIRS`; the build fails without it.
+- `TESFullName::GetFullName` is a non-inlined import this NG static lib does **not** export — using
+  it fails the link. Log a marker's **FormID**, not its name.
+- Entry detours use **MinHook** (FetchContent), not NG's `write_branch<5>`/`write_call<5>`: those
+  only rewrite an existing `E8`/`E9` call/branch site (and need `SKSE::AllocTrampoline` first), so
+  they cannot safely detour a function entry — the bug this build fixed.
+- DRM-encrypted `.text` ⇒ no static disassembly; observe at runtime (byte-scan, `_ReturnAddress`,
+  in-game probes). The `.text` IS decrypted by the time SKSE loads plugins.
+
+### Build / install / test
+
+- Build: `./mods/OneClickMap/build.sh` → `OneClickMap.dll` (PE32+); `--install` copies it into the
+  live game's `SKSE/Plugins`.
+- Log: `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log`.
+- Crash logs (CrashLogger): `<prefix>/.../SKSE/crash-*.log` — trust `[P]` frames; `[S]` are stack
+  scans and can be false.
+- In-game verification is Mase-only (Proton prefix, this desktop); SKSE loads plugins at launch, so
+  fully restart the game to pick up a new DLL.
+
 ## Goal
 
 Remove the confirmation popups on the world map so a click does the obvious thing in one
