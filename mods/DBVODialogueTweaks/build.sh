@@ -77,7 +77,7 @@ echo ">> [3/5] compile $NATIVE_SCRIPT.psc (global-native bridge) -> build/Script
 source "$REPO_ROOT/tools/env.sh"
 echo ">> [4/5] generate $ESP (Mutagen / EspGen) — quest + $PLAYER_ALIAS player alias"
 "$DOTNET" run --project "$REPO_ROOT/tools/EspGen" -- \
-	"$BUILD/$ESP" "$QUEST_EDID" "$MCM_SCRIPT" "$FULLNAME" --player-alias "$PLAYER_ALIAS"
+	"$BUILD/$ESP" "$QUEST_EDID" "$MCM_SCRIPT" "$FULLNAME" --player-alias "$PLAYER_ALIAS" --esl
 
 # --- [5/5] SKSE plugin DLL (clang-cl + lld-link + xwin cross-build via tools/skse toolchain) ---
 echo ">> [5/5] build DBVODialogueTweaks.dll (cross-compile Linux -> Windows)"

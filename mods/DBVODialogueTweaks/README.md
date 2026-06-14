@@ -100,8 +100,8 @@ Bundled artifacts, all built headlessly on Linux:
 - `SKSE/Plugins/DBVODialogueTweaks.dll` — the SKSE plugin (CommonLibSSE-NG, cross-compiled).
 - `Scripts/DBVODialogueTweaksMCM.pex` + `Scripts/DBVOTweaks.pex` — the SkyUI MCM and a tiny
   Papyrus-native bridge to the DLL.
-- `DBVODialogueTweaks.esp` — an independent plugin (a quest hosting the MCM, plus a player alias) that
-  never touches DBVO's own scripts.
+- `DBVODialogueTweaks.esp` — an independent, **ESL-flagged** plugin (a quest hosting the MCM, plus a
+  player alias) that takes no load-order slot and never touches DBVO's own scripts.
 
 ## Building from source
 
