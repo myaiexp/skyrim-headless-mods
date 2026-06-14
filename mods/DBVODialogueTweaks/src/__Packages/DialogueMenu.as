@@ -268,6 +268,10 @@ class DialogueMenu extends MovieClip
       else
       {
          _loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;
+         // Backstop only: deliberately long (words*300 + 2000ms). The DLL normally fires
+         // dbvoOnPlayerLineEnded the instant the line ends, which clears this timer and reschedules
+         // topicClicked after the short dbvoPadMs gap. This fires the reply ONLY if the DLL never
+         // reports the end (DLL absent, or end undetected) — so it must comfortably outlast any line.
          _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * 300) + 2000;
          this.timer = setTimeout(this,"topicClicked",_loc4_);
          this.skipArmedAt = getTimer();

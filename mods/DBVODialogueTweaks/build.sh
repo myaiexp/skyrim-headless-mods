@@ -54,32 +54,33 @@ DLL="$PLUGIN_BUILD/DBVODialogueTweaks.dll"
 
 mkdir -p "$BUILD/Interface" "$BUILD/Scripts"
 
-# --- [1/4] swf (ffdec) ---
+# --- [1/5] swf (ffdec) ---
 # Guard against vendoring the wrong baseline (e.g. the +900 experiment).
 got="$(md5sum "$STOCK" | cut -d' ' -f1)"
 if [[ "$got" != "$STOCK_MD5" ]]; then
 	echo "ERROR: stock/dialoguemenu.swf md5 $got != expected $STOCK_MD5 (stock DBVO)." >&2
 	exit 1
 fi
-echo ">> [1/4] swf: import src/ into stock/ -> build/Interface/dialoguemenu.swf"
+echo ">> [1/5] swf: import src/ into stock/ -> build/Interface/dialoguemenu.swf"
 cp "$STOCK" "$OUT"
 # </dev/null is required: ffdec with no stdin/args opens its GUI; this keeps it headless.
 java -jar "$FFDEC" -importScript "$OUT" "$OUT" "$SRC" </dev/null
 echo "   md5: $(md5sum "$OUT" | cut -d' ' -f1)  (stock was $STOCK_MD5)"
 
-# --- [2/4] Papyrus scripts (wine PapyrusCompiler, against vendored SkyUI sources) ---
-echo ">> [2/4] compile $MCM_SCRIPT.psc + $NATIVE_SCRIPT.psc -> build/Scripts/"
+# --- [2/5] + [3/5] Papyrus scripts (wine PapyrusCompiler, against vendored SkyUI sources) ---
+echo ">> [2/5] compile $MCM_SCRIPT.psc (SkyUI MCM) -> build/Scripts/"
 "$REPO_ROOT/tools/compile-papyrus.sh" "$MCM_SCRIPT" "$SRC/papyrus" "$BUILD/Scripts"
+echo ">> [3/5] compile $NATIVE_SCRIPT.psc (global-native bridge) -> build/Scripts/"
 "$REPO_ROOT/tools/compile-papyrus.sh" "$NATIVE_SCRIPT" "$SRC/papyrus" "$BUILD/Scripts"
 
-# --- [3/4] esp (Mutagen/EspGen — quest hosting the MCM script + a PlayerRef alias) ---
+# --- [4/5] esp (Mutagen/EspGen — quest hosting the MCM script + a PlayerRef alias) ---
 source "$REPO_ROOT/tools/env.sh"
-echo ">> [3/4] generate $ESP (Mutagen / EspGen) — quest + $PLAYER_ALIAS player alias"
+echo ">> [4/5] generate $ESP (Mutagen / EspGen) — quest + $PLAYER_ALIAS player alias"
 "$DOTNET" run --project "$REPO_ROOT/tools/EspGen" -- \
 	"$BUILD/$ESP" "$QUEST_EDID" "$MCM_SCRIPT" "$FULLNAME" --player-alias "$PLAYER_ALIAS"
 
-# --- [4/4] SKSE plugin DLL (clang-cl + lld-link + xwin cross-build via tools/skse toolchain) ---
-echo ">> [4/4] build DBVODialogueTweaks.dll (cross-compile Linux -> Windows)"
+# --- [5/5] SKSE plugin DLL (clang-cl + lld-link + xwin cross-build via tools/skse toolchain) ---
+echo ">> [5/5] build DBVODialogueTweaks.dll (cross-compile Linux -> Windows)"
 # shellcheck source=../../tools/skse/cross-env.sh
 source "$SKSE_DIR/cross-env.sh"
 cmake -S "$PLUGIN_DIR" -B "$PLUGIN_BUILD" -G Ninja \

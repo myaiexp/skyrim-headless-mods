@@ -40,9 +40,11 @@ FetchContent_MakeAvailable(CommonLibSSE)
 # write_branch<5> only replaces existing call-site branch instructions; hooking a
 # function ENTRY and calling the original needs a real prologue-stealing trampoline,
 # which MinHook provides (matches how TiltedEvolution hooks this same function).
+# Pinned to a commit (MinHook publishes no recent release tags) so the build stays
+# reproducible — every other dep here is pinned too. Bump deliberately, not implicitly.
 FetchContent_Declare(minhook
 	GIT_REPOSITORY https://github.com/TsudaKageyu/minhook
-	GIT_TAG master)
+	GIT_TAG d94c64d32ea37bc4f5ee47d580709f70c6fb6080)
 FetchContent_MakeAvailable(minhook)
 
 # --- The plugin DLL itself.

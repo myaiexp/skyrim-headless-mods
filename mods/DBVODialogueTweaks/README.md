@@ -70,7 +70,9 @@ Summary of the chosen shape:
 
 1. **swf**: `startTopicClickedTimer` reads `this.dbvoMsPerWord` / `this.dbvoPadMs` (baked defaults `200`
    / `1400` = stock) in place of the literals — the delay is `round(words × msPerWord) + pad`. Recompile
-   with **ffdec**.
+   with **ffdec**. **(Superseded by v5:** the shipped `startTopicClickedTimer` no longer reads
+   `dbvoMsPerWord` — that knob is gone; it now sets a generous `words × 300 + 2000` ms _backstop_, and the
+   DLL fires `dbvoOnPlayerLineEnded` on the real line-end, which reads `dbvoPadMs` as the post-end gap.)
 2. **Papyrus**: an **independent** ESL quest script — we do _not_ touch DBVO's script. It pushes the
    two values onto the live menu (`UI.SetFloat("Dialogue Menu", "_root.DialogueMenu_mc.dbvoMsPerWord", …)`)
    **on each dialogue-menu open** (the swf instance is recreated per conversation, so the push must

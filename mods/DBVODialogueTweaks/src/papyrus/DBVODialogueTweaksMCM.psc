@@ -1,6 +1,12 @@
 Scriptname DBVODialogueTweaksMCM extends SKI_ConfigBase
 
-Float Property fPadMs = 250.0 Auto    ; ms gap after the player's line actually ends (0 = instant)
+; The default post-line-end gap (ms), named once and reused by the v3 migration reseed and the
+; slider's reset value. Papyrus property initializers must be literals, so the fPadMs seed just below
+; repeats 250.0 — keep the two in sync. (The swf has its own fallback copy: different runtime, can't
+; reach this.) AutoReadOnly = compile-time const, no save backing.
+Float Property PAD_DEFAULT = 250.0 AutoReadOnly
+
+Float Property fPadMs = 250.0 Auto    ; ms gap after the line ends (0 = instant); seed must match PAD_DEFAULT
 Float Property fPlayerVoiceVol = 100.0 Auto    ; percent; 100 = unchanged
 
 Int _padOID    ; option-IDs captured in OnPageReset for dispatch
@@ -32,7 +38,7 @@ Event OnVersionUpdate(Int aVersion)
 		Pages[1] = "Voice"
 	EndIf
 	If aVersion == 3
-		fPadMs = 250.0
+		fPadMs = PAD_DEFAULT
 	EndIf
 	If aVersion == 4
 		Pages = None    ; drop the persisted tabs on existing saves (fresh saves never set Pages)
@@ -49,7 +55,7 @@ EndEvent
 Event OnOptionSliderOpen(Int oid)
 	If oid == _padOID
 		SetSliderDialogRange(0, 1000)
-		SetSliderDialogDefaultValue(250)
+		SetSliderDialogDefaultValue(PAD_DEFAULT)
 		SetSliderDialogInterval(25)
 		SetSliderDialogStartValue(fPadMs)
 	ElseIf oid == _volOID
