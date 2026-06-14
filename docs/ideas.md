@@ -225,3 +225,23 @@ Deferred out of the merge design (`docs/plans/headless-skytest-merge-design.md`,
   screenshot-assisted authoring loop. The merge shapes `drive` to stay replay-friendly so this layer
   bolts on without reworking the input path. Pairs with the SKSE ground-truth tie-in (probe `status`
   as the per-step sync gate instead of fixed sleeps).
+
+## 2026-06-14 — SkytestProbe MCM reveal/drive
+
+State: **reveal v1 designed** (`docs/plans/skytest-probe-mcm-reveal-design.md`) — read-only `mcm-list`
+(enumerate registered MCMs + pages) + `mcm-get <ConfigScript> <prop…>` (a known mod's live property
+values), both headless via the Papyrus VM, targeting the full profile. Deferred:
+
+- **`mcm-scrape` — generic on-screen option labels + values.** Reads whatever MCM page is currently
+  **open**, via a Scaleform/GFx scrape of the "Journal Menu" (`_root.ConfigPanelFader.configPanel`).
+  Menu-open-only by nature (SkyUI builds option values only while a page renders — there is no central
+  value table), and needs a one-time runtime `VisitMembers` dump to discover SkyUI's flash option-array
+  path (the `.as` source isn't vendored). It's the generic-values complement to v1's known-mod `mcm-get`.
+- **Drive MCMs from C++ (the follow-up phase).** Open a config / select a page / set an option without
+  pixel input — via `GFxMovie::Invoke` on SkyUI's flash methods or `SendModEvent` of the `SKICP_*`
+  events (`SKICP_optionSelected`, `SKICP_pageSelected`, …). Built on the same open-menu GFx plumbing as
+  `mcm-scrape`. This is what fully replaces the unreliable cursor-driving of MCMs (the AutoFireBow MCM
+  test wall — `skytest/docs/headless-findings.md` #14).
+- **`skytest playtest --probe`.** Inject SkytestProbe into the otherwise-pristine full `playtest`
+  session so MCM reveal needs no manual install of the probe into the full profile. A skytest-side
+  convenience, not part of the probe feature.
