@@ -38,8 +38,10 @@ no injection yet.
 
 **Files:**
 - Create: `mods/AutoCastSpell/CMakeLists.txt` (copy `mods/GhostAllies/CMakeLists.txt`; rename project
-  + target + DLL to `AutoCastSpell`; **drop the `rapidcsv` FetchContent + `find_path` stanza** — this
-  mod reads no CSV. Keep only the `spdlog` and `CommonLibSSE` blocks.)
+  + target + DLL to `AutoCastSpell`. **Keep the `rapidcsv` stanza** — this mod reads no CSV, but
+  CommonLibSSE-NG's own CMake unconditionally uses `RAPIDCSV_INCLUDE_DIRS` as an include dir, so
+  dropping it makes NG fail to configure with `RAPIDCSV_INCLUDE_DIRS-NOTFOUND`. AutoFireBow keeps it
+  for the same reason.)
 - Create: `mods/AutoCastSpell/build.sh` (copy `mods/GhostAllies/build.sh`; rename `GhostAllies`→
   `AutoCastSpell` throughout)
 - Create: `mods/AutoCastSpell/src/main.cpp`
