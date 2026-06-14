@@ -232,6 +232,27 @@ namespace
 			return;
 		}
 
+		if (c == "mcm-get") {
+			const std::string script = JStr(cmd, "script");
+			auto              props  = JStrArr(cmd, "props");
+			if (script.empty()) {
+				trace::Ack(id, false, "mcm-get: missing script");
+				return;
+			}
+			if (props.empty()) {
+				trace::Ack(id, false, "mcm-get: missing props");
+				return;
+			}
+			EnqueueMain([id, script, props]() {
+				if (engine::WriteMcmGet(script, props)) {
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "mcm-get: no quest with script " + script);
+				}
+			});
+			return;
+		}
+
 		trace::Ack(id, false, c.empty() ? "missing cmd" : ("unknown cmd: " + c));
 	}
 

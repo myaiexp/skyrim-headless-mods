@@ -496,3 +496,45 @@ int engine::WriteMcmList()
 	});
 	return count;
 }
+
+bool engine::WriteMcmGet(const std::string& a_script, const std::vector<std::string>& a_props)
+{
+	// Locate the quest bound to this exact config-script class (the class names
+	// mcm-list emits). No match -> false, no record; the command acks the error.
+	auto obj = FindBoundScript(a_script.c_str());
+	if (!obj) {
+		return false;
+	}
+
+	trace::json values  = trace::json::object();
+	trace::json missing = trace::json::array();
+
+	for (const auto& name : a_props) {
+		const auto* p = obj->GetProperty(name);
+		if (!p) {
+			missing.push_back(name);  // no such property on this script
+			continue;
+		}
+		// Scalar coercion by the Variable's runtime type. Array/object/none aren't
+		// scalars we report in v1, so they land in "missing" (partial read is still ok).
+		if (p->IsBool()) {
+			values[name] = p->GetBool();
+		} else if (p->IsInt()) {
+			values[name] = p->GetSInt();
+		} else if (p->IsFloat()) {
+			values[name] = p->GetFloat();
+		} else if (p->IsString()) {
+			values[name] = std::string(p->GetString());
+		} else {
+			missing.push_back(name);
+		}
+	}
+
+	trace::Write(trace::json{
+		{ "src", "mcm-get" },
+		{ "script", a_script },
+		{ "values", std::move(values) },
+		{ "missing", std::move(missing) },
+	});
+	return true;
+}
