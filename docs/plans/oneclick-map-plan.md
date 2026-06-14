@@ -1,5 +1,11 @@
 # OneClickMap Implementation Plan
 
+> **SUPERSEDED 2026-06-14.** This plan describes the original three-way dispatch hooking the
+> MapMenu click handler. In-game probing (`oneclick-map-handoff.md`) collapsed the scope to a
+> single branch (discovered click → instant travel; everything else is already vanilla-correct)
+> and moved the hook to `MessageBoxData::QueueMessage` via **MinHook**. See the design doc's
+> "Mechanism update (2026-06-14)" section. The Tasks below are kept only as the original record.
+
 **Goal:** An SKSE C++ plugin that removes the world-map confirmation popups so a click does the obvious action in one step — discovered location → instant fast travel; non-travelable spot with no custom marker → instant place; otherwise → the Move/Leave/Remove menu.
 
 **Architecture:** A single standalone CommonLibSSE-NG DLL hooking the MapMenu click handler (`RELOCATION_ID(52208, 53095)`). At each click it reads two predicates — is the marker under the cursor travelable, and does a custom marker already exist — and dispatches one of three actions instead of letting the default message box appear. Built with the repo's existing headless clang-cl → Windows-DLL toolchain, mirroring `mods/GhostAllies/` and `mods/AutoFireBow/`.

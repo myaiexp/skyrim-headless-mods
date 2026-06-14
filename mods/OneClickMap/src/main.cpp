@@ -1,6 +1,7 @@
 #include <SKSE/SKSE.h>
 #include <RE/Skyrim.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <MinHook.h>
 
 namespace
 {
@@ -27,7 +28,7 @@ namespace
 	// enqueue the box for rendering. QueueMessage is the single chokepoint that hands the box to
 	// the UI — intercepting it lets us decide BEFORE anything is shown.
 	//
-	// We branch-detour QueueMessage's entry. On each call we inspect data->callback:
+	// We detour QueueMessage's entry (MinHook). On each call we inspect data->callback:
 	//   * If it is a FastTravelConfirmCallback (vtable match) AND the marker under the cursor is
 	//     travelable, we DRIVE the trip — call the callback's own Run(kUnk1) (kUnk1 == the
 	//     "Yes / travel" answer; this is the proven travel-drive primitive, same as
@@ -141,36 +142,45 @@ namespace
 			}
 
 			// PASS-THROUGH: every non-travelable / non-fast-travel box renders unchanged.
-			func(a_this);
+			original(a_this);
 		}
 
-		static inline REL::Relocation<decltype(thunk)> func;
+		// MinHook fills this with the trampoline to the real QueueMessage (relocated prologue + a
+		// jump back past the stolen bytes). Calling original() runs the engine's original intact.
+		static inline decltype(&thunk) original = nullptr;
 	};
 
 	void InstallHooks()
 	{
-		// Detour MessageBoxData::QueueMessage at its ENTRY. This DOES intercept the fast-travel
-		// confirm box, so the travelable branch above works (instant travel, no box) — verified
-		// in-game.
+		// Detour MessageBoxData::QueueMessage at its ENTRY with MinHook. QueueMessage is the single
+		// chokepoint that hands a box to the UI, so intercepting it lets us suppress the fast-travel
+		// confirm box BEFORE it renders (no flash) and pass every other box through untouched.
 		//
-		// !!! KNOWN LIMITATION — CRASHES on the first NON-fast-travel message box. !!!
-		// `func` is meant to be the original QueueMessage for the pass-through path, but CommonLibSSE-NG's
-		// write_branch<5> does NOT relocate a function prologue: it decodes the bytes at a_src AS an
-		// existing `call/jmp rel32` and returns that. At a function ENTRY (a real prologue, not a
-		// branch) the returned `func` is a wild pointer, so the pass-through `func(a_this)` below jumps
-		// into unmapped memory and crashes the game on the first box that isn't a travelable
-		// fast-travel confirm (marker management, "can't fast travel", exit confirms, etc.).
-		//
-		// This build is therefore a STOPGAP: instant travel works, everything else eventually crashes.
-		// The proper fix needs a real call-site `write_call` (NG-safe) or a prologue-relocating
-		// entry-detour — see docs/plans/oneclick-map-handoff.md. DO NOT ship to Nexus as-is.
-		SKSE::AllocTrampoline(64);
-		REL::Relocation<std::uintptr_t> queueMessage{ RELOCATION_ID(51422, 52271) };
-		QueueMessageHook::func =
-			SKSE::GetTrampoline().write_branch<5>(queueMessage.address(), QueueMessageHook::thunk);
+		// MinHook — not NG's write_branch<5> — because write_branch<5> does NOT relocate a function
+		// prologue: it decodes the bytes at the entry AS an existing `call/jmp rel32`, so its returned
+		// pass-through pointer is a wild pointer that crashes on the first non-fast-travel box. MinHook
+		// disassembles the real prologue, relocates it into a trampoline (stored in
+		// QueueMessageHook::original), and writes a 5-byte jmp to our thunk — so original() is valid and
+		// the pass-through is safe. Same idiom DBVODialogueTweaks uses, verified in-game.
+		REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(51422, 52271) };
+		if (auto s = MH_Initialize(); s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
+			SKSE::log::error("OneClickMap: MH_Initialize failed ({})", static_cast<int>(s));
+			return;
+		}
+		if (auto s = MH_CreateHook(reinterpret_cast<LPVOID>(target.address()),
+								   reinterpret_cast<LPVOID>(&QueueMessageHook::thunk),
+								   reinterpret_cast<LPVOID*>(&QueueMessageHook::original));
+			s != MH_OK) {
+			SKSE::log::error("OneClickMap: MH_CreateHook failed ({})", static_cast<int>(s));
+			return;
+		}
+		if (auto s = MH_EnableHook(reinterpret_cast<LPVOID>(target.address())); s != MH_OK) {
+			SKSE::log::error("OneClickMap: MH_EnableHook failed ({})", static_cast<int>(s));
+			return;
+		}
 
 		SKSE::log::info(
-			"OneClickMap: hooked MessageBoxData::QueueMessage (RELOCATION_ID(51422,52271)); "
+			"OneClickMap: hooked MessageBoxData::QueueMessage (RELOCATION_ID(51422,52271)) via MinHook; "
 			"travelable map clicks fast-travel instantly, all other boxes pass through vanilla");
 	}
 }
