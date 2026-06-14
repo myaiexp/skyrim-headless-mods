@@ -224,6 +224,14 @@ namespace
 			return;
 		}
 
+		if (c == "mcm-list") {
+			EnqueueMain([id]() {
+				const int n = engine::WriteMcmList();
+				trace::Ack(id, n >= 0, n < 0 ? "mcm-list: Papyrus VM unavailable" : "");
+			});
+			return;
+		}
+
 		trace::Ack(id, false, c.empty() ? "missing cmd" : ("unknown cmd: " + c));
 	}
 

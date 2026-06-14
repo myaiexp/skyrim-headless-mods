@@ -60,4 +60,14 @@ namespace engine
 	// "dump" for the command, "f11" for the hotkey auto-dump). avs = extra actor
 	// values to include beyond health/magicka/stamina.
 	void DumpActor(RE::Actor* a_actor, const std::vector<std::string>& a_avs, const char* a_src);
+
+	// MCM reveal (read-only). Main-thread only, null-safe — degrade to an empty result +
+	// honest trace, never a crash. WRITES its own trace record (mirrors DumpActor).
+	//
+	// Enumerate registered SkyUI MCM configs -> writes one record:
+	//   {"src":"mcm-list","via":"manager"|"scan"|"none","count":N,
+	//    "mods":[{"name":<ModName>,"script":<class>,"pages":[...]}]}
+	// Returns the count (>=0); 0 with count:0 written when SkyUI is absent (a successful scan).
+	// Returns -1 ONLY when the Papyrus VM itself is unavailable (pre-load) — command acks false.
+	int WriteMcmList();
 }
