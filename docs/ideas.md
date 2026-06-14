@@ -311,3 +311,23 @@ Deferred out of v1:
 - **Public Nexus release.** Like the other mods, a clean separate pass once the loop is proven
   in-game — write a page, test beyond the Firebolt close-out (a few more FF spell types: runes,
   summons, dual-cast). No architectural change.
+
+## 2026-06-14 — Per-mod READMEs for the remaining code mods
+
+State: **GhostAllies README done** — it was the acute gap (the root `README.md` headline link
+called GhostAllies "the flagship working mod" but `mods/GhostAllies/` had no README, so on GitHub
+the link opened a bare source dir). DBVO and RapidBowHold already have mod READMEs. Still missing a
+mod `README.md` landing page for the other working code mods:
+
+- **AutoFireBow** — working SKSE C++ mod, release-bound (Nexus messaging drafted in
+  `docs/autofirebow-nexus-page.md`); a proper mod README is the natural landing page.
+- **AutoCastSpell** — working SKSE C++ mod (v1).
+- **SkytestProbe** — working SKSE C++ debug toolkit; a README would double as its usage / command
+  reference (the command set currently only lives in `docs/plans/skytest-probe-design.md`).
+- **OneClickMap** — add when/if it's built (currently designed only).
+
+Each should mirror the DBVO/GhostAllies README shape (what it does / requirements / compatibility /
+install / how it works / build) and **move the detailed prose out of the root README table** into
+the mod README, leaving the root row a brief pointer — exactly as GhostAllies now does. Pure docs,
+low risk. For a showcase repo, consistent per-mod landing pages remove the last "looks half-done"
+signal once a browser clicks into each mod dir.
