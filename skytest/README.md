@@ -115,13 +115,29 @@ direction: isolate the Saves folder per test, or get `drive` working to dismiss 
 display/input layer are in [`docs/headless-findings.md`](docs/headless-findings.md) — **read it before
 changing the gamescope/libei approach.**
 
-## Which mode — `test` or `play`?
+## Which mode — `test`, `play`, or `playtest`?
 
 Use `skytest test <mod>` for a mod that works **standalone** (a new spell, a DLL, a self-contained
-esp). For a mod that only manifests **on top of the live load order** — patches, or overrides of
-another mod's assets (e.g. a DBVO `dialoguemenu.swf` edit, which needs DBVO + a voice pack present)
-— install into the full profile and test with `skytest play`; the vanilla+1 test profile can't
-reproduce it.
+esp) — vanilla + that one mod, drivable.
+
+For a mod that only manifests **on top of the live load order** — patches, asset overrides of
+another mod (e.g. a DBVO `dialoguemenu.swf` edit needing DBVO + a voice pack), or **anything that
+depends on SkyUI** (an MCM) — the vanilla+1 test profile can't reproduce it. Install into the full
+profile (the mod's own `build.sh --install`), then pick:
+
+- **`skytest play`** — the blocking, non-drivable daily-driver launch. Play/observe only.
+- **`skytest playtest [--headless]`** — the **full modded profile under a drivable gamescope
+  session**: the same `shot`/`drive`/`stop` machinery as `test`, but **no profile swap and no
+  injection** (`full` stays pristine, so there's no SkytestProbe — `ready`/`exec` don't apply). This
+  is the **only** way to screenshot/drive an MCM or any SkyUI-dependent menu. It boots to the menu;
+  `drive` your save in — keyboard nav works end-to-end (`drive tap enter` on CONTINUE → confirm →
+  load) — then `stop` to restore `Data → full`.
+
+**Verifying an MCM without navigating to it.** Driving SkyUI's journal *tabs* is unreliable (the
+mouse-cursor desync, findings #9b/#14), but you rarely need to: grep the Papyrus log
+(`…/Logs/Script/Papyrus.0.log`) for `Registered <ModName> at MCM` (SkyUI logs every page it
+discovers) and confirm there are **no** `<Native> is not a valid function` lines (a missing C++↔
+Papyrus native would log there). Page registered + zero native errors = the MCM and its bridge work.
 
 ## Boot straight into a test save (v2)
 

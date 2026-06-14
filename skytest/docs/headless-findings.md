@@ -244,3 +244,37 @@ close it first."_ That removes the whole class of "why is my test black?" confus
 
 (The `--backend wayland` `shot`/`drive` confirmation, and the `drive`-in-world retest, are still
 pending a clean run that reaches in-world.)
+
+## 14. RESOLVED (keyboard) — in-world driving works via `playtest`; tab-clicks still desync
+
+2026-06-14, while verifying AutoFireBow's SkyUI MCM. The earlier in-world blockers were both
+profile artifacts, not engine/libei faults — sidestepped by a new verb and a log-based check.
+
+**`playtest` — drivable FULL profile.** `gs_launch` wraps whatever `Data` points at, so a drivable
+full-modded session is just `cmd_test` minus the vanilla+1 swap and minus injection. Added as
+`skytest playtest [--headless]`: `full` stays pristine (no SkytestProbe, so `ready`/`exec` don't
+apply — drive by `shot` + the in-game console + SKSE/Papyrus logs). This is the **only** way to
+reach an MCM (needs SkyUI, absent from the vanilla+1 `test` profile) or any load-order-dependent
+menu. It also dodges #13's autoload modal entirely: the full profile's load order **matches** the
+real saves, so `CONTINUE` loads with no "missing content" prompt.
+
+**Keyboard input is confirmed in-world (supersedes #13's OPEN keyboard item).** End-to-end, headless,
+all via `drive tap …`: main menu `CONTINUE` → `Continue from your last saved game?` confirm → save
+load → in-world (signalled by the mod's own `AutoFireBow.log` "loop registered on player") → `escape`
+opened the Journal. Every keyboard tap registered. #13's "keyboard didn't dismiss the modal" was the
+#13 _modal_ specifically (a no-content prompt that may swallow keys), not keyboard input in general.
+
+**Mouse/cursor in menus is still imprecise (the #9b desync, unresolved).** Could not switch the
+Journal's QUESTS/GENERAL-STATS/SYSTEM tabs to reach Mod Configuration: `drive click x y` (clickat)
+landed ~80px right of target and bare `click` after manual `drive rel` homing missed too. Raw
+`drive rel` desyncs Skyrim's internal hit-test cursor from gamescope's compositor cursor; only the
+eidriver's chunked `clickat`/`moveto` (`rel_step`, ≤1000px) is supposed to stay synced, and even it
+overshot here. So **menu navigation that requires a precise click is not yet reliable**; keyboard is.
+(Journal category tabs may also be controller-bumper-only, with no keyboard binding — untested.)
+
+**The escape hatch: verify via the Papyrus log, not the UI.** Grep `…/Logs/Script/Papyrus.0.log`
+for `Registered <ModName> at MCM` (SkyUI logs every page it registers) and confirm **no**
+`<Native> is not a valid function` lines (a missing C++↔Papyrus native logs there on the
+`OnGameReload` push). For AutoFireBow this gave the full result without driving the menu: quest
+`INITIALIZED`, `Registered AutoFireBow at MCM`, zero native errors = MCM page + bridge both work.
+Driving a precise in-menu click is the remaining open item for true visual MCM screenshots.

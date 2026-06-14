@@ -398,6 +398,7 @@ cmd_init() {
   echo
   echo "Next steps:"
   echo "  skytest play              launch the full modded game (fast path)"
+  echo "  skytest playtest          full modded profile under a DRIVABLE gamescope session"
   echo "  skytest setup-save        build the base test save for autoload"
   echo "  skytest uninstall         restore the byte-identical original Data/"
 }
@@ -585,6 +586,39 @@ cmd_play() {
   say "launching full modded game via the fast direct path..."
   skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
   exec "$PROTON" run "$LOADER"     # blocking, no gamescope — the daily-driver fast path
+}
+
+# Like `play`, but under a DETACHED, drivable gamescope session instead of the blocking
+# direct path. Boots the FULL modded profile (real load order + SkyUI + every SKSE plugin),
+# so MCMs and load-order-dependent mods can be screenshot/driven — the vanilla+1 `test`
+# profile can't reach those. gs_launch wraps whatever Data points at, so this is just
+# `test` minus the profile swap and minus any injection: `full` stays pristine. No
+# SkytestProbe here (it lives only in the test profile), so `ready`/`exec` don't apply —
+# use `shot`/`drive` and read the in-game console / SKSE logs. Boots to the menu; load a
+# save via `drive`. Tear down with `skytest stop`.
+cmd_playtest() {
+  local backend="wayland"
+  case "${1:-}" in
+    --headless) backend="headless" ;;
+    --sdl)      backend="sdl" ;;
+    "")         ;;
+    *)          usage_err "playtest: unknown option: $1" "skytest playtest [--headless]" ;;
+  esac
+  [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
+  guard_no_live_session   # a 2nd gamescope session would double-park Data
+  guard_no_running_game   # a 2nd instance can't launch anyway (Steam blocks the appid)
+  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+
+  # Snapshot the live Plugins.txt so `stop`'s restore_plugins round-trips it (a stale .bak
+  # from an earlier `test` could otherwise be restored over it), then ensure Data -> full
+  # (recovering an interrupted test run, mirroring cmd_play).
+  backup_plugins
+  [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
+  point_data full
+  say "Data -> full (real modded load order). Launching drivable $backend session..."
+  gs_launch "$backend"
+  say "session live ($backend). No SkytestProbe in 'full' -> observe with 'skytest shot';"
+  say "load a save from the menu via 'skytest drive', then shot/drive. Tear down: skytest stop"
 }
 
 cmd_status() {
@@ -789,7 +823,7 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 
 # per-verb help: `skytest <verb> --help`
 case "${1:-}" in
-  status|init|setup-save|test|ready|shot|drive|stop|play|normal|uninstall)
+  status|init|setup-save|test|ready|shot|drive|stop|play|playtest|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
 esac
 
@@ -803,6 +837,7 @@ case "${1:-}" in
   drive)        shift; cmd_drive "$@" ;;
   stop)         cmd_stop ;;
   play)         cmd_play ;;
+  playtest)     shift; cmd_playtest "$@" ;;
   normal)       cmd_normal ;;
   uninstall)    cmd_uninstall ;;
   -*)           usage_err "unknown option: $1" "skytest help" ;;
