@@ -42,13 +42,15 @@ drags in `Actor` → `GlobalVariable`, `Package`, `Idle`, `Light`, `Projectile`,
 the game's script API. So you need the full vanilla source tree, **plus** SKSE's augmented
 versions (for `IsBow()`, `RegisterForControl`, `Debug.SendAnimationEvent`, etc.).
 
-`tools/papyrus-sources/` provides both:
+`tools/papyrus-sources/` provides both (the third-party trees are git-ignored — populate them
+locally from your own game + SKSE install, see `tools/papyrus-sources/README.md`):
 
 - `vanilla/` — 77 vanilla base API scripts (every native type: `Actor`, `Form`, `Weapon`,
   `GlobalVariable`, `Light`, …). The other ~1200 vanilla scripts are quest/scene logic that
-  type resolution never needs.
-- `skse/` — 62 SKSE source scripts (the ones SKSE extends).
-- `TESV_Papyrus_Flags.flg` — the user-flags file the compiler requires.
+  type resolution never needs. *(Bethesda IP — git-ignored.)*
+- `skse/` — 62 SKSE source scripts (the ones SKSE extends). *(SKSE IP — git-ignored.)*
+- `TESV_Papyrus_Flags.flg` — the user-flags file the compiler requires. *(Bethesda IP — git-ignored.)*
+- `skyui/` — SkyUI MCM base classes. *(Open-source — committed.)*
 
 **Import order matters** and is set in `compile-papyrus.sh`: `mod-src ; skse ; vanilla`. The
 mod's own source wins first; SKSE versions override vanilla for the scripts SKSE extends (so

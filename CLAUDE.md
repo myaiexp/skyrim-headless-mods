@@ -59,8 +59,11 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 ## Working norms
 
 - **Git: this repo HAS a remote** (`origin` → GitHub) — commit **and** `git push origin`, unlike the
-  local-only `~/Downloads/skyrim-mods/`. The repo is **private** (`tools/papyrus-sources/` vendors
-  Bethesda's Papyrus API stubs) — don't make it public without regating those.
+  local-only `~/Downloads/skyrim-mods/`. The repo is currently **private** but is being readied for
+  open-source: the third-party Papyrus stubs (Bethesda vanilla + `.flg`, SKSE) are now git-ignored
+  and populated locally (`tools/papyrus-sources/README.md`). **Before flipping public**, still
+  outstanding: `tools/papyrus-compiler/PapyrusCompiler.exe` is a Bethesda CK binary (regate or
+  accept), the git **history** still contains the old stubs, and there's no `LICENSE` yet.
 - **No mase.fi logging for Skyrim.** Do **not** run `git deployboth` or `mase-fi-update` — this
   overrides the global "log features / run deployboth" rules. (Same as the managing repo.)
 - **Two CC sessions may touch a Skyrim folder at once — stage precisely** by filename

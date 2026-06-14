@@ -14,3 +14,10 @@ mods/*/plugin/build/
 
 # skytest's compiled libei input client (rebuild with skytest/eidriver/build.sh)
 skytest/eidriver/eidriver
+
+# Third-party Papyrus source we must NOT redistribute (Bethesda / SKSE IP).
+# Populate locally from your own game + SKSE install — see tools/papyrus-sources/README.md.
+# (skyui/ is intentionally NOT ignored: SkyUI is open-source and redistributable.)
+tools/papyrus-sources/vanilla/
+tools/papyrus-sources/skse/
+tools/papyrus-sources/TESV_Papyrus_Flags.flg
