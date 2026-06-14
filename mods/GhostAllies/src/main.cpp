@@ -41,73 +41,6 @@ namespace
 		fn(a_ctrl, a_filterInfo);
 	}
 
-	// --- Whole-actor rigid-body systemGroup write --------------------------------
-	//
-	// The char-controller is only ONE of an actor's collision bodies. An actor also carries a
-	// ragdoll/biped rigid body per bone plus rigid bodies for equipped shield/weapon — and the
-	// continuous Flames stream is stopped by those (verified in-game: the stream is visibly
-	// blocked by the follower's shield/body even with the char-controller ghosted). So to make
-	// the WHOLE actor transparent to ghost-group projectiles we must stamp the ghost systemGroup
-	// onto every one of its rigid bodies, not just the controller.
-	//
-	// Safe to use one shared group for all of them: every body on an actor normally shares the
-	// SAME systemGroup already — that's the rule that stops an actor's own ragdoll parts from
-	// colliding with each other. Rewriting only the top-16 systemGroup bits (low-16 layer/
-	// subsystem bits preserved) keeps every body's relationship to itself and to the world
-	// intact (the world isn't in the group); it only makes the actor phase through projectiles
-	// that carry the same group. And because they share one group, restore needs just the one
-	// saved original value applied back to every body.
-	//
-	// Reach a bhkRigidBody's Havok collidable filter the same way StampProjectilePhantom reaches
-	// the phantom's: NiAVObject::GetCollisionObject() -> bhkNiCollisionObject::body (the
-	// bhkWorldObject) -> AsBhkRigidBody() (NiObject vfunc 0x15) -> referencedObject is the
-	// underlying hkpRigidBody (a hkpWorldObject) -> GetCollidableRW()->broadPhaseHandle
-	// .collisionFilterInfo. This mirrors powerof3/PapyrusExtenderSSE's actor-collision walk
-	// (it traverses Get3D() and edits each attached bhkRigidBody), but we write ONLY the
-	// systemGroup rather than using the engine's SetCollisionLayerAndGroup helper, which would
-	// also rewrite the collision layer — we must leave the layer untouched.
-	void RigidBody_SetSystemGroup(RE::bhkRigidBody* a_body, std::uint16_t a_group)
-	{
-		auto* hkBody = static_cast<RE::hkpRigidBody*>(a_body->referencedObject.get());
-		if (!hkBody) {
-			return;
-		}
-		auto* collidable = hkBody->GetCollidableRW();
-		if (!collidable) {
-			return;
-		}
-		std::uint32_t& info = collidable->broadPhaseHandle.collisionFilterInfo;
-		if ((info >> 16) == a_group) {
-			return;  // idempotent: already at this group
-		}
-		info = (info & 0x0000FFFF) | (static_cast<std::uint32_t>(a_group) << 16);
-	}
-
-	// Recursively walk an NiAVObject tree, writing a_group onto every bhkRigidBody's systemGroup.
-	void WriteSubtreeSystemGroup(RE::NiAVObject* a_obj, std::uint16_t a_group)
-	{
-		if (!a_obj) {
-			return;
-		}
-		if (auto* col = a_obj->GetCollisionObject()) {
-			if (auto* body = col->body ? col->body->AsBhkRigidBody() : nullptr) {
-				RigidBody_SetSystemGroup(body, a_group);
-			}
-		}
-		if (auto* node = a_obj->AsNode()) {
-			for (auto& child : node->GetChildren()) {
-				WriteSubtreeSystemGroup(child.get(), a_group);
-			}
-		}
-	}
-
-	// Stamp a_group onto every rigid body in the actor's loaded 3D. No-op (skipped, retried next
-	// reconcile) if the actor isn't loaded — Get3D() null. The char-controller is handled
-	// separately by the caller; this covers the ragdoll/biped + equipment bodies.
-	void WriteActorBodiesSystemGroup(RE::Actor* a_actor, std::uint16_t a_group)
-	{
-		WriteSubtreeSystemGroup(a_actor->Get3D(), a_group);
-	}
 	// Send spdlog (what SKSE::log::* uses) to <My Games>/SKSE/GhostAllies.log so the
 	// plugin leaves a visible trace when the game loads it.
 	void SetupLog()
@@ -161,16 +94,6 @@ namespace
 			std::uint32_t info = 0;
 			ctrl->GetCollisionFilterInfo(info);
 			const std::uint32_t group = info >> 16;
-
-			// Always (re)ghost the ragdoll/biped + equipment rigid bodies for a current teammate,
-			// even when the char-controller is already ghosted from a prior frame. This is what
-			// stops a continuous stream (Flames) the char-controller alone doesn't cover, and it
-			// must run every reconcile because those bodies may load LATE (Get3D() null on the
-			// enroll frame) or be replaced on an equipment change. The per-body write is
-			// idempotent (skips a body already at the ghost group), so re-running is cheap; it's a
-			// silent no-op while the 3D isn't loaded, retried on the next reconcile.
-			WriteActorBodiesSystemGroup(actor.get(), static_cast<std::uint16_t>(kGhostGroup));
-
 			if (group == kGhostGroup) {
 				continue;  // char-controller already ghosted (enrolled on a prior frame)
 			}
@@ -201,10 +124,6 @@ namespace
 					const std::uint32_t restored = (info & 0x0000FFFF) | (it->second << 16);
 					CharController_SetCollisionFilterInfo(ctrl, restored);
 				}
-				// Restore every ragdoll/biped + equipment rigid body to the one saved original
-				// group (all of an actor's bodies share a single systemGroup, so the one saved
-				// value is correct for all of them). No-op if the actor's 3D isn't loaded.
-				WriteActorBodiesSystemGroup(actor, static_cast<std::uint16_t>(it->second));
 			}
 			SKSE::log::info("restored teammate {:08X}", id);
 			it = g_enrolled.erase(it);
@@ -410,7 +329,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 8, 0 },
+	.Version = REL::Version{ 0, 9, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -421,7 +340,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 8, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 9, 0 }.string());
 
 	InstallHooks();
 
