@@ -1,134 +1,133 @@
-# DBVODialogueTweaks
+# DBVO Dialogue Tweaks
 
-A small set of tweaks to **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329)**
-dialogue pacing, built in phases:
+Pacing and control tweaks for **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329)** —
+makes the NPC reply land **when your voiced line actually ends** instead of after DBVO's fixed
+time-guess, lets you **skip** your own line, and adds a **player-voice volume** slider. Everything is
+configurable from a native SkyUI MCM.
 
-| Phase  | Feature                                                              | Tier                | Status                                                                             |
-| ------ | -------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
-| **v1** | **Manual player-line skip** (E / left-click), vanilla-style          | swf only            | **shipped** — design: `docs/plans/dbvo-dialogue-tweaks-design.md`                  |
-| **v2** | Configurable response gap (pad ms + ms/word) via MCM                 | swf + Papyrus + MCM | **shipped** — verified in-game                                                     |
-| **v3** | **Player-voice volume slider** (per-handle attenuation, 0–100%)      | SKSE C++ + MCM      | **shipped** — verified in-game; `docs/plans/dbvo-v3-player-voice-volume-design.md` |
-| **v4** | **Cut voice on skip** — player line on skip + NPC reply on interrupt | SKSE C++ + swf      | **shipped** — verified in-game; `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`   |
-| **v5** | **Reply when the line actually ends** — end-detection replaces the gap guess | SKSE C++ + swf + MCM | **shipped** — verified in-game 2026-06-14 (incl. main-thread-freeze fix; tab-less MCM); `docs/plans/dbvo-v5-reply-on-line-end-design.md` |
+DBVO times the NPC's reply by _estimating_ your line's length from its word count. Fast voice packs
+(Karat and other AI packs) finish well before that estimate, so every line ends in dead air — or,
+over-corrected, the NPC talks over you. This mod replaces the guess with real end-detection: a
+lightweight SKSE plugin watches your line and cues the reply the moment it stops.
 
-v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
-(the configurable gap). **v3** (player-voice volume slider) and **v4** (cut voice on skip — both the
-player line and the NPC-reply interrupt) shipped — see their design docs above. **v5** realizes the
-old Tier-3 idea via **end-detection** (the SKSE plugin watches the retained player-line handle and
-fires the reply the moment it stops, after a small configurable gap) rather than `.fuz`-duration
-prediction — it drops v2's ms/word knob and repurposes the pad knob as the post-line-end gap. Shipped
-and verified in-game: the poll runs on a detached thread (an early main-thread version froze the game
-— see the design's "Dead-ends"), and the MCM is a single tab-less screen mirroring DBVO's own menu.
-The Tier 3 section near the bottom is the prediction alternative v5 keeps in reserve.
+## Features
 
-(Renamed from `DBVOResponseGap` once the skip feature broadened it past just the gap.)
+- **Reply on line-end** — the NPC answers right after your line truly finishes (plus a small,
+  configurable gap), on every line, whatever the voice pack's speed. No dead air, no overlap.
+- **Manual skip** — press **E** / left-click to skip your own voiced line and move on immediately,
+  vanilla-dialogue style.
+- **Clean cut on skip & interrupt** — skipping fades your in-flight line out cleanly (no click);
+  picking a new topic while an NPC is mid-reply cuts that reply too.
+- **Player-voice volume** — attenuate or boost _just_ your own DBVO line, 0–100%, without touching any
+  other audio.
+- **Configurable gap** — the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
+- **Native SkyUI MCM** — a single screen, no MCM Helper dependency.
 
----
+## Requirements
 
-## v2 — configurable response gap
+- Skyrim Special Edition or Anniversary Edition + **SKSE**
+- **[Dragonborn Voice Over](https://www.nexusmods.com/skyrimspecialedition/mods/84329)** and everything
+  it requires (PapyrusUtil, ConsoleUtilSSE NG)
+- **SkyUI** (for the MCM)
+- **Address Library for SKSE Plugins**
 
-Make the **gap between the player's voiced line and the NPC's reply** configurable, so
-fast voice packs don't leave dead air (or, over-corrected, overlap). Born out of installing DBVO +
-the **Karat** AI voice pack: Karat speaks far faster than DBVO assumes, so DBVO's fixed timing
-mis-paces every line.
+## Compatibility
 
-## The problem, precisely
+- **SE + AE — yes, one DLL for both.** The plugin is built on CommonLibSSE-NG and reaches the engine
+  purely through the Address Library (the SE/AE addresses are resolved at runtime), so the same file
+  runs on every SE and AE build — Steam or GOG — as long as Address Library is installed. The Papyrus
+  scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
+- **VR — no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
+  separate VR build; neither is provided.
+- **Low maintenance.** DBVO hasn't changed in years, so the swf this mod is built from is a fixed
+  target — it won't drift or bitrot.
 
-DBVO has **no DLL of its own**. The player line is spoken via ConsoleUtil `Player.SpeakSound`
-(no "finished" callback), and the **NPC reply is gated by a timer in `Interface/dialoguemenu.swf`**
-(AS2). The relevant function, `DialogueMenu.startTopicClickedTimer`:
+## Installation
+
+1. Install **DBVO** first and get it working.
+2. Install this mod with a mod manager and let it **overwrite DBVO's `Interface/dialoguemenu.swf`** —
+   the bundled swf _is_ DBVO's, recompiled with these tweaks, so it must win over DBVO's copy (and lose
+   to nothing else that edits the dialogue menu).
+3. Enable `DBVODialogueTweaks.esp`.
+4. **Fully restart** Skyrim (the Papyrus VM caches scripts per session).
+
+Tune everything under **MCM → DBVO Dialogue Tweaks**.
+
+## Configuration
+
+| Option                       | Range     | Meaning                                                            |
+| ---------------------------- | --------- | ------------------------------------------------------------------ |
+| **Gap after your line ends** | 0–1000 ms | Pause between your line ending and the NPC's reply. `0` = instant. |
+| **Player voice volume**      | 0–100%    | Volume of your own DBVO voice line only. `100` = unchanged.        |
+
+## How it works
+
+DBVO ships no DLL of its own. Your line is spoken through ConsoleUtil's `Player.SpeakSound` (which
+gives no "finished" callback), and the NPC's reply is gated by a timer inside
+`Interface/dialoguemenu.swf`. By default that timer just guesses how long your line will take from its
+word count:
 
 ```actionscript
-// stock DBVO
-_loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;          // the player line text
-_loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length        // word count (strips "(Persuade)" etc.)
-                    * 60 / 300 * 1000) + 1400;                     // words × 200ms (300 wpm) + 1400ms pad
-this.timer = setTimeout(this, "topicClicked", _loc4_);             // topicClicked → GameDelegate "TopicClicked" → NPC replies
+// DBVO's default reply timing (in dialoguemenu.swf)
+words = lineText.split(" (")[0].split(" ").length;   // word count (strips "(Persuade)", etc.)
+delay = round(words * 200) + 1400;                   // ~200 ms/word (a 300-wpm guess) + 1400 ms pad
+setTimeout("topicClicked", delay);                   // → NPC replies
 ```
 
-So the NPC reply is delayed by **`wordCount × 200 ms` (a 300-wpm length estimate) + a flat
-`1400 ms` pad**. Two failure modes:
+Two things go wrong:
 
-- The `1400` pad is pure dead air on top of the estimate.
-- The `wordCount × 200 ms` estimate assumes 300 wpm. Real voice packs vary wildly. **Karat is much
-  faster** — e.g. _"where can I get a drink"_ = 6 words ⇒ 1200 ms budgeted, but the clip finishes in
-  under a second. A single fixed pad **cannot** track this per-line: short of reading the real audio
-  length, any constant is wrong for some lines.
+- The flat **1400 ms pad** is dead air on top of the estimate.
+- **200 ms/word assumes 300 wpm.** Real packs vary wildly — a fast AI voice can finish _"where can I
+  get a drink"_ (6 words, ~1200 ms budgeted) in under a second. No single constant can track this per
+  line.
 
-Reference points already built (in the _staging_ repo, `~/Downloads/skyrim-mods/`):
+This mod fixes it with a small **SKSE plugin** that hooks `Player.SpeakSound`. When _your_ DBVO line
+starts, the plugin keeps the line's sound handle and watches it on a background thread; the instant the
+line stops playing, it tells the menu to fire the reply after your configured gap — so the timing
+matches the _actual_ audio, every time. The swf keeps only a generous word-count **backstop**, used
+just in case the plugin isn't running.
 
-- **stock** swf — md5 `b1f70c58…` — `00-docs/overrides/2026-06-09-DBVO-instant-skip/`
-- **"Instant Skip"** (Nexus 140682) — md5 `9c93e72d…` — sets the timeout to `1` ⇒ NPC fires
-  immediately ⇒ player+NPC **overlap**. Also drops the `bAllowProgress` skip-cooldown (unrelated).
-- **custom `+900`** build — `00-docs/custom-tweaks/dbvo-npc-gap/` (swf + edited `DialogueMenu.as`) —
-  pad cut `1400 → 900`. Better, but still a fixed pad, so still mis-paces. Proves the recompile path.
+The same hook powers the rest:
 
-## Tier 2 — configurable (this mod's target)
+- **Volume** — it scales your line's handle to the MCM slider.
+- **Skip / interrupt** — the swf sends mod events when you skip or pick a new topic; the plugin turns
+  those into clean audio cuts (a short fade on the player line, plus a fade and dialogue-pause on an
+  interrupted NPC reply).
 
-**Designed:** `docs/plans/dbvo-v2-configurable-gap-design.md` (read that for the authoritative spec).
-Summary of the chosen shape:
+Bundled artifacts, all built headlessly on Linux:
 
-1. **swf**: `startTopicClickedTimer` reads `this.dbvoMsPerWord` / `this.dbvoPadMs` (baked defaults `200`
-   / `1400` = stock) in place of the literals — the delay is `round(words × msPerWord) + pad`. Recompile
-   with **ffdec**. **(Superseded by v5:** the shipped `startTopicClickedTimer` no longer reads
-   `dbvoMsPerWord` — that knob is gone; it now sets a generous `words × 300 + 2000` ms _backstop_, and the
-   DLL fires `dbvoOnPlayerLineEnded` on the real line-end, which reads `dbvoPadMs` as the post-end gap.)
-2. **Papyrus**: an **independent** ESL quest script — we do _not_ touch DBVO's script. It pushes the
-   two values onto the live menu (`UI.SetFloat("Dialogue Menu", "_root.DialogueMenu_mc.dbvoMsPerWord", …)`)
-   **on each dialogue-menu open** (the swf instance is recreated per conversation, so the push must
-   repeat). The rejected alternative — routing values through DBVO's own `UI.Invoke` call — would mean
-   editing DBVO's script for no benefit (timer's in the swf either way); see the design doc.
-3. **MCM** (**native SkyUI**, _not_ MCM Helper): the quest script `extends SKI_ConfigBase` and builds
-   two sliders in Papyrus — **Per-word delay (ms)** and **NPC response pad (ms)** — calibrated live. MCM
-   Helper is only an optional JSON layer on top of SkyUI; for a 2-slider menu we drop it to keep the
-   dependency footprint to SkyUI alone. Vanilla skip behavior kept (Instant Skip's `bAllowProgress`
-   removal is _not_ bundled). Needs a player ref-alias (`SKI_PlayerLoadGameAlias`) for reload re-reg.
+- `Interface/dialoguemenu.swf` — DBVO's swf recompiled with the skip + end-detection hooks (via ffdec).
+- `SKSE/Plugins/DBVODialogueTweaks.dll` — the SKSE plugin (CommonLibSSE-NG, cross-compiled).
+- `Scripts/DBVODialogueTweaksMCM.pex` + `Scripts/DBVOTweaks.pex` — the SkyUI MCM and a tiny
+  Papyrus-native bridge to the DLL.
+- `DBVODialogueTweaks.esp` — an independent plugin (a quest hosting the MCM, plus a player alias) that
+  never touches DBVO's own scripts.
 
-> **Shipped as ms/word, not wpm.** The per-word knob is exposed directly as **ms per word** (default
-> `200` = stock's 300 wpm, since `60/300×1000 = 200`), not words-per-minute — more intuitive ("6 words ×
-> 200 ms") and it drops the division. _Lower = faster reply._ The design/plan docs were written around a
-> `wpm` slider; the only change is the unit/reciprocal. Stock-formula mentions of "300 wpm" below still
-> correctly describe DBVO's _original_ code.
+## Building from source
 
-## Tier 3 — exact `.fuz`-duration scheduling (deferred v3+; SKSE tier now live)
+Linux, headless — no Creation Kit or SSEEdit. `./build.sh` produces all five artifacts (the swf, the
+DLL, the two `.pex`, and the `.esp`); `./build.sh --install` also copies them into the live game.
 
-The SKSE tier is real now: **v3** shipped the player-voice volume slider, so the `plugin/` DLL and
-its verified `Actor::SpeakSoundFunction` hook already exist. Next step on that tier: a fixed pad and
-a wpm guess are both approximations. That same **SKSE C++ plugin** can read the real
-**`.fuz`/`.xwm` duration** of the player line and schedule the NPC reply to land exactly when it
-ends — zero dead air, zero overlap, on every line, no calibration.
-This eliminates the word-count heuristic entirely and would supersede tier 2. Track separately if/when
-tier 2 isn't good enough.
+Toolchain:
 
-## Tooling / deps
+- **ffdec** (JPEXS Free Flash Decompiler) for the AS2 swf recompile — set `FFDEC=/path/to/ffdec.jar` if
+  it isn't at the default location.
+- The in-repo Papyrus compiler (`tools/`) for the `.pex` scripts, compiled against vendored SkyUI
+  sources.
+- **EspGen** (Mutagen) for the `.esp`.
+- The `tools/skse` cross-compile toolchain (clang-cl + lld-link + xwin) for the DLL — CommonLibSSE-NG
+  and MinHook are fetched and pinned by CMake.
 
-- **ffdec** (Flash decompiler) — `-export script <out> <swf>` / `-importScript <in> <out> <scriptsdir>`
-  (AS2 recompiles). Run via `java -jar ffdec.jar …`.
-- Papyrus compiler — already in this repo (`tools/`). SkyUI SDK `.psc` sources vendored under
-  `tools/papyrus-sources/skyui/` (compile-time only) to compile against `SKI_ConfigBase`.
-- **SkyUI** (runtime dep, already in the user's load order). **No MCM Helper** — native SkyUI MCM.
-- Builds on the standard DBVO requirements (SKSE, PapyrusUtil, ConsoleUtilSSE NG).
+## Permissions & credits
 
-## Permissions
+Built on **Dragonborn Voice Over** by its original author, whose Nexus permissions grant _"You are
+allowed to modify my files and release bug fixes or improve on the features so long as you credit me as
+the original creator."_ The bundled `dialoguemenu.swf` is DBVO's asset recompiled with these tweaks,
+shipped under that grant — **all credit for DBVO goes to its author.**
 
-DBVO's Nexus page **grants modify-and-release**: _"You are allowed to modify my files and release bug
-fixes or improve on the features so long as you credit me as the original creator."_ So shipping the
-**modified swf** (a derivative of DBVO's asset) publicly is fine **with credit to the DBVO author** —
-no separate ask needed, and a script-only patch is not required. (This repo still stays private re:
-bundled **Bethesda** Papyrus sources — a separate Bethesda-asset concern, unrelated to DBVO.)
+## Design notes
 
-**DBVO is a frozen target** — last updated ~3 years ago. So the md5-pinned stock swf in `build.sh`
-won't drift from an updated upstream (there is none), the modified swf we ship won't bitrot, and a
-public release stays low-maintenance. Don't re-derive these two facts each session — they're settled here.
-
-## Building v2
-
-v2 is fully designed and planned — execute from the plan, don't re-derive:
-
-- **Design (rationale):** `docs/plans/dbvo-v2-configurable-gap-design.md`
-- **Plan (6 tasks, step-by-step):** `docs/plans/dbvo-v2-configurable-gap-plan.md`
-
-Shape in one breath: swf reads `dbvoMsPerWord`/`dbvoPadMs` (defaults = stock) → an independent
-`SKI_ConfigBase` quest (native SkyUI MCM, player ref-alias for reload) pushes the slider values onto
-the live menu via `UI.SetFloat` on each dialogue-menu open. Vendor SkyUI `.psc` sources + extend
-`EspGen` for the player alias are the one-time toolchain steps (Tasks 1–2).
+Per-feature design write-ups (rationale and the dead-ends that shaped each one) live under
+`docs/plans/`: `dbvo-dialogue-tweaks-design.md` (skip), `dbvo-v2-configurable-gap-design.md` (gap +
+MCM), `dbvo-v3-player-voice-volume-design.md`, `dbvo-v4-voice-cut-on-skip-design.md`, and
+`dbvo-v5-reply-on-line-end-design.md` (end-detection).
