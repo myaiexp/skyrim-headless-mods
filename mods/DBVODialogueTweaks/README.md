@@ -120,10 +120,10 @@ Toolchain:
 
 ## Permissions & credits
 
-Built on **Dragonborn Voice Over** by its original author, whose Nexus permissions grant _"You are
+Built on **Dragonborn Voice Over** by **MathiewMay**, whose Nexus permissions grant _"You are
 allowed to modify my files and release bug fixes or improve on the features so long as you credit me as
-the original creator."_ The bundled `dialoguemenu.swf` is DBVO's asset recompiled with these tweaks,
-shipped under that grant — **all credit for DBVO goes to its author.**
+the original creator."_ The bundled `dialoguemenu.swf` is MathiewMay's asset recompiled with these tweaks,
+shipped under that grant — **all credit for DBVO goes to MathiewMay.**
 
 ## Design notes
 
