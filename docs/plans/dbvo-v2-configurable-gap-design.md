@@ -4,6 +4,9 @@
 > discusses — same lever, reciprocal unit (`200 ms/word` ≡ `300 wpm`), picked during bring-up as more
 > intuitive and division-free. The two-knob rationale below is unchanged; mentally read "wpm slider" as
 > "ms/word slider". Shipped swf delay: `round(words × msPerWord) + pad`.
+>
+> **Path note (post-2026-06-12 reorg):** the v3 row's `plugins/` is now `mods/<Mod>/plugin/` +
+> `tools/skse/`. Kept as written.
 
 **Mod:** `mods/DBVODialogueTweaks/` — extends the shipped v1 (manual player-line skip, swf-only).
 v2 makes DBVO's **NPC-reply delay** configurable at runtime via two MCM sliders, so fast voice

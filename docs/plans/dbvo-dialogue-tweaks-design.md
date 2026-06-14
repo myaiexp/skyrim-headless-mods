@@ -3,6 +3,9 @@
 **Mod:** `mods/DBVODialogueTweaks/` (renamed from `DBVOResponseGap`).
 A small set of swf/Papyrus/SKSE tweaks to DBVO's dialogue pacing. Built in phases:
 
+> **Path note (post-2026-06-12 reorg):** where the table's Tier column says `plugins/`, the SKSE C++
+> tier now lives at `mods/<Mod>/plugin/` + `tools/skse/`. Kept as written — a v1-era snapshot.
+
 | Phase  | Feature                                                       | Tier                  | Status                         |
 | ------ | ------------------------------------------------------------- | --------------------- | ------------------------------ |
 | **v1** | **Manual player-line skip** (E / left-click)                  | swf only              | **this design — building now** |

@@ -27,7 +27,7 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 
 | Path       | Holds                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mods/`    | The mods built here, one dir each (`<mod>/build.sh`, `src/`; design in `docs/plans/`). AutoFireBow, AutoCastSpell, GhostAllies, SkytestProbe (SKSE C++); DBVODialogueTweaks (swf+SKSE); RapidBowHold (Papyrus); OneClickMap (designed).                                                                                                                                                                                                                                       |
+| `mods/`    | The mods built here, one dir each (`<mod>/build.sh`, `src/`; design in `docs/plans/`). AutoFireBow, AutoCastSpell, GhostAllies, OneClickMap, SkytestProbe (SKSE C++); DBVODialogueTweaks (swf+SKSE); RapidBowHold (Papyrus).                                                                                                                                                                                                                                       |
 | `tools/`   | Reusable toolchain — `EspGen`/`BsaExtract` (Mutagen), `papyrus-compiler` + `compile-papyrus.sh`, `papyrus-sources/`, `skse/`, `env.sh` (machine paths).                                                                                                                                                                                                                                                                                                        |
 | `skytest/` | **Fast isolated, drivable mod-test launcher.** Swaps the live `Data/` between symlink profiles (vanilla / vanilla+1-mod / full) for interference-free testing; injects SkytestProbe + Start On Save; runs the mod under **gamescope** as a detached, drivable session — screenshot (SIGUSR2→AVIF), isolated **libei** input, in-world poll — **visible** (default) or **`--headless`**. Absorbed the old `headless/` driver (2026-06-12). `skytest/README.md`. |
 | `docs/`    | Toolchain references (`papyrus-*.md`, `skse-*.md`), `ideas.md`, `plans/` (design+plan+handoff per topic).                                                                                                                                                                                                                                                                                                                                                      |
@@ -63,9 +63,11 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   (Bethesda vanilla stubs + `.flg`, SKSE sources, CK compiler binary) is git-ignored and populated
   locally (see each dir's `README.md`); license is **MIT** (`LICENSE`). Old commits still contain
   those files — **accepted, no history rewrite** (they ship with the game / are widely mirrored).
-  Bundled third-party assets are cleared too: DBVO's `dialoguemenu.swf`/`.as` (DBVO grants
-  modding + release with credit) and `skytest/base-skse/po3_StartOnSave.dll` (powerofthree's
-  permissive terms). Repo is **cleared to go public**; flip with `gh repo edit --visibility public`.
+  A few third-party files are intentionally **kept committed in the tree** because their licenses
+  permit redistribution with credit: DBVO's `dialoguemenu.swf`/`.as` (DBVO permits modding +
+  release with credit) and `skytest/base-skse/po3_StartOnSave.dll` (powerofthree's permissive
+  terms) — attribution lives in the relevant mod's README. Repo is **cleared to go public**; flip
+  with `gh repo edit --visibility public`.
 - **No deploy/changelog automation for Skyrim.** Don't run `git deployboth` or any site-update
   logging here — plain commits + `git push origin` only. (Same as the managing repo.)
 - **Two CC sessions may touch a Skyrim folder at once — stage precisely** by filename

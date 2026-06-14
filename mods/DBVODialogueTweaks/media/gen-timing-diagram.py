@@ -1,4 +1,4 @@
-import math
+import math, os
 
 W, H = 1600, 900
 BG="#14161b"; TXT="#eceef2"; SUB="#98a0ad"; SLATE="#8b93a3"; BLUE="#6ea8d8"
@@ -62,4 +62,4 @@ p.append(f'<line x1="{TX0}" y1="{ay}" x2="{TX1}" y2="{ay}" stroke="{BANDB}" stro
 p.append(f'<polygon points="{TX1},{ay} {TX1-14},{ay-7} {TX1-14},{ay+7}" fill="{BANDB}"/>')
 p.append(f'<text x="{TX0}" y="{ay+34}" font-size="20" fill="{SUB}">time</text>')
 p.append('</svg>')
-open("/home/mse/Projects/skyrim-headless-mods/mods/DBVODialogueTweaks/media/timing-diagram.svg","w").write("\n".join(p)); print("ok")
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "timing-diagram.svg"), "w").write("\n".join(p)); print("ok")

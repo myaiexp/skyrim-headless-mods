@@ -121,3 +121,42 @@ In rough order of preference — each is a separate probe, not a guaranteed step
 - INI/hotkey config (`docs/ideas.md` — still deferred).
 - Fire-at-saturation cadence reclaim and TDM visibility-gating (`skse-tier-bringup.md` follow-ups) —
   revisit only after honest charge works.
+
+## Spike outcome & open question (folded from the 2026-06-09/10 session handoff)
+
+The probe ran and the synthetic-input route **works** — but the spike pivoted, and one question is
+still open. Captured here so the deleted handoff's findings aren't lost.
+
+**Established in-game (don't re-derive):**
+
+- **Loose via synthetic input-release works.** `SendSyntheticAttack(false)` builds a
+  `"Right Attack/Block"` `ButtonEvent` and replays it through `BSInputDeviceManager::SendEvent`
+  (the engine's own source) — the engine looses a genuinely-charged shot. `AttackInputSink` is
+  guarded with `g_injectingSynthetic` so the fake event doesn't disturb real held-state.
+- **Re-nock needs an explicit synthetic press** (`SendSyntheticAttack(true)`), fired from
+  `AutoArrowHook` at the auto arrow's launch — a held button never self-redraws. **Gotcha:** the
+  engine's nock event is capital-`BowDraw`. An earlier "the engine re-presses itself" reading was a
+  **false positive** from a stale duplicate `RapidBow.dll` (pre-rename build) still loaded in the
+  live game, doing the re-nock via `NotifyAnimationGraph`; removing the duplicate exposed that
+  AutoFireBow alone looses once and stops.
+- **`GetPowerSpeedMult` is called ~2× per arrow at launch** (state `BowReleased`), not per-frame,
+  and each shot gets a fresh arrow pointer — so "boost the next arrow" flag-targeting plus
+  immediate-clear is sound. Vtable slot: `REL::Relocate<std::size_t>(0xAF, 0xB0)`.
+- **`BowDrawn` (the auto-loose trigger) fires ~2.05s after nock.** Manual full-charge releases often
+  land earlier (~1.6s) and so read as partial — there is no way to fire a manual full-draw shot
+  without it auto-firing (holding to full *is* the auto trigger).
+- **Pivot:** the timed early-release / "honest cadence" direction was abandoned (breaks re-nock,
+  bow-speed-dependent). The real goal was **~10% more auto-arrow damage to compensate DPS** vs
+  manual play, so the build keeps a flat `kAutoDamageMult` bump on the held/full-draw arrow (gated
+  by `g_boostNextArrow`), not the old clamp's rewrite.
+
+**Open question (the real crux):** removing the clamp changed nothing about damage — a
+pure-observation probe read `runtime.power = 1.000` on **every** release (even a partial ~1.2s
+draw), and there's no damage *or distance* difference between early and full draws in the test
+setup. Working hypothesis: **bow draw→damage/power scaling simply isn't active there** (a
+load-order mod, an archery `fBow*` game setting, or the specific bow), so the clamp was always a
+damage no-op. If that holds, the "+10% to compensate lost DPS" premise dissolves — every shot is
+already full power, so the bump is a plain buff. **Next:** a clearly-partial vs full draw on a
+clean/vanilla save (does distance differ?); if draw scales on vanilla but not here, bisect the load
+order / archery settings; and confirm whether `ArrowProjectile::runtime.weaponDamage` actually maps
+to real enemy damage.
