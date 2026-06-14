@@ -46,6 +46,13 @@ swf (DialogueMenu.as)                SKSE C++ (plugin/src/main.cpp)
   required: the fade kills the segment that's **playing**, Pause stops the reply **advancing** to its
   remaining segments. Marshalled onto the main thread via the SKSE task interface (raw engine state).
 
+- **(c) NPC face reset on cut.** Cutting the audio leaves the NPC's mouth frozen open (the phoneme
+  keyframe holds its last mid-word values until the speaking state times out ~1–2 s later). `CutNpcReply()`
+  then `SetSpeakingDone(true)` (stops the engine's face pump re-driving the phonemes) and, **under
+  `faceGen->lock`**, `ClearExpressionOverride()` + `Reset(0.0f, true, true, true, false)` — a hard SNAP
+  to neutral. The lock and the `0.0f` (no ease) are both load-bearing — see dead-end 6. Verbatim
+  PhotoMode / OStimNG full-face-revert pattern.
+
 ## Dead-ends (do not re-try these — all tested in-game)
 
 1. **NPC reply is engine topic voice, not SpeakSound.** Confirmed against DBVO's `.pex` and the Karat
@@ -60,11 +67,14 @@ swf (DialogueMenu.as)                SKSE C++ (plugin/src/main.cpp)
    `BSSoundHandle` member in the engine structs, then confirmed by runtime logging.
 5. (Carried from v3, still true:) CommonLibSSE-NG `write_branch<5>` can't hook a function **entry** —
    use MinHook. That hook is what makes (a)'s handle retention possible.
+6. **A facegen `Reset()` for (c) is inert without two things:** it must run **under `faceGen->lock`**
+   (the lip-sync writer holds that spinlock — an unlocked write races it and silently loses) **and**
+   with `a_timer = 0.0f` (any ease gives the next lip-sync frame a window to re-clobber the open
+   mouth). A 0.25 s eased, unlocked `Reset` ran on valid, non-null face data and did **nothing** —
+   confirmed by logging. Also needs `SetSpeakingDone(true)` first or the engine keeps re-driving the
+   phonemes. `GetFaceGenAnimationData()` _is_ the correct (rendered) instance — it was never the problem.
 
 ## Open follow-ups (deferred)
 
-- **NPC neutral expression on cut.** When the NPC reply is cut, the actor's facial expression freezes
-  in its last speaking frame for ~1–2 s until the engine resets it — looks off. Reset the speaker's
-  expression to neutral in `CutNpcReply()`. Tracked in `docs/ideas.md`.
 - **Exact `.fuz`-duration NPC-reply scheduling** (the other half of the old "v3+" item) — unrelated to
   cutting; still deferred. See `docs/ideas.md`.

@@ -182,6 +182,23 @@ namespace
 				}
 			}
 			actor->PauseCurrentDialogue();
+
+			// Cutting the audio leaves the NPC's mouth frozen open: the phoneme keyframe holds its
+			// last (mid-word) values and nothing zeroes them until the speaking state times out
+			// (~1-2s). Two things make the reset actually stick (a plain reset ran on valid data but
+			// did nothing):
+			//   - SetSpeakingDone(true) stops the engine's face pump re-driving the phonemes;
+			//   - the reset runs UNDER faceGen->lock (the lip-sync writer holds that spinlock while it
+			//     drives the keyframes — without it our write races it and loses), with a_timer 0.0 to
+			//     SNAP (any ease gives the next frame a window to re-clobber the open mouth).
+			//     resetExpression = emotion, resetModifierAndPhoneme = mouth shape.
+			// Verbatim PhotoMode/OStimNG full-face-revert pattern.
+			actor->SetSpeakingDone(true);
+			if (auto* faceGen = actor->GetFaceGenAnimationData()) {
+				RE::BSSpinLockGuard locker(faceGen->lock);
+				faceGen->ClearExpressionOverride();
+				faceGen->Reset(0.0f, true, true, true, false);
+			}
 		});
 	}
 

@@ -139,12 +139,9 @@ shipped, verified in-game. Deferred:
   including multi-segment replies — via the speaker's `ExtraSayToTopicInfo.sound` +
   `Actor::PauseCurrentDialogue`. Full architecture **and the dead-ends** (`PauseCurrentDialogue` only
   _pauses_; `HighProcessData::soundHandles` aren't the topic voice; the NPC reply isn't a DBVO
-  SpeakSound) live in `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
-  - **NPC neutral expression on cut.** When the NPC reply is cut, the actor's face freezes in its last
-    speaking frame for ~1–2 s until the engine resets it — looks a bit stupid. Reset the speaker's
-    expression to neutral in `CutNpcReply()` when the cut fires (the speaker actor is already resolved
-    there; needs the right face/facegen-anim reset call — research the expression-reset path). Small
-    but noticeable.
+  SpeakSound; and the facegen freeze — the NPC mouth/face freezes open on cut and is reset to neutral
+  in `CutNpcReply()` via a lock-guarded snap `Reset`) live in
+  `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
   - **Exact `.fuz`-duration NPC-reply scheduling.** Unrelated to cutting: the same SpeakSound hook that
     retains the player handle can also read the line's `.fuz`/`.xwm` duration and schedule the NPC
     reply to land exactly when it ends — eliminates v2's wpm guess, supersedes the heuristic.

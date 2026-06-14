@@ -9,7 +9,7 @@ dialogue pacing, built in phases:
 | **v2** | Configurable response gap (pad ms + ms/word) via MCM                 | swf + Papyrus + MCM | **shipped** — verified in-game                                                     |
 | **v3** | **Player-voice volume slider** (per-handle attenuation, 0–100%)      | SKSE C++ + MCM      | **shipped** — verified in-game; `docs/plans/dbvo-v3-player-voice-volume-design.md` |
 | **v4** | **Cut voice on skip** — player line on skip + NPC reply on interrupt | SKSE C++ + swf      | **shipped** — verified in-game; `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`   |
-| v4+    | Exact `.fuz`-duration NPC scheduling; NPC neutral expression on cut  | SKSE C++            | deferred (same tier; see `docs/ideas.md`)                                          |
+| v4+    | Exact `.fuz`-duration NPC-reply scheduling                           | SKSE C++            | deferred (same tier; see `docs/ideas.md`)                                          |
 
 v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
 (the configurable gap). **v3** (player-voice volume slider) and **v4** (cut voice on skip — both the
