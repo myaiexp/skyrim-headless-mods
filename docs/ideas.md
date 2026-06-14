@@ -54,6 +54,13 @@ no config. Deferred:
 
 ## 2026-06-08 — AutoFireBow config (deferred)
 
+> **Superseded 2026-06-14 by `docs/plans/autofirebow-mcm-design.md`.** The "how" below chose an
+> **INI read by the DLL** to stay zero-dependency; the user has since chosen a real in-game **SkyUI
+> MCM** (no MCM Helper) instead, accepting SkyUI as a hard dependency. The settings list below still
+> stands (master on/off, toggle hotkey, damage-bonus slider, min-shot-delay cadence cap) — only the
+> delivery mechanism changed. The INI route and the other menu options are recorded as "Alternatives
+> considered" in the design doc.
+
 Make the mod configurable instead of always-on. Settings worth exposing:
 
 - **Master on/off**, plus a configurable **toggle hotkey**.
