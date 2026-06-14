@@ -324,7 +324,9 @@ mod `README.md` landing page for the other working code mods:
 - **AutoCastSpell** — working SKSE C++ mod (v1).
 - **SkytestProbe** — working SKSE C++ debug toolkit; a README would double as its usage / command
   reference (the command set currently only lives in `docs/plans/skytest-probe-design.md`).
-- **OneClickMap** — add when/if it's built (currently designed only).
+- **OneClickMap** — **DONE** (`mods/OneClickMap/README.md`, 2026-06-14). Release artifacts also
+  ready: `package.sh` → `dist/` zip + Nexus page copy (`docs/oneclickmap-nexus-page.md`); awaiting
+  only a header image + the manual Nexus upload.
 
 Each should mirror the DBVO/GhostAllies README shape (what it does / requirements / compatibility /
 install / how it works / build) and **move the detailed prose out of the root README table** into
