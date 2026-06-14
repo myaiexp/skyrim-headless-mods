@@ -40,7 +40,7 @@ categorize by **role**, not tier:
 mods/<Name>/            every mod, any tier mix (esp / Papyrus / swf / DLL)
   AutoFireBow/          (DLL-only)        ← moved from plugins/
   GhostAllies/          (DLL-only)        ← moved from plugins/
-  OneClickMap/          (DLL-only)        ← moved from plugins/
+  OneClickTravel/          (DLL-only)        ← moved from plugins/
   RapidBowHold/         (esp+pex)         ← already here; unchanged
   DBVODialogueTweaks/
     src/  …             (existing swf/Papyrus sources)

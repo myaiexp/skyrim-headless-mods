@@ -46,7 +46,7 @@ executable spec.
 
 | File | Responsibility | New/Mod |
 | --- | --- | --- |
-| `mods/{AutoFireBow,GhostAllies,OneClickMap}/` | the 3 DLL-only mods, moved from `plugins/` | Move |
+| `mods/{AutoFireBow,GhostAllies,OneClickTravel}/` | the 3 DLL-only mods, moved from `plugins/` | Move |
 | each moved `…/build.sh` | re-root toolchain from `$PLUGINS_DIR` → `tools/skse/` | Modify |
 | `tools/skse/{cross-env.sh,cmake/,setup-sdk-symlinks.sh}` | SKSE cross-compile toolchain, moved from `plugins/` | Move |
 | `.gitignore`, ~16 `.md` docs | path references `plugins/` → `mods/` or `tools/skse/` | Modify |
@@ -61,7 +61,7 @@ executable spec.
 ### Task 1: Repo layout unification (prerequisite) [Mode: Direct]
 
 **Files:**
-- Move: `plugins/AutoFireBow`, `plugins/GhostAllies`, `plugins/OneClickMap` → `mods/` (via `git mv`).
+- Move: `plugins/AutoFireBow`, `plugins/GhostAllies`, `plugins/OneClickTravel` → `mods/` (via `git mv`).
 - Move: `plugins/cross-env.sh`, `plugins/cmake/`, `plugins/setup-sdk-symlinks.sh` → `tools/skse/`.
 - Delete: `plugins/` (must be empty after the moves).
 - Modify: the three moved `build.sh`; `tools/skse/cross-env.sh`; `tools/skse/cmake/clang-cl-msvc.cmake`;
@@ -94,7 +94,7 @@ source "$REPO_ROOT/tools/env.sh"
   don't rewrite historical narrative beyond the path. Also `README.md`'s mod table.
 
 **Test Cases (verification):**
-- `test ! -d plugins` (directory gone); `ls mods/AutoFireBow mods/GhostAllies mods/OneClickMap tools/skse/cross-env.sh`.
+- `test ! -d plugins` (directory gone); `ls mods/AutoFireBow mods/GhostAllies mods/OneClickTravel tools/skse/cross-env.sh`.
 - **Toolchain still builds from the new home:** `./mods/GhostAllies/build.sh` exits 0 and
   `file mods/GhostAllies/build/GhostAllies.dll` → `PE32+ executable (DLL) ... x86-64`. (Proves the
   re-root works; GhostAllies is the most complex of the three.)

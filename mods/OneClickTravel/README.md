@@ -1,4 +1,4 @@
-# OneClickMap
+# OneClickTravel
 
 > **Status: working, verified in-game (v1.0.0, AE 1.6.1170).** Click a discovered location on
 > the world map and you travel — instantly, no confirmation box.
@@ -44,7 +44,7 @@ No `.esp`, no scripts, no Papyrus, no SkyUI — a single SKSE DLL. It takes no l
 
 ## Installation
 
-1. Install with a mod manager and enable it (or drop `OneClickMap.dll` into `Data/SKSE/Plugins/`).
+1. Install with a mod manager and enable it (or drop `OneClickTravel.dll` into `Data/SKSE/Plugins/`).
 2. **Restart Skyrim.**
 
 That's all — it's active immediately, always on, no configuration.
@@ -54,7 +54,7 @@ That's all — it's active immediately, always on, no configuration.
 Skyrim's "Fast travel to X?" prompt is a **native C++ message box**, not part of `map.swf` and not
 Papyrus — which is why an SWF edit would be the wrong layer and would conflict with map-replacer
 mods. Every message box in the game is handed to the UI through a single chokepoint,
-`MessageBoxData::QueueMessage`. OneClickMap detours that entry with **MinHook** and inspects each
+`MessageBoxData::QueueMessage`. OneClickTravel detours that entry with **MinHook** and inspects each
 box on its way in:
 
 - If the box's callback is a **`FastTravelConfirmCallback`** (vtable match) **and** the marker under
@@ -66,14 +66,14 @@ box on its way in:
 
 The entry detour uses MinHook (rather than a `call`-site rewrite) so the original function's prologue
 is relocated into a valid trampoline — the pass-through path is safe for every non-travel box. An
-`OneClickMap.log` in the SKSE log dir records each interception for verification.
+`OneClickTravel.log` in the SKSE log dir records each interception for verification.
 
 ## Building from source
 
 Linux, headless — no Creation Kit or SSEEdit.
 
 ```bash
-./build.sh            # configure + build -> build/OneClickMap.dll
+./build.sh            # configure + build -> build/OneClickTravel.dll
 ./build.sh --install  # also copy the DLL into the live game's SKSE/Plugins
 ```
 
@@ -84,5 +84,5 @@ CommonLibSSE-NG and MinHook fetched and pinned by CMake). See `../../docs/skse-t
 
 The full design — the scope cut to a single branch, why `QueueMessage` is the right chokepoint, why
 MinHook over a `call`-site rewrite, and the verified engine address book — lives in
-`../../docs/plans/oneclick-map-design.md`. Deferred work (a Shift-click escape hatch to restore the
+`../../docs/plans/oneclick-travel-design.md`. Deferred work (a Shift-click escape hatch to restore the
 vanilla Place-Marker option, MCM/INI config) is in `../../docs/ideas.md`.

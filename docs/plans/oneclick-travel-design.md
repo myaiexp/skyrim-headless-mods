@@ -1,4 +1,4 @@
-# OneClickMap — design
+# OneClickTravel — design
 
 **Status:** ~~approved 2026-06-09, not yet built~~ → **finishing 2026-06-14.** Instant fast-travel
 already works in-game; the build is being made shippable via a MinHook entry detour. **Read the
@@ -6,12 +6,12 @@ already works in-game; the build is being made shippable via a MinHook entry det
 beneath it**, which are kept as the original design record.
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain.
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE.
-**Name:** `OneClickMap` — **locked** (drives `mods/OneClickMap/`, `CMakeLists.txt` target,
-`build.sh`, and `OneClickMap.log`; renaming later means touching all four, so pin it at step 0).
+**Name:** `OneClickTravel` — **locked** (drives `mods/OneClickTravel/`, `CMakeLists.txt` target,
+`build.sh`, and `OneClickTravel.log`; renaming later means touching all four, so pin it at step 0).
 
 ## Mechanism update (2026-06-14) — scope cut + MinHook entry detour (supersedes the sections below)
 
-Two things changed after the in-game probing recorded in `oneclick-map-handoff.md`:
+Two things changed after the in-game probing recorded in `oneclick-travel-handoff.md`:
 
 **Scope collapsed to a single branch.** In the live game only two map-click outcomes actually
 occur: a **discovered/travelable** click (wants instant travel) and **everything else**, which
@@ -49,14 +49,14 @@ relocates the prologue → valid `original` → the pass-through is safe.
 
 ### Files
 
-- `mods/OneClickMap/src/main.cpp` — swap the install body to MinHook; rename `func` → `original`;
+- `mods/OneClickTravel/src/main.cpp` — swap the install body to MinHook; rename `func` → `original`;
   delete the now-false "KNOWN LIMITATION — CRASHES" comment; refresh the header comment.
-- `mods/OneClickMap/CMakeLists.txt` — add the MinHook `FetchContent` block + `minhook` to
+- `mods/OneClickTravel/CMakeLists.txt` — add the MinHook `FetchContent` block + `minhook` to
   `target_link_libraries` (copy DBVO's).
 
 ### Test (in-game, the part only the user can run)
 
-1. `./mods/OneClickMap/build.sh --install`, fully restart the game.
+1. `./mods/OneClickTravel/build.sh --install`, fully restart the game.
 2. Open map, click a **discovered** marker → instant travel, no box *(regression — already worked)*.
 3. Trigger a **non-travel** box → **no crash** *(the whole fix)* — e.g. try to fast-travel with
    enemies nearby, or hit a quit/exit confirm; the box appears and behaves vanilla.
@@ -64,7 +64,7 @@ relocates the prologue → valid `original` → the pass-through is safe.
 
 ## Reference — verified address book + gotchas (folded from the retired handoff, 2026-06-14)
 
-The OneClickMap handoff doc was retired once v1 shipped; its load-bearing reference is preserved
+The OneClickTravel handoff doc was retired once v1 shipped; its load-bearing reference is preserved
 here. All values confirmed in-game on v1.6.1170 or against NG headers.
 
 ### Address book
@@ -85,7 +85,7 @@ here. All values confirmed in-game on v1.6.1170 or against NG headers.
 
 - Editor/LSP shows false `SKSE/SKSE.h not found` / `undeclared RE/SKSE/REL` diagnostics (no
   FetchContent include paths). **Ignore them; trust `./build.sh`.**
-- `CMakeLists.txt` must keep the `rapidcsv` FetchContent block even though OneClickMap has no CSV
+- `CMakeLists.txt` must keep the `rapidcsv` FetchContent block even though OneClickTravel has no CSV
   use — CommonLibSSE-NG itself references `RAPIDCSV_INCLUDE_DIRS`; the build fails without it.
 - `TESFullName::GetFullName` is a non-inlined import this NG static lib does **not** export — using
   it fails the link. Log a marker's **FormID**, not its name.
@@ -97,9 +97,9 @@ here. All values confirmed in-game on v1.6.1170 or against NG headers.
 
 ### Build / install / test
 
-- Build: `./mods/OneClickMap/build.sh` → `OneClickMap.dll` (PE32+); `--install` copies it into the
+- Build: `./mods/OneClickTravel/build.sh` → `OneClickTravel.dll` (PE32+); `--install` copies it into the
   live game's `SKSE/Plugins`.
-- Log: `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log`.
+- Log: `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickTravel.log`.
 - Crash logs (CrashLogger): `<prefix>/.../SKSE/crash-*.log` — trust `[P]` frames; `[S]` are stack
   scans and can be false.
 - In-game verification is Mase-only (Proton prefix, this desktop); SKSE loads plugins at launch, so
@@ -227,11 +227,11 @@ rather than assuming every path suppresses.
 
 ## Architecture
 
-- **New standalone plugin:** `mods/OneClickMap/`, built with the existing headless
+- **New standalone plugin:** `mods/OneClickTravel/`, built with the existing headless
   clang-cl + lld-link + xwin + CommonLibSSE-NG (FetchContent) toolchain, mirroring
   `mods/AutoFireBow/` and `mods/GhostAllies/` (own `CMakeLists.txt`, `build.sh`,
   `src/main.cpp`). Loads/ships/disables independently — one DLL, one responsibility.
-- **Logging:** own `OneClickMap.log` in the SKSE log dir (same pattern as the sibling
+- **Logging:** own `OneClickTravel.log` in the SKSE log dir (same pattern as the sibling
   plugins), used for the proof-point and to verify each branch fires correctly in-game.
 - All logic in one file (`src/main.cpp`): the click-handler hook + the two predicate reads +
   the three-way dispatch. No `.esp`, no Papyrus, no config (v1).

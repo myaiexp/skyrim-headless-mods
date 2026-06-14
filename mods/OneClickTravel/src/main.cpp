@@ -7,7 +7,7 @@ namespace
 {
 	constexpr REL::Version kVersion{ 1, 0, 0 };
 
-	// OneClickMap — one-click fast travel on the world map.
+	// OneClickTravel — one-click fast travel on the world map.
 	//
 	// Behaviour (scope reduced from the original design after the Task-2 in-game probe):
 	//   When the player clicks a TRAVELABLE (discovered) location on the world map, fast-travel
@@ -48,7 +48,7 @@ namespace
 		if (!logDir) {
 			return;
 		}
-		auto path = *logDir / "OneClickMap.log";
+		auto path = *logDir / "OneClickTravel.log";
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
 		auto logger = std::make_shared<spdlog::logger>("global", std::move(sink));
 		logger->set_level(spdlog::level::info);
@@ -164,23 +164,23 @@ namespace
 		// the pass-through is safe. Same idiom DBVODialogueTweaks uses, verified in-game.
 		REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(51422, 52271) };
 		if (auto s = MH_Initialize(); s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
-			SKSE::log::error("OneClickMap: MH_Initialize failed ({})", static_cast<int>(s));
+			SKSE::log::error("OneClickTravel: MH_Initialize failed ({})", static_cast<int>(s));
 			return;
 		}
 		if (auto s = MH_CreateHook(reinterpret_cast<LPVOID>(target.address()),
 								   reinterpret_cast<LPVOID>(&QueueMessageHook::thunk),
 								   reinterpret_cast<LPVOID*>(&QueueMessageHook::original));
 			s != MH_OK) {
-			SKSE::log::error("OneClickMap: MH_CreateHook failed ({})", static_cast<int>(s));
+			SKSE::log::error("OneClickTravel: MH_CreateHook failed ({})", static_cast<int>(s));
 			return;
 		}
 		if (auto s = MH_EnableHook(reinterpret_cast<LPVOID>(target.address())); s != MH_OK) {
-			SKSE::log::error("OneClickMap: MH_EnableHook failed ({})", static_cast<int>(s));
+			SKSE::log::error("OneClickTravel: MH_EnableHook failed ({})", static_cast<int>(s));
 			return;
 		}
 
 		SKSE::log::info(
-			"OneClickMap: hooked MessageBoxData::QueueMessage (RELOCATION_ID(51422,52271)) via MinHook; "
+			"OneClickTravel: hooked MessageBoxData::QueueMessage (RELOCATION_ID(51422,52271)) via MinHook; "
 			"travelable map clicks fast-travel instantly, all other boxes pass through vanilla");
 	}
 }
@@ -189,7 +189,7 @@ namespace
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
 	.Version = kVersion,
-	.Name = "OneClickMap",
+	.Name = "OneClickTravel",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
 	.RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary)
@@ -199,7 +199,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("OneClickMap loaded (v{})", kVersion.string());
+	SKSE::log::info("OneClickTravel loaded (v{})", kVersion.string());
 
 	InstallHooks();
 

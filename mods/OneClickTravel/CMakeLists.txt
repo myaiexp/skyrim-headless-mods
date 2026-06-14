@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(OneClickMap VERSION 1.0.0 LANGUAGES CXX)
+project(OneClickTravel VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -19,7 +19,7 @@ FetchContent_MakeAvailable(spdlog)
 
 # --- rapidcsv: header-only. CommonLibSSE-NG itself locates it via
 # find_path(rapidcsv.h) and references RAPIDCSV_INCLUDE_DIRS in its own includes,
-# so this is required even though OneClickMap has no CSV dependency of its own.
+# so this is required even though OneClickTravel has no CSV dependency of its own.
 # Pre-seed the cache var NG checks so no system lookup is needed.
 FetchContent_Declare(rapidcsv
 	GIT_REPOSITORY https://github.com/d99kris/rapidcsv
@@ -47,7 +47,7 @@ FetchContent_Declare(minhook
 FetchContent_MakeAvailable(minhook)
 
 # --- The plugin DLL itself.
-add_library(OneClickMap SHARED src/main.cpp)
-target_compile_features(OneClickMap PRIVATE cxx_std_23)
-target_link_libraries(OneClickMap PRIVATE CommonLibSSE::CommonLibSSE minhook)
-set_target_properties(OneClickMap PROPERTIES PREFIX "" SUFFIX ".dll")
+add_library(OneClickTravel SHARED src/main.cpp)
+target_compile_features(OneClickTravel PRIVATE cxx_std_23)
+target_link_libraries(OneClickTravel PRIVATE CommonLibSSE::CommonLibSSE minhook)
+set_target_properties(OneClickTravel PROPERTIES PREFIX "" SUFFIX ".dll")

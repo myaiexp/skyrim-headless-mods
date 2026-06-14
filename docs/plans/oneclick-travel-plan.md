@@ -1,7 +1,7 @@
-# OneClickMap Implementation Plan
+# OneClickTravel Implementation Plan
 
 > **SUPERSEDED 2026-06-14.** This plan describes the original three-way dispatch hooking the
-> MapMenu click handler. In-game probing (`oneclick-map-handoff.md`) collapsed the scope to a
+> MapMenu click handler. In-game probing (`oneclick-travel-handoff.md`) collapsed the scope to a
 > single branch (discovered click → instant travel; everything else is already vanilla-correct)
 > and moved the hook to `MessageBoxData::QueueMessage` via **MinHook**. See the design doc's
 > "Mechanism update (2026-06-14)" section. The Tasks below are kept only as the original record.
@@ -12,9 +12,9 @@
 
 **Tech Stack:** C++23, CommonLibSSE-NG (FetchContent, runtime SE+AE), spdlog, clang-cl + lld-link + xwin cross-build, CMake/Ninja.
 
-**Spec:** `docs/plans/oneclick-map-design.md` (read it — behavior table, accepted consequences, and the proof-point all live there).
+**Spec:** `docs/plans/oneclick-travel-design.md` (read it — behavior table, accepted consequences, and the proof-point all live there).
 
-**Testing reality:** SKSE plugins have no Linux unit-test harness here. "Tests" are (a) the cross-build succeeding (automatable on Linux via `build.sh`), and (b) in-game verification scenarios with expected `OneClickMap.log` lines (manual — Mase runs the game on this desktop's Proton prefix). Each task states both.
+**Testing reality:** SKSE plugins have no Linux unit-test harness here. "Tests" are (a) the cross-build succeeding (automatable on Linux via `build.sh`), and (b) in-game verification scenarios with expected `OneClickTravel.log` lines (manual — Mase runs the game on this desktop's Proton prefix). Each task states both.
 
 ---
 
@@ -23,27 +23,27 @@
 Stand up the DLL so it compiles with the cross toolchain and loads in-game, doing nothing yet. Pure boilerplate mirrored from `mods/GhostAllies/`.
 
 **Files:**
-- Create: `mods/OneClickMap/CMakeLists.txt`
-- Create: `mods/OneClickMap/build.sh`
-- Create: `mods/OneClickMap/src/main.cpp`
+- Create: `mods/OneClickTravel/CMakeLists.txt`
+- Create: `mods/OneClickTravel/build.sh`
+- Create: `mods/OneClickTravel/src/main.cpp`
 
 **Contracts:**
-- `CMakeLists.txt`: copy `mods/GhostAllies/CMakeLists.txt` verbatim, replacing the project name and target with `OneClickMap` (same spdlog v1.13.0 / CommonLibSSE-NG pinned tag / `cxx_std_23` / `PREFIX "" SUFFIX ".dll"`). Drop the `rapidcsv` block — OneClickMap has no CSV dependency.
-- `build.sh`: copy `mods/GhostAllies/build.sh` verbatim, replacing every `GhostAllies` with `OneClickMap`. Same `--install` path (`$GAME_DATA/SKSE/Plugins`).
+- `CMakeLists.txt`: copy `mods/GhostAllies/CMakeLists.txt` verbatim, replacing the project name and target with `OneClickTravel` (same spdlog v1.13.0 / CommonLibSSE-NG pinned tag / `cxx_std_23` / `PREFIX "" SUFFIX ".dll"`). Drop the `rapidcsv` block — OneClickTravel has no CSV dependency.
+- `build.sh`: copy `mods/GhostAllies/build.sh` verbatim, replacing every `GhostAllies` with `OneClickTravel`. Same `--install` path (`$GAME_DATA/SKSE/Plugins`).
 - `main.cpp` must expose the SKSE plugin entry and version data CommonLibSSE-NG requires (mirror GhostAllies):
   - Use the modern declarative form GhostAllies uses: `SKSEPluginInfo(...)` macro + `SKSEPluginLoad(const SKSE::LoadInterface*)` (`mods/GhostAllies/src/main.cpp` ~L412–429). There is no `SKSEPlugin_Version`/`SKSEPlugin_Load` pair in this repo — copy the sibling's form exactly.
-  - `SKSE::Init(skse)` then open a log sink at `<SKSE log dir>/OneClickMap.log` via `spdlog::basic_logger_mt`, pattern matching GhostAllies, default level `info`.
-  - On load, log one banner line: `OneClickMap loaded (v<version>)`.
+  - `SKSE::Init(skse)` then open a log sink at `<SKSE log dir>/OneClickTravel.log` via `spdlog::basic_logger_mt`, pattern matching GhostAllies, default level `info`.
+  - On load, log one banner line: `OneClickTravel loaded (v<version>)`.
 - No hooks yet.
 
 **Constraints:**
 - Must use the runtime-detection CommonLibSSE-NG build (single DLL covers SE 1.5.97 + AE 1.6.x including 1.6.1170). Do not pin to a runtime.
-- Name is locked to `OneClickMap` everywhere (dir, CMake target, DLL, log) per the design.
+- Name is locked to `OneClickTravel` everywhere (dir, CMake target, DLL, log) per the design.
 
 **Verification:**
-- Run: `./mods/OneClickMap/build.sh`
-- Expected: `built: .../OneClickMap.dll`, and `file` reports a PE32+ DLL for MS Windows.
-- In-game (manual): `./mods/OneClickMap/build.sh --install`, restart Skyrim, confirm `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickMap.log` contains the `OneClickMap loaded` banner and the game reaches the main menu without a crash.
+- Run: `./mods/OneClickTravel/build.sh`
+- Expected: `built: .../OneClickTravel.dll`, and `file` reports a PE32+ DLL for MS Windows.
+- In-game (manual): `./mods/OneClickTravel/build.sh --install`, restart Skyrim, confirm `<prefix>/Documents/My Games/Skyrim Special Edition/SKSE/OneClickTravel.log` contains the `OneClickTravel loaded` banner and the game reaches the main menu without a crash.
 
 **Commit after the build succeeds** (don't gate the commit on the manual in-game check).
 
@@ -54,7 +54,7 @@ Stand up the DLL so it compiles with the cross toolchain and loads in-game, doin
 The gating research task from the design. Hook the click handler read-only and **log**, without changing any behavior, to prove every signal the dispatch needs is reachable at that site. This is throwaway/observational code that Task 3 builds on; keep it behind a verbose log level.
 
 **Files:**
-- Modify: `mods/OneClickMap/src/main.cpp`
+- Modify: `mods/OneClickTravel/src/main.cpp`
 
 **Contracts:**
 - Install a hook at `RELOCATION_ID(52208, 53095)` (the MapMenu click handler PapyrusExtender hooks; cross-check the exact call offset against `powerof3/PapyrusExtenderSSE` `src/Game/HookedEventHandler.cpp` namespace `FastTravel`). Use SKSE trampoline / `write_call` or a vfunc write as appropriate — match the precedent.
@@ -88,7 +88,7 @@ The gating research task from the design. Hook the click handler read-only and *
 Replace the read-only probe with the real action: suppress the default box and perform the dispatched action, per the design's reduced logic.
 
 **Files:**
-- Modify: `mods/OneClickMap/src/main.cpp`
+- Modify: `mods/OneClickTravel/src/main.cpp`
 
 **Contracts:**
 Implement the design's logic at the hook:
@@ -123,8 +123,8 @@ else                                        -> raise Move/Leave/Remove (box #4)
 ### Task 4: Document the shipped mod [Mode: Direct]
 
 **Files:**
-- Modify: `~/Projects/skyrim-headless-mods/README.md` (add a `mods/OneClickMap/` row to the table, one-line description matching the AutoFireBow/GhostAllies rows; mark AE-tested or built-untested per what Task 3's in-game run actually achieved).
-- Modify: `docs/plans/oneclick-map-design.md` (flip the `Status:` line to shipped/verified or built-untested, recording the Task 2 gate outcome and any fallback taken).
+- Modify: `~/Projects/skyrim-headless-mods/README.md` (add a `mods/OneClickTravel/` row to the table, one-line description matching the AutoFireBow/GhostAllies rows; mark AE-tested or built-untested per what Task 3's in-game run actually achieved).
+- Modify: `docs/plans/oneclick-travel-design.md` (flip the `Status:` line to shipped/verified or built-untested, recording the Task 2 gate outcome and any fallback taken).
 
 **Constraints:**
 - State only what was actually verified in-game. If Mase did not run a given scenario, say "built, untested" — do not claim verification that didn't happen (repo convention; matches GhostAllies' honest status lines).

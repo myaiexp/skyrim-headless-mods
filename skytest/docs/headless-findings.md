@@ -121,7 +121,7 @@ safe regime. (This also means a future >~1400-wide resolution won't silently re-
 
 ## 10. The world map pans at screen edges — don't home/corner there
 
-Hit while testing the OneClickMap loop (load → `M` → click a discovered marker → fast-travel). On the
+Hit while testing the OneClickTravel loop (load → `M` → click a discovered marker → fast-travel). On the
 **map**, a cursor at/near a screen edge **pans the map view** (it's a click-drag-able pannable surface,
 not a fixed menu). So the absolute primitive's clamp-to-corner home (`abs`/`clickat`, which slam to
 (0,0)) is **destructive on the map**: it pans the view, so the target pixel no longer points at the
@@ -139,7 +139,7 @@ selecting the location. (Menus are unaffected — they don't pan.)
 3. **Click with a bare `drive.sh click`** (no x,y → no home → no pan). With the snap active, the click
    selects that marker → fast-travel confirm box → `tap enter` (Yes).
 
-For the automated OneClickMap test, the durable version is template-matching the white marker glyphs to
+For the automated OneClickTravel test, the durable version is template-matching the white marker glyphs to
 get their pixels (markers are ~12px; eyeballing won't scale), then this same no-home nudge+click. A
 `moveto`-on-map variant would need a non-edge origin (e.g. re-open the map to recenter the cursor on
 the player) instead of the corner home.

@@ -40,9 +40,9 @@ party; the player's hostile magic deals no friendly damage to teammates. Still d
 Followers rarely friendly-fire the player, so it solves a non-problem. Only revisit if real
 gameplay shows follower projectiles blocking/hitting the player often enough to matter.
 
-## 2026-06-09 — OneClickMap (skip world-map popups)
+## 2026-06-09 — OneClickTravel (skip world-map popups)
 
-State: **v1 shipped + verified in-game 2026-06-14** (`docs/plans/oneclick-map-design.md`).
+State: **v1 shipped + verified in-game 2026-06-14** (`docs/plans/oneclick-travel-design.md`).
 Discovered-marker click → instant fast-travel, no confirm box; all other boxes pass through
 vanilla. Built on a MinHook entry detour of `MessageBoxData::QueueMessage` (replaced the stopgap
 `write_branch<5>` build that crashed on non-travel boxes). v1 is unconditional, no config. Deferred:
@@ -324,8 +324,8 @@ mod `README.md` landing page for the other working code mods:
 - **AutoCastSpell** — working SKSE C++ mod (v1).
 - **SkytestProbe** — working SKSE C++ debug toolkit; a README would double as its usage / command
   reference (the command set currently only lives in `docs/plans/skytest-probe-design.md`).
-- **OneClickMap** — **DONE** (`mods/OneClickMap/README.md`, 2026-06-14). Release artifacts also
-  ready: `package.sh` → `dist/` zip + Nexus page copy (`docs/oneclickmap-nexus-page.md`); awaiting
+- **OneClickTravel** — **DONE** (`mods/OneClickTravel/README.md`, 2026-06-14). Release artifacts also
+  ready: `package.sh` → `dist/` zip + Nexus page copy (`docs/oneclicktravel-nexus-page.md`); awaiting
   only a header image + the manual Nexus upload.
 
 Each should mirror the DBVO/GhostAllies README shape (what it does / requirements / compatibility /

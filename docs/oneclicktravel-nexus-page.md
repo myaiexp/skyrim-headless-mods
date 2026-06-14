@@ -1,9 +1,9 @@
-# OneClickMap — Nexus page copy
+# OneClickTravel — Nexus page copy
 
 **Status: release-ready (v1.0.0, verified in-game on AE 1.6.1170).** This is the copy to paste into
 the Nexus mod page. Honesty over hype throughout — single-purpose and always-on by design, that's the
-feature, not a gap. Page title can be **OneClickMap** or, if a spaced title reads better in search,
-**One-Click Map — Instant Fast Travel**; the DLL/plugin name stays `OneClickMap` either way.
+feature, not a gap. Page title can be **OneClickTravel** or, if a spaced title reads better in search,
+**One-Click Map — Instant Fast Travel**; the DLL/plugin name stays `OneClickTravel` either way.
 
 ## The one-liner
 
