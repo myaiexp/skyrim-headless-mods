@@ -148,16 +148,20 @@ shipped, verified in-game. Deferred:
   SpeakSound; and the facegen freeze — the NPC mouth/face freezes open on cut and is reset to neutral
   in `CutNpcReply()` via a lock-guarded snap `Reset`) live in
   `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
-  - **Exact NPC-reply scheduling — v5 BUILT 2026-06-14, pending in-game verification**
+  - **Exact NPC-reply scheduling — v5 SHIPPED & verified in-game 2026-06-14**
     (design `docs/plans/dbvo-v5-reply-on-line-end-design.md`, plan `…-plan.md`). Realized as
-    **end-detection** rather than duration-prediction: a self-re-arming main-thread `AddTask` watcher on
-    the retained `g_playerLine` handle fires the reply (via `GFxMovieView::InvokeNoReturn` into the swf's
-    new `dbvoOnPlayerLineEnded`) the moment the line stops, after a small configurable gap. Drops v2's
-    ms-per-word slider, repurposes the pad slider as the trailing gap (MCM `GetVersion` 2→3 reseeds
-    `fPadMs`), keeps a generous internal swf backstop for the missing-audio case. **Builds clean (all 5
-    artifacts); not yet exercised in-game** — the gate is a full-profile DBVO+Karat play session (audio
-    timing isn't verifiable headlessly). Duration-prediction (read the `.fuz`/`.xwm` length up front) is
-    kept in the design as a fallback only if detection proves flaky.
+    **end-detection** rather than duration-prediction: a detached poll thread watches the retained
+    `g_playerLine` handle and fires the reply (via `GFxMovieView::InvokeNoReturn` into the swf's new
+    `dbvoOnPlayerLineEnded`) the moment the line stops, after a small configurable gap. Drops v2's
+    ms-per-word slider, repurposes the pad slider as the trailing gap, keeps a generous internal swf
+    backstop for the missing-audio case. **Two in-game gotchas fixed during bring-up** (both in the
+    design's "Dead-ends"): (1) the watcher was first a self-re-arming main-thread `AddTask` loop and
+    **froze the game for the whole line** — SKSE drains its task queue to empty, so a self-re-queuing
+    task spins the frame; moved the poll to a detached thread (sleep), marshalling only the one-shot
+    fire. (2) MCM made **tab-less** to mirror DBVO's own menu — leave `Pages` unset (Papyrus forbids a
+    0-length array; `GetVersion` 4 clears persisted tabs via `Pages = None`), render both sliders on the
+    landing page. Duration-prediction (read the `.fuz`/`.xwm` length up front) is kept in the design as
+    a fallback only if detection proves flaky.
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 

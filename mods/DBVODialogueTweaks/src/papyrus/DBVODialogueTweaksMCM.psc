@@ -8,22 +8,20 @@ Int _volOID
 
 Event OnConfigInit()
 	ModName = "DBVO Dialogue Tweaks"
-	Pages = new String[2]
-	Pages[0] = "Timing"
-	Pages[1] = "Voice"
+	; No tabs (like DBVO's own menu): never populate Pages — SkyUI then shows no page list and renders
+	; every option on the landing ("") page, all visible the moment you click the mod. (Papyrus forbids
+	; a zero-length array literal, so we leave Pages unset rather than assigning new String[0].)
 EndEvent
 
-; v2 saves registered this MCM at version 1 with only the "Timing" page; OnConfigInit
-; never re-runs, so the persisted Pages array stays 1-wide. Bumping GetVersion makes
-; SkyUI's CheckVersion (run from Parent.OnGameReload every load) call OnVersionUpdate
-; ONCE with the target version — it migrates the page list and seeds a property whose
-; default/meaning changed (an Auto property isn't guaranteed its declared default on an
-; existing save). v5 (version 3) reseeds fPadMs: it used to pad a word-count guess (1400);
-; it's now a gap after the line's REAL end, so the persisted old value is stale. The v3
-; bump touches fPadMs ONLY — a stored-v2 save already has the page list + fPlayerVoiceVol,
-; and re-seeding the volume would wipe a tuned value.
+; Pages and changed-meaning property defaults are persisted in the save; OnConfigInit never
+; re-runs, so an existing save keeps its old values. Bumping GetVersion makes SkyUI's CheckVersion
+; (run from Parent.OnGameReload every load) call OnVersionUpdate ONCE with the target version, which
+; is where we migrate persisted state. History: v3 reseeded fPadMs (its meaning changed from a
+; word-count pad to a real post-line-end gap); v4 empties the persisted Pages array so the menu
+; loses its tabs (everything moves onto the landing page). Each block touches ONLY what that version
+; changed, so a migration never clobbers a value the user has tuned (e.g. fPlayerVoiceVol).
 Int Function GetVersion()
-	Return 3
+	Return 4
 EndFunction
 
 Event OnVersionUpdate(Int aVersion)
@@ -36,16 +34,16 @@ Event OnVersionUpdate(Int aVersion)
 	If aVersion == 3
 		fPadMs = 250.0
 	EndIf
+	If aVersion == 4
+		Pages = None    ; drop the persisted tabs on existing saves (fresh saves never set Pages)
+	EndIf
 EndEvent
 
+; Single tab-less screen: SkyUI renders the landing ("") page on open, so all options sit there.
 Event OnPageReset(String page)
-	If page == "Timing"
-		SetCursorFillMode(TOP_TO_BOTTOM)
-		_padOID = AddSliderOption("Gap after your line ends", fPadMs, "{0} ms")
-	ElseIf page == "Voice"
-		SetCursorFillMode(TOP_TO_BOTTOM)
-		_volOID = AddSliderOption("Player voice volume", fPlayerVoiceVol, "{0}%")
-	EndIf
+	SetCursorFillMode(TOP_TO_BOTTOM)
+	_padOID = AddSliderOption("Gap after your line ends", fPadMs, "{0} ms")
+	_volOID = AddSliderOption("Player voice volume", fPlayerVoiceVol, "{0}%")
 EndEvent
 
 Event OnOptionSliderOpen(Int oid)

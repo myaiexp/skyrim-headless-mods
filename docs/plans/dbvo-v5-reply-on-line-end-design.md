@@ -112,6 +112,13 @@ swf (DialogueMenu.as)                         SKSE C++ (plugin/src/main.cpp)
 - **Relabel the surviving slider** "NPC response pad" → **"Gap after your line ends"**; range
   `0–2500 → 0–1000` (0 = instant), `SetSliderDialogDefaultValue` `1400 → 250`. Its per-open
   `UI.SetFloat(… "dbvoPadMs", fPadMs)` push is unchanged.
+- **Tab-less single screen (post-ship tweak, version 4)** — mirror DBVO's own MCM: don't populate
+  `Pages` at all (Papyrus forbids a 0-length array, so leave it unset rather than `new String[0]`),
+  and render both sliders on the landing (`""`) page in `OnPageReset` (SkyUI renders `""` on open via
+  `SetPage("", -1)`). SkyUI's `setPageNames` then gets no pages → no tab column. Confirmed against
+  DBVO's `DBVO_Script_MCM.pex` (no `SetPageNames`, all options under `OnPageReset`). For existing
+  saves the persisted `Pages` must be cleared: `GetVersion() 3 → 4`, `OnVersionUpdate` v4 branch does
+  `Pages = None`.
 - **Reseed `fPadMs` + version bump (load-bearing).** `OnMenuOpen` re-pushes the *stored* `fPadMs`
   (default `1400.0`) on every dialogue open, so just changing the swf's baked default does nothing —
   the slider would read "250" but behave as 1400. So: declared default `fPadMs = 1400.0 → 250.0`, and
