@@ -2,7 +2,10 @@
 #include <RE/Skyrim.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace
 {
@@ -22,11 +25,17 @@ namespace
 		spdlog::set_default_logger(std::move(logger));
 	}
 
-	// Auto-fired arrows loose at full draw (honest natural_power ~1.0), so each shot matches a
-	// manual full-draw arrow. But the auto-fire CADENCE is slower than skilled manual play, so
-	// sustained DPS lags. Compensate with a flat damage bump on auto arrows only (manual shots
-	// stay vanilla). Tune to close the DPS gap; ~10% is the starting point.
-	constexpr float kAutoDamageMult = 1.10f;
+	// Runtime config, pushed in from the SkyUI MCM via the AutoFireBow.* Papyrus natives below
+	// (the Papyrus VM thread writes; the game thread reads in the hooks — hence atomic). Defaults
+	// match the MCM script's property defaults so the mod behaves identically before the first push
+	// (a fresh load, or no MCM present at all).
+	//
+	// g_damageMult: auto-fired arrows loose at full draw (honest natural_power ~1.0), matching a
+	// manual full-draw arrow — but the auto CADENCE lags skilled manual play, so sustained DPS lags.
+	// Compensate with a flat damage bump on auto arrows only (manual shots stay vanilla). 1.10 = +10%.
+	std::atomic<bool>  g_enabled{ true };
+	std::atomic<float> g_damageMult{ 1.10f };
+	std::atomic<float> g_minShotDelayMs{ 0.0f };  // 0 = re-nock immediately (original cadence)
 
 	// Set when we auto-loose; consumed once by the next arrow's GetPowerSpeedMult hook to apply
 	// kAutoDamageMult. A flat multiply isn't idempotent, so it's cleared on first application to
@@ -127,20 +136,37 @@ namespace
 			auto  shooter = runtime.shooter.get();
 			if (shooter && shooter->IsPlayerRef() && g_boostNextArrow) {
 				g_boostNextArrow = false;
+				const float mult   = g_damageMult.load();
 				const float before = runtime.weaponDamage;
-				runtime.weaponDamage *= kAutoDamageMult;  // 0x198: DPS-compensation bump (auto only)
+				runtime.weaponDamage *= mult;  // 0x198: DPS-compensation bump (auto only)
 				SKSE::log::info("AutoFireBow: auto arrow damage {:.1f} -> {:.1f} (x{:.2f})",
-					before, runtime.weaponDamage, kAutoDamageMult);
+					before, runtime.weaponDamage, mult);
 				// The auto arrow has now launched (this hook fires at launch), so the loose is
-				// complete — safe to re-nock without tripping the double-tap stuck state. Deferred
-				// synthetic press starts the next draw, gated on the button still being held.
-				if (auto* task = SKSE::GetTaskInterface()) {
-					task->AddTask([]() {
-						if (AttackHeld()) {
-							SendSyntheticAttack(true);
-							SKSE::log::info("AutoFireBow: re-nock press injected (loop continues)");
-						}
-					});
+				// complete — safe to re-nock without tripping the double-tap stuck state. The re-nock
+				// is a synthetic press enqueued onto the game thread, gated on the button still being
+				// held AND the mod still enabled (a toggle-off mid-delay cancels the next shot).
+				auto enqueueRenock = []() {
+					if (auto* task = SKSE::GetTaskInterface()) {
+						task->AddTask([]() {
+							if (g_enabled.load() && AttackHeld()) {
+								SendSyntheticAttack(true);
+								SKSE::log::info("AutoFireBow: re-nock press injected (loop continues)");
+							}
+						});
+					}
+				};
+				// Min-shot-delay cadence cap: when set, wait before re-nocking so auto-shots are
+				// spaced out. The timer thread ONLY sleeps then enqueues — the press itself runs on
+				// the game thread via the task interface, so it touches no game state off-thread.
+				// delay 0 (default) keeps the original immediate path with no thread.
+				const float delayMs = g_minShotDelayMs.load();
+				if (delayMs > 0.0f) {
+					std::thread([delayMs, enqueueRenock]() {
+						std::this_thread::sleep_for(std::chrono::duration<float, std::milli>(delayMs));
+						enqueueRenock();
+					}).detach();
+				} else {
+					enqueueRenock();
 				}
 			}
 			return func(a_this);
@@ -178,8 +204,8 @@ namespace
 				// true after the first loose, so the loop died after one shot.
 				g_firedThisCycle = false;
 			} else if (std::strcmp(tag, "BowDrawn") == 0) {
-				// Auto-loose at genuine full draw while held.
-				if (AttackHeld() && !g_firedThisCycle) {
+				// Auto-loose at genuine full draw while held — only when enabled (MCM master toggle).
+				if (g_enabled.load() && AttackHeld() && !g_firedThisCycle) {
 					LooseNow();
 				}
 			}
@@ -254,6 +280,21 @@ namespace
 		SKSE::log::info("AutoFireBow: auto-arrow hook on ArrowProjectile::GetPowerSpeedMult (vtable slot {:#x})", idx);
 	}
 
+	// Papyrus natives: AutoFireBow.SetEnabled/SetDamageBonus/SetMinShotDelay, pushed from the MCM.
+	// The class string "AutoFireBow" MUST match the Papyrus script (Scriptname AutoFireBow Hidden /
+	// Function ... Global Native). Each just stores into the matching atomic; the hooks read it.
+	void SetEnabled(RE::StaticFunctionTag*, bool a_enabled) { g_enabled.store(a_enabled); }
+	void SetDamageBonus(RE::StaticFunctionTag*, float a_mult) { g_damageMult.store(a_mult); }  // finished multiplier (1.0 + pct/100)
+	void SetMinShotDelay(RE::StaticFunctionTag*, float a_ms) { g_minShotDelayMs.store(a_ms < 0.0f ? 0.0f : a_ms); }
+
+	bool RegisterPapyrus(RE::BSScript::IVirtualMachine* a_vm)
+	{
+		a_vm->RegisterFunction("SetEnabled", "AutoFireBow", SetEnabled);
+		a_vm->RegisterFunction("SetDamageBonus", "AutoFireBow", SetDamageBonus);
+		a_vm->RegisterFunction("SetMinShotDelay", "AutoFireBow", SetMinShotDelay);
+		return true;
+	}
+
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
@@ -270,7 +311,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 2, 0, 0 },
+	.Version = REL::Version{ 2, 1, 0 },
 	.Name = "AutoFireBow",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -281,9 +322,17 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("AutoFireBow {} loaded — hold-to-auto-fire full-draw shots + {:.0f}% auto-arrow damage bump",
-		REL::Version{ 2, 0, 0 }.string(), (kAutoDamageMult - 1.0f) * 100.0f);
+	SKSE::log::info("AutoFireBow {} loaded — hold-to-auto-fire full-draw shots + {:.0f}% auto-arrow damage bump (default)",
+		REL::Version{ 2, 1, 0 }.string(), (g_damageMult.load() - 1.0f) * 100.0f);
 	InstallHooks();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
+	// Register the MCM config natives (AutoFireBow.SetEnabled/SetDamageBonus/SetMinShotDelay).
+	if (auto* papyrus = SKSE::GetPapyrusInterface()) {
+		if (!papyrus->Register(RegisterPapyrus)) {
+			SKSE::log::error("AutoFireBow: Papyrus Register returned false");
+		}
+	} else {
+		SKSE::log::error("AutoFireBow: Papyrus interface is null");
+	}
 	return true;
 }
