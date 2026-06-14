@@ -46,6 +46,14 @@ It's a real engine launch, not a mock — the only way to know a mod works in th
 that it compiled. The session is **detached**: fire it off, keep working, and `drive`/`shot`/probe
 it once it's in-world. The verbs below make reaching for a test the path of least resistance.
 
+> **Driving a cast / input-state mod headlessly? Read `docs/headless-findings.md` #15–17 first.**
+> The hard-won lessons from the AutoCastSpell session: **libei "hold" ≠ a real held mouse/key** for
+> anything keyed off the engine's held-input state machine (charge-while-held, auto-repeat) — the rig
+> can prove a mechanism *exists* but not that it's *reliable*; validate that on real hardware (#15).
+> `ready`/`inWorld` fires **before** the autoloaded save finishes — wait for a player-loaded signal
+> (#16). And the iteration cheat-sheet — set state via `give-spell`/`set-av` (console `exec` AVs
+> headless), bump `REL::Version` each rebuild, launch from repo root, hold = one `drive raw` call (#17).
+
 ## Drivable test sessions: visible or headless
 
 A **test session always runs the game under gamescope**, so it is always screenshot-able and

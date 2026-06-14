@@ -278,3 +278,58 @@ for `Registered <ModName> at MCM` (SkyUI logs every page it registers) and confi
 `OnGameReload` push). For AutoFireBow this gave the full result without driving the menu: quest
 `INITIALIZED`, `Registered AutoFireBow at MCM`, zero native errors = MCM page + bridge both work.
 Driving a precise in-menu click is the remaining open item for true visual MCM screenshots.
+
+## 15. libei "hold" ≠ a real held mouse/key — they diverge for input-state-machine mechanics
+
+2026-06-14, building AutoCastSpell's auto-recast loop. **The single most important headless-testing
+caveat learned this session.** `drive raw btn 272 1 sleep N btn 272 0` holds the control via one
+libei button-down for N ms. For *presence/held gates* (is the attack control down?) this matches a
+real hold fine. For anything keyed off the engine's **input state machine while held** — charge-
+while-held, auto-repeat, post-action re-trigger — it does **NOT** match real hardware.
+
+Concretely: after a fire-and-forget spell fires, a **real** held cast button makes the engine start
+the next charge **on its own** (the same way a held bow re-draws); a **libei** continuous hold does
+**not** auto-recharge. So the loop needed a synthetic re-press to cycle under libei, but cycled
+*without* it (off the engine's own re-charge) on Mase's real hardware — and a build tuned until the
+libei test looped fired an unpredictable **2–7 times** for him. Removing unrelated debug logging
+also shifted the (timing-sensitive) recharge — see the mod's `main.cpp` note and `../docs/ideas.md`.
+
+Why: libei emits one button-down then holds the state; Skyrim's per-frame input poll and the
+attack/cast handler's edge-vs-held bookkeeping treat that differently from a real device's continuous
+stream, and the synthetic `ButtonEvent`s the mod injects interact differently with each.
+
+**Takeaway:** libei is trustworthy for menu nav, single taps, and presence/held gates. For mechanics
+driven by the charge/draw/cast state machine while held, the headless rig can confirm *the mechanism
+exists* but **not that it's reliable — validate timing/reliability on real hardware.** And drive such
+loops off an engine **state** read (e.g. `RE::MagicCaster::state`), not off input timing.
+
+## 16. `ready`/`inWorld` fires before the save is actually loaded — wait for a player-loaded signal
+
+`skytest ready` (the probe's `status.world.inWorld`) returned in-world within ~5 s of launch, but the
+StartOnSave autoload of `SkytestBase` didn't finish until ~50 s — the player's 3D wasn't loaded until
+then. So `ready` returning is **not** "the player is in the world and interactive"; acting on it (set
+up state, drive input, read actor state) can hit a half-loaded game.
+
+Reliable "truly loaded" signals: the mod's own `...registered on player` / anim-sink-attach log line
+(it fires on `kPostLoadGame` once 3D is up), or a probe `dump player` / `anim-trace player` that
+actually resolves the player actor (the probe logs `actor 3D not loaded yet` until it does).
+**Takeaway:** after `skytest test`, poll for an actual player-loaded signal before driving.
+
+## 17. Headless test-iteration cheat-sheet (cast/input mods)
+
+- **Set up game state with direct-call probe commands, not console `exec`.** `exec`/CompileAndRun
+  AVs in a console-less test session (SEH-caught → "console subsystem unavailable"). Use SkytestProbe
+  `give-spell` (add + equip to a hand) and `set-av` (e.g. magicka) — they call the engine directly.
+  There's no console command to equip a spell to a hand anyway.
+- **Bump `REL::Version` every debug rebuild.** A new DLL loads only at SKSE startup, so testing a
+  build = `skytest stop` + `skytest test` (relaunch). The log truncates on load, but if two builds
+  share a version the load-line is identical and a readiness `grep` can't tell stale content from
+  fresh (it false-passes on the old log before the new DLL loads). A distinct version (grep
+  `1-0-7-0 loaded`) makes "is the new build up?" unambiguous.
+- **Launch `skytest` from the repo root.** `cd mods/X && ./build.sh && skytest test mods/X/build/X.dll`
+  fails — the `cd` left cwd in the mod dir so the relative mod path no longer resolves (and a relative
+  path that *does* resolve gets symlinked verbatim into the profile, where it dangles — now realpath'd,
+  but launch from root regardless). Build, then `cd` back to root to launch.
+- **A button *hold* is one `drive raw` call.** `drive raw btn <code> 1 sleep <ms> btn <code> 0`
+  (272 = LMB = right-hand cast, 273 = RMB = left-hand). Press, `sleep`, and release must be in the
+  **same** invocation — the button-down state does not persist across eidriver process lifetimes.
