@@ -11,7 +11,6 @@ class DialogueMenu extends MovieClip
    var iAllowProgressTimerID;
    var timer;
    var skipArmedAt;
-   var dbvoMsPerWord;
    var dbvoPadMs;
    static var ALLOW_PROGRESS_DELAY = 750;
    static var SKIP_DEBOUNCE_MS = 250;
@@ -268,12 +267,19 @@ class DialogueMenu extends MovieClip
       }
       else
       {
-         var mspw = this.dbvoMsPerWord >= 0 ? this.dbvoMsPerWord : 200;
-         var pad = this.dbvoPadMs >= 0 ? this.dbvoPadMs : 1400;
          _loc3_ = this.TopicListHolder.List_mc.selectedEntry.text;
-         _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * mspw) + pad;
+         _loc4_ = Math.round(_loc3_.split(" (")[0].split(" ").length * 300) + 2000;
          this.timer = setTimeout(this,"topicClicked",_loc4_);
          this.skipArmedAt = getTimer();
+      }
+   }
+   function dbvoOnPlayerLineEnded()
+   {
+      if(this.eMenuState == DialogueMenu.TOPIC_CLICKED && this.timerBool && this.timer != undefined)
+      {
+         clearTimeout(this.timer);
+         var gap = this.dbvoPadMs >= 0 ? this.dbvoPadMs : 250;
+         this.timer = setTimeout(this,"topicClicked",gap);
       }
    }
    function topicClicked()

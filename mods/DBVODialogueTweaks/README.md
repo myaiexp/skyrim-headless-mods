@@ -9,12 +9,16 @@ dialogue pacing, built in phases:
 | **v2** | Configurable response gap (pad ms + ms/word) via MCM                 | swf + Papyrus + MCM | **shipped** — verified in-game                                                     |
 | **v3** | **Player-voice volume slider** (per-handle attenuation, 0–100%)      | SKSE C++ + MCM      | **shipped** — verified in-game; `docs/plans/dbvo-v3-player-voice-volume-design.md` |
 | **v4** | **Cut voice on skip** — player line on skip + NPC reply on interrupt | SKSE C++ + swf      | **shipped** — verified in-game; `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`   |
-| v4+    | Exact `.fuz`-duration NPC-reply scheduling                           | SKSE C++            | deferred (same tier; see `docs/ideas.md`)                                          |
+| **v5** | **Reply when the line actually ends** — end-detection replaces the gap guess | SKSE C++ + swf + MCM | **built, pending in-game verification** — `docs/plans/dbvo-v5-reply-on-line-end-design.md` |
 
 v1 is fully specified in the design doc above. The rest of this README is the **v2** scope doc
 (the configurable gap). **v3** (player-voice volume slider) and **v4** (cut voice on skip — both the
-player line and the NPC-reply interrupt) shipped — see their design docs above. The remaining
-`.fuz`-duration scheduling work is the **Tier 3** section near the bottom.
+player line and the NPC-reply interrupt) shipped — see their design docs above. **v5** realizes the
+old Tier-3 idea via **end-detection** (the SKSE plugin watches the retained player-line handle and
+fires the reply the moment it stops, after a small configurable gap) rather than `.fuz`-duration
+prediction — it drops v2's ms/word knob and repurposes the pad knob as the post-line-end gap; built,
+awaiting in-game verification. The Tier 3 section near the bottom is the prediction alternative v5
+keeps in reserve.
 
 (Renamed from `DBVOResponseGap` once the skip feature broadened it past just the gap.)
 

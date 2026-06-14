@@ -96,15 +96,36 @@ swf (DialogueMenu.as)                         SKSE C++ (plugin/src/main.cpp)
 
 ## swf + MCM changes
 
+**swf (`DialogueMenu.as`):**
+
 - **New method `dbvoOnPlayerLineEnded()`** — clear `this.timer`, `setTimeout(topicClicked, gap)` where
   `gap = this.dbvoPadMs >= 0 ? this.dbvoPadMs : 250`.
 - **`startTopicClickedTimer`** — non-"off" path sets the generous internal backstop; stops reading
-  `dbvoMsPerWord`. The `dbvoMsPerWord` var becomes dead and is removed from the class.
-- **MCM** — drop the **Per-word delay (ms)** slider. Keep the second slider, relabeled to
-  **"Gap after your line ends (ms)"** (default ~250, range 0–1000, 0 = instant). The quest script's
-  per-open `UI.SetFloat` push of the gap value is unchanged; the per-word push is removed.
-- **Default gap** baked into the swf changes from `1400` → `250` (the new value is a real trailing
-  beat, not estimate padding).
+  `dbvoMsPerWord`. The `dbvoMsPerWord` var becomes dead and is removed from the class. The baked
+  `dbvoPadMs` fallback default changes `1400 → 250` (it's now a trailing beat, not estimate padding).
+
+**MCM (`DBVODialogueTweaksMCM.psc`):**
+
+- **Drop the per-word knob entirely** — the `fMsPerWord` property, its `_mspwOID` /
+  `AddSliderOption("Per-word delay", …)` / `OnOptionSliderOpen` / `OnOptionSliderAccept` branches, **and**
+  the `UI.SetFloat(… "dbvoMsPerWord" …)` line in `OnMenuOpen`.
+- **Relabel the surviving slider** "NPC response pad" → **"Gap after your line ends"**; range
+  `0–2500 → 0–1000` (0 = instant), `SetSliderDialogDefaultValue` `1400 → 250`. Its per-open
+  `UI.SetFloat(… "dbvoPadMs", fPadMs)` push is unchanged.
+- **Reseed `fPadMs` + version bump (load-bearing).** `OnMenuOpen` re-pushes the *stored* `fPadMs`
+  (default `1400.0`) on every dialogue open, so just changing the swf's baked default does nothing —
+  the slider would read "250" but behave as 1400. So: declared default `fPadMs = 1400.0 → 250.0`, and
+  `GetVersion() 2 → 3` with an `OnVersionUpdate` branch that reseeds `fPadMs = 250.0`. Same "a property
+  whose meaning changed must be reseeded on migration" move v3 used for `fPlayerVoiceVol` (psc lines
+  18–34). Reseeding is correct precisely because the meaning changed: an old persisted pad (1400, or a
+  user-tuned 900) is meaningless as a post-real-end gap.
+  - **Migration must not clobber the other settings.** The live upgrade path is **stored version 2 →
+    3** (Mase's save is already at 2: v3 bumped 1→2). SkyUI calls `OnVersionUpdate(GetVersion())`
+    **once with the target version** (not once per step), so the version-3 branch reseeds `fPadMs`
+    **only** and leaves `fPlayerVoiceVol` and the 2-page array alone (both already correct at version 2;
+    re-seeding voice would wipe a tuned value). Pre-voice (version-1) saves don't exist in the wild —
+    nothing public shipped — so the 1→3 jump is a non-issue to engineer now; note it in the plan only
+    if the deferred public release revisits it.
 
 ## How C++ signals the swf
 

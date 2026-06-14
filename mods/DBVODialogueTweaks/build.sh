@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build DBVODialogueTweaks v3 headlessly into build/, five artifacts:
-#   build/Interface/dialoguemenu.swf            (ffdec — reads dbvoMsPerWord/dbvoPadMs)
+# Build DBVODialogueTweaks v5 headlessly into build/, five artifacts:
+#   build/Interface/dialoguemenu.swf            (ffdec — reads dbvoPadMs as the post-line-end gap;
+#                                                the DLL fires dbvoOnPlayerLineEnded on the real end)
 #   build/Scripts/DBVODialogueTweaksMCM.pex     (wine PapyrusCompiler — SkyUI MCM)
 #   build/Scripts/DBVOTweaks.pex                (wine PapyrusCompiler — global-native bridge)
 #   build/DBVODialogueTweaks.esp                (Mutagen/EspGen — quest + player alias)

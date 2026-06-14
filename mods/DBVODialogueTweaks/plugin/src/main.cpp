@@ -27,6 +27,18 @@ namespace
 	static std::mutex g_playerLineMtx;
 	static RE::BSSoundHandle g_playerLine;
 
+	// v5 — reply-on-line-end watcher state. The speak-sound hook ARMS when it captures a player DBVO
+	// line; a self-re-arming SKSE task (WatchReplyTick, main thread) polls the retained handle and, on
+	// the playing→stopped transition, tells the swf to fire the NPC reply (FireReplyNow). atomics
+	// because the threads differ: the hook (game/VM thread) arms, the main-thread task reads+clears,
+	// and the skip path + dialogue-menu-close sink disarm. g_sawPlaying latches once the handle is seen
+	// playing, so the arm-before-audio-starts sliver can't read as "already ended". g_watchScheduled
+	// keeps exactly one re-arming tick chain alive across re-arms.
+	static std::atomic<bool> g_replyArmed{ false };
+	static std::atomic<bool> g_sawPlaying{ false };
+	static std::atomic<bool> g_watchScheduled{ false };
+	void WatchReplyTick();  // fwd decl — the speak-sound hook schedules it on arm
+
 	// Route spdlog (what SKSE::log::* uses) to <My Games>/SKSE/DBVODialogueTweaks.log so the
 	// plugin leaves a visible trace that it loaded.
 	void SetupLog()
@@ -98,9 +110,21 @@ namespace
 			const bool r = original(a_this, a_path, a_handle, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
 			if (a_this && a_this->IsPlayerRef() && a_path && a_handle && a_handle->IsValid() && is_dbvo_path(a_path)) {
 				a_handle->SetVolume(g_dbvoVolume.load());
-				// Keep this line's handle so a later skip can cut it (see g_playerLine).
-				std::scoped_lock l{ g_playerLineMtx };
-				g_playerLine = *a_handle;
+				{
+					// Keep this line's handle so a later skip can cut it (see g_playerLine).
+					std::scoped_lock l{ g_playerLineMtx };
+					g_playerLine = *a_handle;
+				}
+				// Arm the v5 reply watcher for this line: reset the start-race latch, mark armed, and
+				// schedule the watcher exactly once (a re-arm while a chain is live is absorbed by the
+				// CAS — the running tick picks up this new handle under the mutex). AddTask is
+				// thread-safe to call from the hook thread; the tick itself runs on the main thread.
+				g_sawPlaying = false;
+				g_replyArmed = true;
+				bool expected = false;
+				if (g_watchScheduled.compare_exchange_strong(expected, true)) {
+					SKSE::GetTaskInterface()->AddTask([]() { WatchReplyTick(); });
+				}
 			}
 			return r;
 		}
@@ -137,6 +161,49 @@ namespace
 		SKSE::log::info("DBVODialogueTweaks: speak-sound entry hook installed (MinHook)");
 	}
 
+	// Fire the NPC reply now (v5): invoke the swf method that clears the backstop timer and schedules
+	// topicClicked after the gap slider. Main thread only (Scaleform isn't thread-safe) — it only ever
+	// runs as an AddTask callback. GetMenu returns null when the dialogue menu isn't open, so a late or
+	// spurious call is a safe no-op.
+	void FireReplyNow()
+	{
+		auto* ui = RE::UI::GetSingleton();
+		if (!ui) {
+			return;
+		}
+		auto menu = ui->GetMenu(RE::DialogueMenu::MENU_NAME);
+		if (!menu || !menu->uiMovie) {
+			return;
+		}
+		menu->uiMovie->InvokeNoReturn("_root.DialogueMenu_mc.dbvoOnPlayerLineEnded", nullptr, 0);
+	}
+
+	// One tick of the v5 reply watcher, run as an SKSE task on the main thread. While armed it re-arms
+	// itself each frame; on the observed playing→stopped transition it fires the reply once and stops.
+	// Every path either re-schedules or clears g_watchScheduled before returning — no orphaned chain.
+	void WatchReplyTick()
+	{
+		if (!g_replyArmed.load()) {
+			g_watchScheduled = false;
+			return;
+		}
+		bool playing = false;
+		{
+			std::scoped_lock l{ g_playerLineMtx };
+			playing = g_playerLine.IsValid() && g_playerLine.IsPlaying();
+		}
+		if (playing) {
+			g_sawPlaying = true;
+		}
+		if (g_sawPlaying.load() && !playing) {
+			g_replyArmed = false;
+			g_watchScheduled = false;
+			FireReplyNow();
+			return;
+		}
+		SKSE::GetTaskInterface()->AddTask([]() { WatchReplyTick(); });
+	}
+
 	// Cut the player's own in-flight DBVO line (fired when v1's skip advances the menu). Fade the
 	// retained handle rather than hard-Stop (a mid-waveform Stop clicks; a short fade doesn't) and
 	// reset the slot so we never re-cut a recycled soundID. FadeOutAndRelease/IsPlaying are
@@ -144,6 +211,10 @@ namespace
 	// to call directly from the mod-event sink thread (no task-interface marshalling needed).
 	void CutPlayerLine()
 	{
+		// Skip already advanced the menu (trySkipPlayerLine clears the timer and calls topicClicked
+		// itself), so stand the reply watcher down — otherwise the faded handle's playing→stopped
+		// transition would fire a SECOND reply.
+		g_replyArmed = false;
 		std::scoped_lock l{ g_playerLineMtx };
 		if (g_playerLine.IsValid() && g_playerLine.IsPlaying()) {
 			g_playerLine.FadeOutAndRelease(30);
@@ -231,6 +302,32 @@ namespace
 	private:
 		DBVOEventSink() = default;
 	};
+
+	// Disarm the v5 reply watcher when the dialogue menu closes — covers exiting dialogue mid-line, so a
+	// stale arm can't leak into the next conversation or keep a tick chain alive on a line that outlives
+	// the menu. (Firing into a closed menu is already a no-op via FireReplyNow's null-guard; this just
+	// stops the watcher promptly.) Registered at kDataLoaded alongside the mod-event sink.
+	class DBVOMenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+	{
+	public:
+		static DBVOMenuSink* GetSingleton()
+		{
+			static DBVOMenuSink singleton;
+			return &singleton;
+		}
+
+		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event,
+			RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+		{
+			if (a_event && !a_event->opening && a_event->menuName == RE::DialogueMenu::MENU_NAME) {
+				g_replyArmed = false;
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
+
+	private:
+		DBVOMenuSink() = default;
+	};
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as SKSEPlugin_Version +
@@ -267,6 +364,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 				if (auto* source = SKSE::GetModCallbackEventSource()) {
 					source->AddEventSink(DBVOEventSink::GetSingleton());
 					SKSE::log::info("DBVODialogueTweaks: skip-cut mod-event sink registered");
+				}
+				if (auto* ui = RE::UI::GetSingleton()) {
+					ui->AddEventSink<RE::MenuOpenCloseEvent>(DBVOMenuSink::GetSingleton());
+					SKSE::log::info("DBVODialogueTweaks: dialogue-menu close sink registered");
 				}
 			}
 		});

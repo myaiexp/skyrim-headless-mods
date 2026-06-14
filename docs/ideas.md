@@ -148,13 +148,16 @@ shipped, verified in-game. Deferred:
   SpeakSound; and the facegen freeze — the NPC mouth/face freezes open on cut and is reset to neutral
   in `CutNpcReply()` via a lock-guarded snap `Reset`) live in
   `docs/plans/dbvo-v4-voice-cut-on-skip-design.md`. Still deferred on this tier:
-  - **Exact NPC-reply scheduling — DESIGNED 2026-06-14 as v5** (`docs/plans/dbvo-v5-reply-on-line-end-design.md`),
-    not yet built. Realized as **end-detection** rather than duration-prediction: a main-thread per-frame
-    watcher on the retained `g_playerLine` handle fires the reply (via a GFx invoke into the swf) the
-    moment the line stops playing, after a small configurable gap. Drops v2's ms-per-word slider,
-    repurposes the pad slider as the trailing gap, keeps a generous internal swf backstop for the
-    missing-audio case. Duration-prediction (read the `.fuz`/`.xwm` length up front) is kept in the
-    design as a fallback only if detection proves flaky in-game.
+  - **Exact NPC-reply scheduling — v5 BUILT 2026-06-14, pending in-game verification**
+    (design `docs/plans/dbvo-v5-reply-on-line-end-design.md`, plan `…-plan.md`). Realized as
+    **end-detection** rather than duration-prediction: a self-re-arming main-thread `AddTask` watcher on
+    the retained `g_playerLine` handle fires the reply (via `GFxMovieView::InvokeNoReturn` into the swf's
+    new `dbvoOnPlayerLineEnded`) the moment the line stops, after a small configurable gap. Drops v2's
+    ms-per-word slider, repurposes the pad slider as the trailing gap (MCM `GetVersion` 2→3 reseeds
+    `fPadMs`), keeps a generous internal swf backstop for the missing-audio case. **Builds clean (all 5
+    artifacts); not yet exercised in-game** — the gate is a full-profile DBVO+Karat play session (audio
+    timing isn't verifiable headlessly). Duration-prediction (read the `.fuz`/`.xwm` length up front) is
+    kept in the design as a fallback only if detection proves flaky.
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 
