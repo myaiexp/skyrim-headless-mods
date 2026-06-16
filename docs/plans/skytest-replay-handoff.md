@@ -4,13 +4,15 @@ Mid-feature handoff. The replay **machinery is built, committed, and verified li
 items once flagged as "blockers" — console `exec` and the qasmoke map demo — are **resolved**
 (2026-06-16), see below. No open decision blocks the feature.
 
-**Resolution in one line:** `exec` is *not a bug to fix* — the harness stages world state through
-**direct engine-call probe commands** (`give-spell`/`set-av`, with `coc`/`placeatme` added
-per-need) and drives input through the **headless drive layer**. Programmatic `exec` faults in the
-test session, but the *interactive* console works there, so it's the call path that faults, not a
-missing subsystem — and it's moot, because staging goes through engine calls by design. The map
-demo isn't blocked either: it just needs a per-need `coc` direct-call command + an exterior to
-travel to. (The forensic detail below is kept as the record of how this was diagnosed.)
+**Resolution in one line:** `exec` is *not a bug to fix in replay* — the harness stages world state
+through **direct engine-call probe commands** (`give-spell`/`set-av`, with `coc`/`placeatme` added
+per-need) and drives input through the **headless drive layer**. The `exec` fault was later PINNED
+(2026-06-16, `skytest/docs/headless-findings.md` #18): CommonLib mis-binds `CompileAndRun` on game
+1.6.1170 because this CommonLib build predates that runtime and the bound Address Library id is
+absent — so it is a dependency version skew, **not** headless and **not** a missing subsystem, and
+it would fault in a windowed game too. The map demo isn't blocked either: it just needs a per-need
+`coc` direct-call command + an exterior to travel to. (The forensic detail below predates the pin
+and its *cause* analysis is superseded by #18; kept as the record of how it was diagnosed.)
 
 Spec: `skytest-replay-design.md`. Plan: `skytest-replay-plan.md`.
 
@@ -43,28 +45,31 @@ CommonLib header noise).
 
 ## RESOLVED 1 — console `exec` is not the staging path (use direct-call)
 
-> **Resolution (2026-06-16):** not a bug — by design. Programmatic `exec` faults in the test
-> session, but the *interactive* console works there (Mase hand-typed `coc qasmoke` in the same
-> session and it loaded), so the "console subsystem absent / console-less environment" theory in
-> the forensic notes below is **wrong** — it's the *programmatic* `CompileAndRun` call path that
-> faults, cause unpinned. Moot anyway: stage via direct engine-call probe commands, drive input
-> via the drive layer. Confirmed against the AutoCastSpell session (2026-06-14), which hit the
-> identical `exec` fault two days before replay existed and resolved it the same way (it built
-> `give-spell`/`set-av` after `exec player.addspell` AV'd). Replay didn't break `exec`; it was the
-> first feature whose *design* assumed `exec` works. The notes below stay as the diagnosis record.
+> **Resolution (PINNED 2026-06-16, supersedes the forensic notes below):** not a replay bug, and
+> not a headless/console-subsystem issue. Programmatic `exec` AVs at `SkyrimSE.exe+0xce9843`
+> reading -1, identically with the console menu open and `ConsoleLog` non-null — so the
+> "console subsystem absent / console-less environment" theory below is **wrong**, and so is the
+> "interactive console works → it's the programmatic call path" framing (typing dispatches through
+> the console command table, `CompileAndRun` through the script compiler — different engine code).
+> Root cause: this CommonLibSSE-NG (v3.7.0-129, Sep 2024) predates the 1.6.1170 runtime;
+> `CompileAndRun`'s bound AE id 21890 is absent from `versionlib-1-6-1170`, and CommonLib's non-VR
+> id lookup silently resolves a missing id to the next id → wrong function → AV. It would fault in
+> a windowed 1.6.1170 game too. Full proof: `skytest/docs/headless-findings.md` #18. The fix is
+> still direct-call probe staging (more reliable here regardless); `exec` is retired, not fixed.
+> Confirmed against the AutoCastSpell session (2026-06-14), which hit the identical `exec` fault
+> and resolved it the same way (it built `give-spell`/`set-av` after `exec player.addspell` AV'd).
 
 `exec <console>` faults: `exec: CompileAndRun faulted (console subsystem unavailable?)`.
 Confirmed in **both headless AND visible** gamescope, **fully in-world** (`status` acks ok,
-`inWorld:true`). Opening the console first (tilde → `Console open:true`) does **not** help —
-the console *UI* opens, but the script-*compiler* subsystem is absent.
+`inWorld:true`). Opening the console first (tilde → `Console open:true`) does **not** help.
+(Superseded: the reason it doesn't help is the stale CommonLib binding, #18 — NOT an absent
+compiler subsystem; the compiler is present, the call just lands on the wrong function.)
 
-This is a **documented, pre-existing** engine limitation, not a replay bug:
-- `skytest/docs/headless-findings.md:320` — "Set up game state with direct-call probe
-  commands, not console `exec`. `exec`/CompileAndRun AVs in a console-less test session."
-- `docs/plans/skytest-probe-design.md:176` — "in a console-less environment (e.g. headless
-  gamescope) the compiler subsystem is absent and `CompileAndRun` AVs even in-world."
-- `mods/SkytestProbe/src/engine.cpp` `SafeCompileAndRun` already SEH-guards it; `GiveSpell`/
-  `SetAV` exist precisely **because** console exec can't be used for cast setup.
+It is a **pre-existing** fault, not a replay bug (SEH-guarded in `SafeCompileAndRun`; `GiveSpell`/
+`SetAV` exist precisely because staging goes through engine calls). _The original "console-less
+environment / absent compiler subsystem" framing once cited here from `headless-findings` and
+`skytest-probe-design` was **wrong** and those docs have been corrected — see the pinned cause in
+`skytest/docs/headless-findings.md` #18 (stale CommonLib binding on 1.6.1170)._
 
 **Why it bites replay specifically:** the design's world-staging premise is `exec coc` /
 `exec player.placeatme` / `exec player.addspell` (the GhostAllies summons setup). None of
@@ -82,9 +87,9 @@ Then `replay`'s `exec` either routes recognized verbs to these, OR add a new ste
 session needs them** (YAGNI, same as gates) — do NOT speculatively build the whole console
 surface. Until then, replay does input + gates + shot, not console staging.
 
-(Alternative, lower-confidence: make `CompileAndRun` work in-session by initializing the
-console compiler subsystem. The probe team apparently couldn't, hence the SEH workaround.
-Not recommended without new information.)
+(To actually restore `exec` — not needed, since direct-call staging is the design: update
+CommonLibSSE-NG to a build matching the 1.6.1170 runtime, or hardcode the correct 1.6.1170
+`CompileAndRun` offset in the probe. See `skytest/docs/headless-findings.md` #18.)
 
 ---
 

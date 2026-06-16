@@ -8,8 +8,9 @@ Replay machinery shipped & verified live; staging model settled in `docs/plans/
 skytest-replay-handoff.md`. Deferred:
 
 - **Direct-call staging probe commands (the agreed approach — not a blocker).** Programmatic
-  console `exec` (`coc`/`placeatme`/`addspell`) faults in the gamescope test session; the
-  _interactive_ console works there, so it's the call path, not a missing subsystem — moot. By
+  console `exec` (`coc`/`placeatme`/`addspell`) faults — PINNED (`skytest/docs/headless-findings.md`
+  #18): CommonLib mis-binds `CompileAndRun` on game 1.6.1170 (stale dependency, bound id absent), not
+  a headless or missing-subsystem limit; would fault windowed too. By
   design the harness stages with **direct engine-call** SkytestProbe commands like the existing
   `give-spell`/`set-av` and drives input through the drive layer. Add `placeatme` / cell-travel
   (`coc`-equivalent via `PlayerCharacter::MoveTo`) / an `addspell` command **per-need** (when the

@@ -52,9 +52,9 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 - **First test = drive live; every test after = `skytest replay`.** Once you've driven a setup by
   hand, persist it as `mods/<mod>/<name>.steps` and re-run it with `skytest replay <mod> <name>.steps`
   — it boots the same isolated session and snaps to the target state via probe-gated steps, then
-  leaves it live to probe. **Caveat:** console `exec` staging does NOT work in the test session yet
-  (compiler subsystem absent — use direct-call probe commands); status in
-  `docs/plans/skytest-replay-handoff.md`, verb reference in `skytest/README.md`.
+  leaves it live to probe. **Caveat:** console `exec` staging does NOT work on game 1.6.1170 —
+  CommonLib mis-binds `CompileAndRun` (stale dependency, pinned in `skytest/docs/headless-findings.md`
+  #18; would fault windowed too). Use direct-call probe commands — the harness design, not a fallback.
 
 > **skytest manages the live game's `Data/` symlink.** It lives here now but operates on the real
 > install (`…/Skyrim Special Edition/Data` → `.profiles/full`). The mod-_managing_ repo

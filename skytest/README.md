@@ -180,16 +180,16 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
 - `until:charged`, `until:actorcount`: **not built**; added per the first script that needs them
   (one `resolve_gate` row + one direct-call probe handler, see `mods/SkytestProbe` `is-menu-open`).
 
-> **⚠ Console `exec` is not the staging path**: by design, not a bug to fix. Programmatic `exec`
-> (the probe's `CompileAndRun`) faults in the gamescope test session, headless _and_ visible, even
-> fully in-world. But the _interactive_ console works there (you can type `coc qasmoke` by hand),
-> so it's the **programmatic call path** that faults, not a missing subsystem. The exact cause is
-> unpinned and not worth pinning. The harness model is **engine calls for staging, the drive layer
-> for input**: stage world state with **direct-call** SkytestProbe commands (`give-spell`/`set-av`,
-> and `coc`/`placeatme` added per-need) and drive anything needing input through `tap`/`hold`/`drive`.
-> `exec` stays in the probe (SEH-guarded; it runs for real in a normal windowed game) but `replay`
-> does input + gates + shot, not console staging. Background:
-> `../docs/plans/skytest-replay-handoff.md`. Runnable example: `examples/format-demo.steps`.
+> **⚠ Console `exec` is not the staging path**: by design. Programmatic `exec` (the probe's
+> `CompileAndRun`) AVs — **pinned (`../skytest/docs/headless-findings.md` #18): this CommonLib build
+> predates the 1.6.1170 runtime, so `CompileAndRun`'s bound Address Library id is stale and the call
+> lands on the wrong function.** Not a headless or "missing console subsystem" issue (it faults
+> with the console menu open too, and would fault in a windowed 1.6.1170 game). The harness model is
+> **engine calls for staging, the drive layer for input**: stage world state with **direct-call**
+> SkytestProbe commands (`give-spell`/`set-av`, and `coc`/`placeatme` added per-need — every console
+> verb is just an engine-call wrapper) and drive anything needing input through `tap`/`hold`/`drive`.
+> `exec` stays in the probe (SEH-guarded, harmless) but `replay` does input + gates + shot, not
+> console staging. Background: `../docs/plans/skytest-replay-handoff.md`. Example: `examples/format-demo.steps`.
 
 ## Boot straight into a test save (v2)
 

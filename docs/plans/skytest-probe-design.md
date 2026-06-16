@@ -173,14 +173,17 @@ Deltas from the contract, all driven by in-game findings + an adversarial review
 - **`exec` is gated + SEH-guarded.** `CompileAndRun` crashes at the main menu / mid-load (console
   compiler globals uninitialised) — gated on "world fully loaded" (`!MainMenu && !LoadingMenu &&
 player->Is3DLoaded()`; `Main::gameActive` is true even at the menu, so it's the wrong gate). It
-  also AVs in the gamescope test session even past that gate (in-world), so the call is wrapped in
-  SEH (`__try/__except`), turning the AV into an `ok:false` "faulted" ack instead of a crash (zero
-  cost in a normal windowed game, where exec runs for real). **Correction (2026-06-16):** the
-  original "the compiler subsystem is absent in a console-less environment" explanation is **wrong**
-  — the _interactive_ console works in the same test session (a hand-typed `coc qasmoke` loads
-  fine), so it's the **programmatic** `CompileAndRun` path that faults; cause unpinned. Moot in
-  practice: the harness stages via direct engine-call probe commands (`give-spell`/`set-av`,
-  `coc`/`placeatme` per-need), not console `exec` — so `exec` is intentionally not the staging path.
+  also AVs past that gate (in-world), so the call is wrapped in SEH (`__try/__except`), turning the
+  AV into an `ok:false` "faulted" ack instead of a crash. **PINNED (2026-06-16, `skytest/docs/headless-findings.md`
+  #18):** the AV is at `SkyrimSE.exe+0xce9843` reading -1, identical with the console menu open and
+  `ConsoleLog` non-null — so the old "compiler subsystem absent / console-less" explanation is
+  **wrong**, and so is the "interactive console works → it's the programmatic path" framing (typing
+  goes through the console command table, `CompileAndRun` through the script compiler). Real cause:
+  this CommonLibSSE-NG (Sep 2024) predates the 1.6.1170 runtime, `CompileAndRun`'s bound AE id 21890
+  is absent from that versionlib, and CommonLib's non-VR id lookup silently calls the next id → wrong
+  function → AV. It would fault in a windowed 1.6.1170 game too — `exec` is not "free in real play"
+  on this version. Staging is direct-call probe commands (`give-spell`/`set-av`, `coc`/`placeatme`
+  per-need); `exec` is retired, not fixed.
 - **Event filters resolve lazily + correctly.** `trace … refs:[…]` keeps a `hasFilter` flag so a
   filter that resolves to empty (e.g. `refs:[teammates]` before a save loads) matches **nothing**
   (not match-all), and the main-thread tick **re-resolves** armed filters each cycle so teammates

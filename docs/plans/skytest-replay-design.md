@@ -6,10 +6,11 @@ not console `exec`** — see `docs/plans/skytest-replay-handoff.md`. Plan →
 
 > ⚠ **Design correction (2026-06-16, resolved).** This design's world-staging via `exec <console>`
 > (`coc` / `player.placeatme` / `player.addspell`) does **not** work: programmatic `CompileAndRun`
-> faults in the gamescope test session — headless **and** visible, even fully in-world. (The
-> _interactive_ console works there, so it's the programmatic call path, not a missing subsystem;
-> cause unpinned and not worth pinning — `skytest/docs/headless-findings.md:320`.) This isn't a bug
-> to chase: the harness model is **engine calls for staging, the drive layer for input**. Staging
+> faults: programmatic `CompileAndRun` AVs. (PINNED — `skytest/docs/headless-findings.md` #18: this
+> CommonLib build predates the 1.6.1170 runtime, so `CompileAndRun`'s bound Address Library id is
+> absent and the call lands on the wrong function. Not headless, not a missing subsystem; would
+> fault windowed too.) This isn't a bug to chase: the harness model is **engine calls for staging,
+> the drive layer for input**. Staging
 > goes through **direct-call** SkytestProbe commands (`give-spell`/`set-av`, and `coc`/`placeatme`
 > added per-need), not console. The parse / gate / input / `shot` machinery and the
 > `until:inworld` + `until:menu:<NAME>` gates were all built and verified live. Full status,
