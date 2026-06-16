@@ -49,6 +49,12 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   load order** — patches, or asset overrides of another mod (e.g. a DBVO swf edit that needs DBVO
   and a voice pack present). The vanilla+1 profile can't reproduce it: install into the real game
   (over in `~/Downloads/skyrim-mods/`) and test there. Full rule in `skytest/README.md`.
+- **First test = drive live; every test after = `skytest replay`.** Once you've driven a setup by
+  hand, persist it as `mods/<mod>/<name>.steps` and re-run it with `skytest replay <mod> <name>.steps`
+  — it boots the same isolated session and snaps to the target state via probe-gated steps, then
+  leaves it live to probe. **Caveat:** console `exec` staging does NOT work in the test session yet
+  (compiler subsystem absent — use direct-call probe commands); status in
+  `docs/plans/skytest-replay-handoff.md`, verb reference in `skytest/README.md`.
 
 > **skytest manages the live game's `Data/` symlink.** It lives here now but operates on the real
 > install (`…/Skyrim Special Edition/Data` → `.profiles/full`). The mod-_managing_ repo

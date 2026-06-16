@@ -590,6 +590,7 @@ cmd_test() {
   [ "$brc" = 1 ]  && say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready"
   say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
   say "when done:  skytest stop   (tears down + restores Data -> full)"
+  say "drove this by hand? save the steps as mods/<mod>/<name>.steps and re-run: skytest replay <mod> <name>.steps"
 }
 
 # Resolve a .steps arg to a path. '-' (stdin) or anything containing '/' is taken as-is;
@@ -855,6 +856,7 @@ Verbs:
   init              preview the one-time migration (read-only)  [--commit --full --json]
   setup-save        build the base test save (vanilla launch)
   test <mod>        start a drivable gamescope test session      [--with a.dll,b.dll] [--headless]
+  replay <mod> <s>  boot, then run a .steps script to a target state   [--headless] [--dry-run]
   ready [secs]      block until the test session is in-world (probe poll)
   shot [out.png]    screenshot the test session       [cropWxH+X+Y] [scaleWxH]
   drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
@@ -916,6 +918,24 @@ Then:
   skytest shot /tmp/a.png        # capture a frame
   skytest drive seq down down enter
   skytest stop                   # end + restore Data → full
+EOF
+;;
+    replay) cat <<'EOF'
+skytest replay <mod> <script.steps> — boot a test session, run a .steps script to snap the
+world to a target state (console staging + real input, probe-gated), then leave it DETACHED
+and live for probing. The session stays up on success AND on a step failure (then: skytest stop).
+  <mod>        a Data-shaped folder or a single .dll/.esp/.esl/.esm (resolved like `test`)
+  <script>     bare name -> mods/<mod-dir>/<name>.steps; a path (has '/') as-is; '-' = stdin
+  --with a,b   extra framework DLLs (prefix match), like `test`
+  --headless   no window (offscreen render); default is a window nested in Hyprland
+  --dry-run    print the normalized step plan and exit (a lint; no boot, no profile change)
+.steps verbs: exec <console> | tap <key> | key <k…> | hold <LMB|RMB|key> <dur|until:C> |
+              wait <dur|until:C> | shot [name].   Gates: until:inworld, until:menu:<Name>.
+NOTE: console `exec` currently faults in the test session (compiler subsystem absent) — see
+the README's replay section + docs/plans/skytest-replay-handoff.md.
+Examples:
+  skytest replay mods/GhostAllies/build/GhostAllies.dll smoke.steps --headless
+  skytest replay --dry-run skytest/examples/format-demo.steps
 EOF
 ;;
     ready) cat <<'EOF'

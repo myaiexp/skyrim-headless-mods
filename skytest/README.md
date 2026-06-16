@@ -22,6 +22,7 @@ skytest init [--commit]        # one-time: turn Data into a symlink, build vanil
 skytest setup-save             # one-time: launch vanilla to BUILD the base test save
 skytest test <mod> [--headless]# start a drivable gamescope test session (visible by default)
 skytest <mod>                  #   ^ bare shortcut, identical to `test`
+skytest replay <mod> <s.steps> # boot, then run a .steps script to snap to a target state
 skytest ready [secs]           # block until the session is in-world (probe poll)
 skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [scaleWxH]
 skytest drive <cmd> …          # inject input (tap|seq|key|click|abs|rel|raw)
@@ -49,7 +50,7 @@ it once it's in-world. The verbs below make reaching for a test the path of leas
 > **Driving a cast / input-state mod headlessly? Read `docs/headless-findings.md` #15–17 first.**
 > The hard-won lessons from the AutoCastSpell session: **libei "hold" ≠ a real held mouse/key** for
 > anything keyed off the engine's held-input state machine (charge-while-held, auto-repeat) — the rig
-> can prove a mechanism *exists* but not that it's *reliable*; validate that on real hardware (#15).
+> can prove a mechanism _exists_ but not that it's _reliable_; validate that on real hardware (#15).
 > `ready`/`inWorld` fires **before** the autoloaded save finishes — wait for a player-loaded signal
 > (#16). And the iteration cheat-sheet — set state via `give-spell`/`set-av` (console `exec` AVs
 > headless), bump `REL::Version` each rebuild, launch from repo root, hold = one `drive raw` call (#17).
@@ -141,11 +142,50 @@ profile (the mod's own `build.sh --install`), then pick:
   `drive` your save in — keyboard nav works end-to-end (`drive tap enter` on CONTINUE → confirm →
   load) — then `stop` to restore `Data → full`.
 
-**Verifying an MCM without navigating to it.** Driving SkyUI's journal *tabs* is unreliable (the
+**Verifying an MCM without navigating to it.** Driving SkyUI's journal _tabs_ is unreliable (the
 mouse-cursor desync, findings #9b/#14), but you rarely need to: grep the Papyrus log
 (`…/Logs/Script/Papyrus.0.log`) for `Registered <ModName> at MCM` (SkyUI logs every page it
 discovers) and confirm there are **no** `<Native> is not a valid function` lines (a missing C++↔
 Papyrus native would log there). Page registered + zero native errors = the MCM and its bridge work.
+
+## Replay a test setup — `skytest replay <mod> <script.steps>`
+
+The **first** time you verify a mod you drive it live (`test`, then `drive`/`shot`/probe). **Every
+time after**, persist that setup as a `.steps` script and re-run it with `replay` — it boots the
+same isolated `test` session, runs the script to snap the world to the target state, then leaves
+the session **detached and live** for you to probe (`shot`/`drive`/`exec`) or `stop`. The session
+is left up on a **step failure too** (a wrong setup state aborts the run with the offending step,
+but doesn't tear down — inspect, then `skytest stop`).
+
+Scripts live next to the mod: `mods/<Name>/<name>.steps`. A bare `<script>` resolves there; a
+path with `/` (or `-` for stdin) is taken as-is. `--headless`/`--with` work as for `test`;
+`--dry-run` prints the normalized step plan and exits (a lint — no boot, no profile change).
+
+`.steps` is line-based (`#` comments, blank lines ignored):
+
+| Step                                     | Meaning                                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Currently non-functional in the test session** — see the caveat below. |
+| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                    |
+| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                       |
+| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                     |
+| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                       |
+| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                      |
+
+Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on session death:
+
+- `until:inworld` — fully interactive (no main/loading menu + player 3D loaded).
+- `until:menu:<NAME>` — a UI menu open (CommonLib name: `Console`, `MapMenu`, `FavoritesMenu`, …).
+- `until:charged`, `until:actorcount` — **not built**; added per the first script that needs them
+  (one `resolve_gate` row + one direct-call probe handler — see `mods/SkytestProbe` `is-menu-open`).
+
+> **⚠ Console `exec` does not work in the gamescope test session** (headless _or_ visible): the
+> script-compiler subsystem is absent, so `CompileAndRun` faults even in-world (see
+> `docs/headless-findings.md`). World-staging a console command would do (`coc`/`placeatme`/
+> `addspell`) must instead go through **direct-call** SkytestProbe commands (the repo's pattern,
+> e.g. `GiveSpell`/`SetAV`), added per-need. Until those land, `replay` does input + gates + shot,
+> not console staging. Status + plan: `../docs/plans/skytest-replay-handoff.md`. Runnable example:
+> `examples/format-demo.steps`.
 
 ## Boot straight into a test save (v2)
 

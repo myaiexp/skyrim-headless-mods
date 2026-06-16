@@ -1,0 +1,25 @@
+# skytest replay — .steps format demo + live-verification fixture.
+#
+# Runnable on ANY vanilla+1 test profile:
+#   skytest replay <any-mod> skytest/examples/format-demo.steps --headless
+#
+# Demonstrates the verified step vocabulary end to end:
+#   wait until:<gate>   block on observed game state via SkytestProbe (never a blind sleep)
+#   tap <key>           one real discrete keypress (libei, isolated to the session)
+#   shot [name]         checkpoint screenshot of the reached state
+# (also wired, not shown: key <k…>, hold <LMB|RMB|key> <dur|until:COND>)
+#
+# IMPORTANT — `exec <console>` is intentionally absent. Console exec (CompileAndRun)
+# FAULTS in any gamescope test session (headless AND visible): the script-compiler
+# subsystem is absent. So world-staging a console command would do (coc / placeatme /
+# addspell) does NOT work via `exec` here — it must go through direct-call SkytestProbe
+# commands, added per-need. See docs/plans/skytest-replay-handoff.md + headless-findings.md.
+#
+# Menu choice: we open the dev Console (tilde) because from the qasmoke base save (an
+# interior test cell) Favorites/Map render unreliably, while Console always opens. Once an
+# exterior base save exists, swap to `tap m` + `wait until:menu:MapMenu` for a real map demo.
+
+wait until:inworld
+tap tilde
+wait until:menu:Console
+shot /tmp/replay-demo.png

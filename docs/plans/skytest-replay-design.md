@@ -1,6 +1,16 @@
 # skytest replay — deterministic test-setup playback (design)
 
-State: **designed 2026-06-16**, not yet built. Plan → `docs/plans/skytest-replay-plan.md` (next).
+State: **machinery built & verified 2026-06-16; console-`exec` staging blocked** — see
+`docs/plans/skytest-replay-handoff.md`. Plan → `docs/plans/skytest-replay-plan.md`.
+
+> ⚠ **Design correction (2026-06-16).** This design's world-staging via `exec <console>`
+> (`coc` / `player.placeatme` / `player.addspell`) does **not** work: console `CompileAndRun`
+> faults in any gamescope test session — headless **and** visible, even fully in-world — because
+> the script-compiler subsystem is absent (`skytest/docs/headless-findings.md:320`). Staging must
+> instead go through **direct-call** SkytestProbe commands (the repo's existing pattern, e.g.
+> `GiveSpell`/`SetAV`), added per-need. The parse / gate / input / `shot` machinery and the
+> `until:inworld` + `until:menu:<NAME>` gates were all built and verified live. Full status,
+> options, and the recommended path forward: the handoff doc.
 
 ## Problem
 

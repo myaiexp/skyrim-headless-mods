@@ -2,6 +2,29 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
+## 2026-06-16 — skytest replay follow-ups (feature built, two blockers open)
+
+Replay machinery shipped & verified live; details + decisions pending in `docs/plans/
+skytest-replay-handoff.md`. Deferred:
+
+- **Direct-call staging probe commands (the real blocker).** Console `exec` (`coc`/`placeatme`/
+  `addspell`) faults in any gamescope test session — the compiler subsystem is absent (headless
+  AND visible). Replay's world-staging must instead use **direct-call** SkytestProbe commands
+  like the existing `GiveSpell`/`SetAV`. Add `placeatme` / cell-travel (`coc`-equivalent via
+  `PlayerCharacter::MoveTo`) / an `addspell` command **per-need** (when the GhostAllies summons
+  replay needs them), then route replay staging to them (or add a `stage` step). Don't build the
+  whole console surface speculatively.
+- **Exterior `SkytestBase` save** (for a meaningful Map demo). The base save is in qasmoke
+  (interior, no world map), so `tap m` renders black and the `MapMenu` gate is unreliable. An
+  exterior save would make a real OneClickTravel-relevant map demo possible — but it changes
+  shared test infra (every test autoloads `SkytestBase`), so it's a deliberate call.
+- **Truncate `commands.jsonl` at session start.** A fresh probe re-reads the file from offset 0,
+  so every boot re-runs the entire command history (lags probe responses, pollutes traces).
+  `: > "$(_skytest_io_dir)/commands.jsonl"` in `_boot_test_session` before `gs_launch`.
+- **`charged` / `actorcount` gates** (from the design) — not built; add per the first script that
+  needs them, each as one `resolve_gate` row + one direct-call probe handler (the `is-menu-open`
+  commit is the template).
+
 ## 2026-06-08 — GhostAllies (projectiles phase through followers)
 
 State: **v1 + v2 shipped & verified in-game (v0.9.0, 2026-06-14)** (`docs/plans/
