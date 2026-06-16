@@ -80,6 +80,12 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   it cut the loop from 7 casts to 2). If you do touch it, re-run the **same** in-engine test that
   proved it; on any regression, **restore the known-good build first** — don't pivot to a weaker
   design unless Mase chose that.
+- **SkytestProbe is the permanent home for all test instrumentation.** Any probe, watch, state
+  query, event sink, or console hook you add to test a mod goes into SkytestProbe and _stays_ — it's
+  an accreting toolkit maintained alongside the mods, not scratch instrumentation bolted on and
+  stripped out. Need a new signal for a test (a sync gate, a state query)? Add it to SkytestProbe so
+  the next test reuses it. Never park probe code in the mod-under-test or delete it once the test
+  passes.
 - **Describe a skytest session as _detached_, never by duration or "heaviness."** Don't say "takes a
   while" / "heavy" — say what it does and that you fire it off and keep working. (Mirrors the global
   "no duration/work-amount framing" rule.)
