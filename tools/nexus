@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# nexus — read-only Nexus Mods API client: mod release status + stats.
+#
+# The public API has no write path (no upload, no page edit), so this is a
+# query tool: "is my mod out of review yet?" + endorsement/download stats.
+# Authenticated as the mod's OWNER, getMod returns 200 with the real status
+# for your own under-review mods; strangers get 404 until it's public.
+#
+# Auth:  export NEXUS_API_KEY=<key>   https://www.nexusmods.com/users/myaccount?tab=api
+# Needs: xh, jq
+#
+# Design follows ~/.claude/agent-cli.md (AXI): dense text grid by default,
+# --json escape hatch, aggregates up front, structured errors on stderr,
+# next-step hints, no ANSI, never blocks on stdin.
+set -uo pipefail
+
+BASE="https://api.nexusmods.com/v1"
+DEFAULT_GAME="${NEXUS_GAME:-skyrimspecialedition}"
+SELF="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NAME_W=32
+
+FULL=0; JSON=0
+
+die() { printf 'Error: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit "${3:-2}"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found — install it (e.g. pacman -S $1)" "" 2; }
+require_key() { [ -n "${NEXUS_API_KEY:-}" ] || \
+  die "NEXUS_API_KEY not set" "export NEXUS_API_KEY=…  (https://www.nexusmods.com/users/myaccount?tab=api)" 2; }
+
+# http_get <path>  -> sets HTTP_CODE, BODY, RL_DAILY, RL_HOURLY
+http_get() {
+  local raw
+  raw=$(xh --ignore-stdin --print=hb GET "$BASE$1" "apikey:${NEXUS_API_KEY:-}" "accept:application/json" 2>/dev/null)
+  raw=${raw//$'\r'/}
+  HTTP_CODE=$(printf '%s\n' "$raw" | head -1 | awk '{print $2}')
+  RL_DAILY=$(printf  '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-daily-remaining"{print $2; exit}')
+  RL_HOURLY=$(printf '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-hourly-remaining"{print $2; exit}')
+  BODY=$(printf '%s\n' "$raw" | awk 'f{print} /^$/{f=1}')
+}
+
+# fatal on auth / rate / no-response; callers handle 200 vs 404 themselves
+http_or_die() {
+  case "${HTTP_CODE:-}" in
+    401|403) die "API key rejected ($HTTP_CODE)" "check NEXUS_API_KEY at https://www.nexusmods.com/users/myaccount?tab=api" 2 ;;
+    429)     die "rate limited (429) — hourly remaining ${RL_HOURLY:-0}" "wait for the hourly window to reset" 2 ;;
+    "")      die "no response from api.nexusmods.com" "check network / that the API is up" 1 ;;
+  esac
+}
+
+# mod_row <game> <id> -> sets ROW (10 tab-sep fields), returns 0=live 3=not-live 1=http-error
+# fields: GAME ID NAME STATUS LIVE VER ENDORSE DLOADS UNIQUE UPDATED
+mod_row() {
+  local game="$1" id="$2"
+  http_get "/games/$game/mods/$id.json"; http_or_die
+  case "$HTTP_CODE" in
+    200)
+      ROW=$(jq -r --arg g "$game" --arg id "$id" '
+        [ $g, $id, (.name // "?"), .status,
+          (if .available == true and .status == "published" then "yes" else "no" end),
+          (.version // "?"), (.endorsement_count // 0), (.mod_downloads // 0),
+          (.mod_unique_downloads // 0), ((.updated_time // "") | split("T")[0]) ] | @tsv' <<<"$BODY")
+      [ "$(printf '%s' "$ROW" | cut -f5)" = yes ] && return 0 || return 3 ;;
+    404) ROW=$(printf '%s\t%s\t—\tnot_visible\tno\t—\t—\t—\t—\t—' "$game" "$id"); return 3 ;;
+    *)   ROW=$(printf '%s\t%s\t—\tHTTP_%s\tno\t—\t—\t—\t—\t—' "$game" "$id" "$HTTP_CODE"); return 1 ;;
+  esac
+}
+
+# resolve "game:id" / "id" tokens from args, NEXUS_MODS, or tools/nexus.mods
+watched() {
+  if [ -n "${NEXUS_MODS:-}" ]; then printf '%s\n' $NEXUS_MODS; return; fi
+  local f="$SCRIPT_DIR/nexus.mods"
+  [ -f "$f" ] && grep -vE '^[[:space:]]*(#|$)' "$f" | awk '{print $1}'
+}
+
+render() {  # $@ = game:id / id tokens
+  require_key
+  local m game id rc live=0 notlive=0
+  local -a CODE=() ROWS=() BODIES=() IDS=() GAMES=()
+  for m in "$@"; do
+    if [[ "$m" == *:* ]]; then game="${m%%:*}"; id="${m##*:}"; else game="$DEFAULT_GAME"; id="$m"; fi
+    mod_row "$game" "$id"; rc=$?
+    GAMES+=("$game"); IDS+=("$id"); CODE+=("$HTTP_CODE"); ROWS+=("$ROW"); BODIES+=("${BODY:-null}")
+    if [ "$rc" -eq 0 ]; then live=$((live+1)); else notlive=$((notlive+1)); fi
+  done
+
+  if [ "$JSON" = 1 ]; then
+    local i first=1 mod; printf '['
+    for i in "${!IDS[@]}"; do
+      mod='null'; [ "${CODE[$i]}" = 200 ] && mod="${BODIES[$i]}"
+      [ "$first" = 1 ] || printf ','; first=0
+      printf '{"game":"%s","id":"%s","http":%s,"mod":%s}' "${GAMES[$i]}" "${IDS[$i]}" "${CODE[$i]:-0}" "$mod"
+    done
+    printf ']\n'; return
+  fi
+
+  local n=${#IDS[@]} plural=s; [ "$n" -eq 1 ] && plural=
+  printf '%d mod%s · %d live · %d not live' "$n" "$plural" "$live" "$notlive"
+  [ -n "${RL_DAILY:-}" ] && printf '          rate %s/2500 daily · %s/100 hourly' "$RL_DAILY" "$RL_HOURLY"
+  printf '\n'
+
+  local -a TR=()
+  mapfile -t TR < <(printf '%s\n' "${ROWS[@]}" | \
+    awk -F'\t' -v w="$NAME_W" 'BEGIN{OFS="\t"}{if(length($3)>w)$3=substr($3,1,w-1)"…";print}')
+  {
+    if [ "$FULL" = 1 ]; then
+      printf 'GAME\tID\tNAME\tSTATUS\tLIVE\tVER\tENDORSE\tDLOADS\tUNIQUE\tUPDATED\n'
+      printf '%s\n' "${TR[@]}"
+    else
+      printf 'ID\tNAME\tSTATUS\tLIVE\tENDORSE\tDLOADS\n'
+      printf '%s\n' "${TR[@]}" | cut -f2,3,4,5,7,8
+    fi
+  } | column -t -s $'\t'
+
+  printf 'Next steps:\n'
+  printf '  %s status <id>     full stats for one mod (add --full / --json)\n' "$SELF"
+  printf '  %s live   <id>     exit 0 once it is published (until-loop friendly)\n' "$SELF"
+}
+
+do_live() {
+  require_key
+  local id="$1" game="${2:-$DEFAULT_GAME}"
+  mod_row "$game" "$id"
+  if [ $? -eq 0 ]; then echo "LIVE"; exit 0; else echo "NOT_LIVE ($(printf '%s' "$ROW" | cut -f4))"; exit 1; fi
+}
+
+do_validate() {
+  require_key
+  http_get "/users/validate.json"; http_or_die
+  [ "$HTTP_CODE" = 200 ] || die "validate failed (HTTP $HTTP_CODE)" "" 1
+  local name prem
+  name=$(jq -r '.name // "?"' <<<"$BODY")
+  prem=$(jq -r 'if .is_premium then "yes" else "no" end' <<<"$BODY")
+  printf 'key OK · user %s · premium %s' "$name" "$prem"
+  [ -n "${RL_DAILY:-}" ] && printf ' · rate %s/2500 daily · %s/100 hourly' "$RL_DAILY" "$RL_HOURLY"
+  printf '\n'
+}
+
+help() {
+  cat <<EOF
+$SELF — read-only Nexus Mods API: mod release status + stats.  ($BASE)
+
+Usage:
+  $SELF                     status grid of watched mods (NEXUS_MODS env, or $SELF.mods)
+  $SELF status <id> [game]  release status + stats for one mod
+  $SELF live   <id> [game]  print LIVE/NOT_LIVE; exit 0 iff live
+  $SELF validate            check the API key + show rate limits
+
+Flags:  --full  (all columns)    --json  (raw mod objects, for jq)
+Auth:   export NEXUS_API_KEY=…    https://www.nexusmods.com/users/myaccount?tab=api
+Game:   default \$NEXUS_GAME or $DEFAULT_GAME
+
+Examples:
+  $SELF status 182628
+  until $SELF live 182628; do sleep 600; done && echo "out of review"
+  NEXUS_MODS="skyrimspecialedition:182628" $SELF
+EOF
+}
+
+need xh; need jq
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --full) FULL=1 ;;
+    --json) JSON=1 ;;
+    -h|--help|help) help; exit 0 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
+case "${1:-}" in
+  status)
+    shift; [ $# -ge 1 ] || die "status needs a mod id" "$SELF status 182628"
+    render "${2:-$DEFAULT_GAME}:$1" ;;
+  live)
+    shift; [ $# -ge 1 ] || die "live needs a mod id" "$SELF live 182628"
+    do_live "$1" "${2:-}" ;;
+  validate) do_validate ;;
+  "")
+    mapfile -t MODS < <(watched)
+    if [ "${#MODS[@]}" -eq 0 ]; then
+      printf '0 watched mods.\n'
+      printf 'Add some, then run %s with no args:\n' "$SELF"
+      printf '  export NEXUS_MODS="skyrimspecialedition:182628 skyrimspecialedition:<id>"\n'
+      printf '  # or one id per line in %s/%s.mods\n' "$SCRIPT_DIR" "$SELF"
+      printf 'Or query one directly:  %s status <id>\n' "$SELF"
+      exit 0
+    fi
+    render "${MODS[@]}" ;;
+  *) die "unknown verb '${1}'" "$SELF help" 2 ;;
+esac
