@@ -97,7 +97,7 @@ void config::Load()
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 1, 0 },
+	.Version = REL::Version{ 0, 2, 0 },
 	.Name = "SkytestProbe",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
@@ -114,7 +114,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		SKSE::log::error("SkytestProbe: failed to register messaging listener");
 		return false;
 	}
-	SKSE::log::info("SkytestProbe 0.1.0 loaded (hotkey DX 0x{:02X}, poll {} ms)",
+	SKSE::log::info("SkytestProbe 0.2.0 loaded (hotkey DX 0x{:02X}, poll {} ms)",
 		config::markerHotkey, config::pollIntervalMs);
 	return true;
 }

@@ -318,12 +318,11 @@ actually resolves the player actor (the probe logs `actor 3D not loaded yet` unt
 ## 17. Headless test-iteration cheat-sheet (cast/input mods)
 
 - **Stage game state with direct-call probe commands, not console `exec`.** Programmatic `exec`/
-  CompileAndRun faults in the test session (SEH-caught → "faulted"). NB the _interactive_ console
-  works in that same session (typing `coc qasmoke` by hand loads fine), so it's the **programmatic
-  call path** that faults, not a missing subsystem — cause unpinned, and moot: the harness model is
-  engine calls for staging, the drive layer for input. Use SkytestProbe `give-spell` (add + equip
-  to a hand) and `set-av` (e.g. magicka) — they call the engine directly. There's no console
-  command to equip a spell to a hand anyway.
+  CompileAndRun AVs (SEH-caught → "faulted"). **Cause pinned 2026-06-16 — see #18: it's a stale
+  CommonLib binding on game 1.6.1170, NOT a headless/console-subsystem limit, and it would fault in
+  a normal windowed game too.** Use SkytestProbe `give-spell` (add + equip to a hand) and `set-av`
+  (e.g. magicka) — they call the engine directly. Every console verb is just an engine-call wrapper,
+  so direct-call is the general staging path; add a probe helper per need.
 - **Bump `REL::Version` every debug rebuild.** A new DLL loads only at SKSE startup, so testing a
   build = `skytest stop` + `skytest test` (relaunch). The log truncates on load, but if two builds
   share a version the load-line is identical and a readiness `grep` can't tell stale content from
@@ -336,3 +335,44 @@ actually resolves the player actor (the probe logs `actor 3D not loaded yet` unt
 - **A button *hold* is one `drive raw` call.** `drive raw btn <code> 1 sleep <ms> btn <code> 0`
   (272 = LMB = right-hand cast, 273 = RMB = left-hand). Press, `sleep`, and release must be in the
   **same** invocation — the button-down state does not persist across eidriver process lifetimes.
+
+## 18. PINNED — `exec` faults because CommonLib is older than the game (stale binding), not headless
+
+The long-running "programmatic `exec`/CompileAndRun faults, cause unpinned and moot" item (#17,
+old probe comments) was **wrong about the cause and wrong that it's headless-specific**. Pinned
+2026-06-16 by adding fault-capture to SkytestProbe's SEH handler (it previously discarded the
+exception — _that_ is why nobody could pin it) and reproducing live in a headless in-world session.
+
+**Evidence (SkytestProbe.log, game 1.6.1170):** `exec FAULT: code=0xc0000005 ip_rva=0xce9843
+access_addr=0xffffffffffffffff` — an access violation **inside SkyrimSE.exe** reading -1, identical
+across `tgm` / `set timescale` / `player.additem`, and **identical with the console menu OPEN**.
+`consolelog` was non-null throughout. So: not off-thread (exec runs main-thread via the task queue),
+not a missing ConsoleLog/"console subsystem", and the "interactive console works → so it's the
+programmatic path" reasoning is invalid — typing a command dispatches through the console **command
+table**, while `Script::CompileAndRun` invokes the **script compiler**; different engine code.
+
+**Root cause — a dependency version skew:**
+- This CommonLibSSE-NG (`CharmedBaryon/CommonLibSSE-NG`, **v3.7.0-129, committed 2024-09-03**) is
+  **older than the installed runtime, 1.6.1170**.
+- It binds `Script::CompileAndRun` to Address Library **AE id 21890** (`Offset::Script::CompileAndRun
+  = RELOCATION_ID(21416, 21890)`).
+- **AE id 21890 is absent from `versionlib-1-6-1170-0.bin`.** Verified by parsing the versionlib with
+  a decoder ported from CommonLib's own `REL/ID.h`: of the 711 AE ids CommonLib binds, 705 (99.16%)
+  are present; 21890 is in the absent set of 6 (also absent: `Console::SelectedRef` id 405935,
+  `GetCachedString` 69188, `Set_CStr` 11044, an InventoryChanges fn 16118, a Scaleform fn 82317).
+- CommonLib's id lookup (`REL/ID.h::id2offset`) only validates `it->id == a_id` **for VR builds**
+  (the check is gated behind `Module::IsVR()`). On a non-VR AE build a **missing id silently resolves
+  to the next id's address** — here 21891 — so CompileAndRun calls the **wrong function** → AV.
+
+**Consequences:** exec would fault the same way in a **normal Steam-launched 1.6.1170 game** — the
+old "runs for real in a windowed game" claim is almost certainly false on this version. The probe's
+other commands are unaffected (none use the 6 absent ids; `give-spell`/`set-av`/`status`/`mcm-*` all
+verified working in the same session).
+
+**Decision: retire `exec`, don't fix it.** Staging is done with direct-call probe commands, which are
+more reliable here anyway (no compiler dependency, main-thread, null-safe, structured acks). exec is
+left in place but SEH-guarded (harmless — returns an error ack). Bumping the shared CommonLib to
+chase one binding would risk regressing all six verified mods, so it's deliberately NOT done. The
+fault-capture instrumentation stays in SkytestProbe as the permanent record. To actually restore
+exec later: update CommonLibSSE-NG to a build that matches the runtime (or hardcode the correct
+1.6.1170 CompileAndRun offset in the probe), then re-run the headless `test` + `exec` repro.

@@ -57,13 +57,14 @@ namespace engine
 		kOk,          // compiled + ran
 		kEmpty,       // empty command line
 		kNotInWorld,  // main menu / mid-load: gated out (CompileAndRun would crash)
-		kFaulted,     // reached CompileAndRun but it AV'd (caught by SEH; e.g. no console subsystem)
+		kFaulted,     // reached CompileAndRun but it AV'd (caught by SEH; CommonLib mis-binds it on 1.6.1170 — stale AE id 21890)
 	};
 	ExecResult RunConsoleCommand(const std::string& a_line);
 
-	// Headless cast-setup helpers (main-thread only, null-safe). These exist because
-	// console exec (CompileAndRun) AVs in a console-less test session — direct engine
-	// calls are the reliable headless path for the spell/AV setup a cast test needs.
+	// Cast-setup helpers (main-thread only, null-safe). Direct engine calls are the
+	// reliable staging path for the spell/AV setup a cast test needs — and the GENERAL
+	// staging path: console exec (CompileAndRun) is mis-bound on 1.6.1170 (stale CommonLib
+	// id), so don't route staging through it. Add a helper here per need instead.
 	enum class Hand
 	{
 		kRight,

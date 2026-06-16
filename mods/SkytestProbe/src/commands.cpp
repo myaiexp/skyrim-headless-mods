@@ -216,7 +216,7 @@ namespace
 					trace::Ack(id, false, "exec: not in a loaded world (load a save first)");
 					break;
 				case engine::ExecResult::kFaulted:
-					trace::Ack(id, false, "exec: CompileAndRun faulted (console subsystem unavailable?)");
+					trace::Ack(id, false, "exec: CompileAndRun mis-bound on this game version (stale CommonLib id, see SkytestProbe.log) — stage via direct-call probe commands instead");
 					break;
 				case engine::ExecResult::kEmpty:
 					trace::Ack(id, false, "exec: empty command line");
