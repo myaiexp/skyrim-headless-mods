@@ -11,6 +11,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 - **Clean cut on skip and interrupt** — skipping fades your in-flight line out without a click; picking a new topic while an NPC is mid-reply cuts that reply too.
 - **Player-voice volume** — attenuate just your own DBVO line, 0–100%, without touching other audio.
 - **Configurable gap** — the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
+- **Native SkyUI MCM** — one screen, no MCM Helper dependency.
 
 ### Requirements
 
