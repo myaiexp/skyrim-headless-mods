@@ -94,6 +94,19 @@ gs_launch() {
   say "started (pid $(gs_session_pid)). Poll for readiness with: skytest ready"
 }
 
+# --- probe IO (shared by gs_wait_ready + replay_wait_gate) -------------------
+
+# The probe IO dir (…/SKSE/skytest): CC appends commands to commands.jsonl, the
+# running game writes trace lines to trace.jsonl. Single source of truth for the
+# path — both the readiness poll below and replay's gate poll (lib/replay.sh) derive
+# it here instead of re-spelling the literal. Built from the parent's $MYGAMES.
+_skytest_io_dir() { printf '%s' "$MYGAMES/SKSE/skytest"; }
+
+# Append one probe-command JSON line to commands.jsonl. Best-effort: the file (and
+# its dir) may not exist until the probe loads — a dropped early line is harmless,
+# the poll retries. Callers inject their own unique "id".
+_probe_send() { printf '%s\n' "$1" >> "$(_skytest_io_dir)/commands.jsonl" 2>/dev/null || true; }
+
 # --- readiness ---------------------------------------------------------------
 
 # gs_wait_ready [timeout=180] — block until the probe reports inWorld:true.
@@ -102,7 +115,7 @@ gs_launch() {
 # reliable signal is SkytestProbe's status.world.inWorld (finding #11).
 gs_wait_ready() {
   local timeout="${1:-180}"
-  local skytest_dir="$PREFIX/Documents/My Games/Skyrim Special Edition/SKSE/skytest"
+  local skytest_dir; skytest_dir="$(_skytest_io_dir)"
   local cmds="$skytest_dir/commands.jsonl" trace="$skytest_dir/trace.jsonl"
 
   echo "waiting for in-world (timeout ${timeout}s)…" >&2

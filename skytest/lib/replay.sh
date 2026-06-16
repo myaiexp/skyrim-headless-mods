@@ -83,3 +83,80 @@ _replay_parse_stream() {
   done
   return "$rc"
 }
+
+# --- gates --------------------------------------------------------------------
+
+# The gate table, data-driven: each `until:<COND>` maps to a probe query + the trace
+# `src` it produces + a jq predicate that is true once the condition holds. Adding a
+# gate is ONE row here plus ONE probe-query handler in SkytestProbe — nothing else.
+#
+#   cond          probe cmd (sans id)                          src      predicate (jq, true = satisfied)
+#   inworld       {"cmd":"status"}                             status   .world.inWorld == true
+#   menu:<NAME>   {"cmd":"is-menu-open","menu":"<NAME>"}        menu     .menu=="<NAME>" and .open==true
+#
+# resolve_gate <cond> <cmd-var> <src-var> <pred-var> — fill the three named vars (via
+# nameref) with this gate's pieces. Unknown cond -> message on stderr + return 2 (so
+# replay_wait_gate fails fast and loud rather than polling a condition nobody answers).
+resolve_gate() {
+  local __cond="$1"
+  local -n __cmd_ref="${2:?resolve_gate: cmd var}" \
+           __src_ref="${3:?resolve_gate: src var}" \
+           __pred_ref="${4:?resolve_gate: pred var}"
+  case "$__cond" in
+    inworld)
+      __cmd_ref='{"cmd":"status"}'
+      __src_ref='status'
+      __pred_ref='.world.inWorld == true'
+      ;;
+    menu:*)
+      local __n="${__cond#menu:}"
+      [ -n "$__n" ] || { printf "replay: gate 'menu:<NAME>' needs a menu name\n" >&2; return 2; }
+      __cmd_ref="{\"cmd\":\"is-menu-open\",\"menu\":\"$__n\"}"
+      __src_ref='menu'
+      __pred_ref=".menu==\"$__n\" and .open==true"
+      ;;
+    *)
+      printf "replay: unknown gate condition '%s'\n" "$__cond" >&2
+      return 2
+      ;;
+  esac
+}
+
+# replay_wait_gate <cond> [timeout=180] — poll SkytestProbe until <cond> holds.
+# Exit 0 = satisfied, 1 = timed out, 2 = session died (or unknown cond, surfaced by
+# resolve_gate). A clone of gs_wait_ready's loop, generalized over the gate table:
+# each iteration fast-fails on a dead session, re-issues the gate's probe query with a
+# fresh id, tails the matching trace `src` line, and evaluates the jq predicate. Never
+# polls without a deadline (the design's hard rule — a missed gate aborts, never hangs).
+replay_wait_gate() {
+  local cond="${1:?replay_wait_gate: condition required}" timeout="${2:-180}"
+  local cmd src pred
+  resolve_gate "$cond" cmd src pred || return 2   # unknown/empty cond already messaged
+
+  local trace; trace="$(_skytest_io_dir)/trace.jsonl"
+  local deadline=$((SECONDS + timeout)) i=0 line ok
+  printf 'replay: waiting for gate %s (timeout %ss)…\n' "$cond" "$timeout" >&2
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if gs_session_dead; then
+      printf 'replay: session died while waiting for gate %s\n' "$cond" >&2
+      return 2
+    fi
+    i=$((i + 1))
+    # Splice a unique id into the resolved query: {"cmd":..} -> {"id":"gate-N","cmd":..}
+    # (string-built JSON, same idiom as gs_wait_ready's printf'd status command).
+    _probe_send "{\"id\":\"gate-$i\",${cmd#\{}"
+    if [ -f "$trace" ]; then
+      line="$(grep -F "\"src\":\"$src\"" "$trace" 2>/dev/null | tail -1 || true)"
+      if [ -n "$line" ]; then
+        ok="$(printf '%s' "$line" | jq -r "if ($pred) then 1 else 0 end" 2>/dev/null || echo 0)"
+        if [ "$ok" = 1 ]; then
+          printf 'replay: gate %s satisfied\n' "$cond" >&2
+          return 0
+        fi
+      fi
+    fi
+    sleep 1
+  done
+  printf 'replay: gate %s timed out after %ss\n' "$cond" "$timeout" >&2
+  return 1
+}

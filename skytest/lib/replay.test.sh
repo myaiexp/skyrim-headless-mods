@@ -83,7 +83,36 @@ check_rc  "unknown verb non-zero"   2 "$rc"
 contains  "unknown verb line number" "line 1: unknown step 'frobnicate'" "$unknown_err"
 
 # =============================================================================
-# (Task 2 / Task 3 assertions are appended as those tasks land.)
+# Task 2 — gate resolver + unknown-condition path
+# =============================================================================
+
+# inworld resolves to the status query + the world.inWorld predicate
+gc='' gs='' gp=''
+resolve_gate "inworld" gc gs gp
+check "resolve inworld cmd"  '{"cmd":"status"}'        "$gc"
+check "resolve inworld src"  'status'                  "$gs"
+check "resolve inworld pred" '.world.inWorld == true'  "$gp"
+
+# menu:<NAME> resolves to the is-menu-open query, src=menu, name-bound predicate
+gc='' gs='' gp=''
+resolve_gate "menu:FavoritesMenu" gc gs gp
+check "resolve menu cmd"  '{"cmd":"is-menu-open","menu":"FavoritesMenu"}'  "$gc"
+check "resolve menu src"  'menu'                                          "$gs"
+check "resolve menu pred" '.menu=="FavoritesMenu" and .open==true'        "$gp"
+
+# an empty menu name is rejected (not a silent {"menu":""})
+gc='' gs='' gp=''
+menu_empty_err="$(resolve_gate "menu:" gc gs gp 2>&1)"; rc=$?
+check_rc "resolve menu: empty name non-zero" 2 "$rc"
+
+# unknown gate condition is a clear error, not a silent hang — replay_wait_gate
+# must fail immediately (it resolves before touching any IO), so no session needed.
+bogus_err="$(replay_wait_gate "bogus" 2>&1)"; rc=$?
+check_rc  "wait bogus non-zero"     2 "$rc"
+contains  "wait bogus message" "replay: unknown gate condition 'bogus'" "$bogus_err"
+
+# =============================================================================
+# (Task 3 interpreter-stream assertions are appended when that task lands.)
 # =============================================================================
 
 printf '\nreplay.test.sh: %d passed, %d failed\n' "$pass" "$fail"
