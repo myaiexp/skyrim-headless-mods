@@ -52,8 +52,9 @@ it once it's in-world. The verbs below make reaching for a test the path of leas
 > anything keyed off the engine's held-input state machine (charge-while-held, auto-repeat) — the rig
 > can prove a mechanism _exists_ but not that it's _reliable_; validate that on real hardware (#15).
 > `ready`/`inWorld` fires **before** the autoloaded save finishes — wait for a player-loaded signal
-> (#16). And the iteration cheat-sheet — set state via `give-spell`/`set-av` (console `exec` AVs
-> headless), bump `REL::Version` each rebuild, launch from repo root, hold = one `drive raw` call (#17).
+> (#16). And the iteration cheat-sheet — stage state via `give-spell`/`set-av` (programmatic `exec`
+> faults in the test session), bump `REL::Version` each rebuild, launch from repo root, hold = one
+> `drive raw` call (#17).
 
 ## Drivable test sessions: visible or headless
 
@@ -163,14 +164,14 @@ path with `/` (or `-` for stdin) is taken as-is. `--headless`/`--with` work as f
 
 `.steps` is line-based (`#` comments, blank lines ignored):
 
-| Step                                     | Meaning                                                                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Currently non-functional in the test session** — see the caveat below. |
-| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                    |
-| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                       |
-| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                     |
-| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                       |
-| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                      |
+| Step                                     | Meaning                                                                                                                                                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Not the staging path** — programmatic `exec` faults in the test session; stage via direct-call probe commands instead (caveat below). |
+| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                   |
+| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                      |
+| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                    |
+| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                      |
+| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                     |
 
 Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on session death:
 
@@ -179,13 +180,16 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
 - `until:charged`, `until:actorcount` — **not built**; added per the first script that needs them
   (one `resolve_gate` row + one direct-call probe handler — see `mods/SkytestProbe` `is-menu-open`).
 
-> **⚠ Console `exec` does not work in the gamescope test session** (headless _or_ visible): the
-> script-compiler subsystem is absent, so `CompileAndRun` faults even in-world (see
-> `docs/headless-findings.md`). World-staging a console command would do (`coc`/`placeatme`/
-> `addspell`) must instead go through **direct-call** SkytestProbe commands (the repo's pattern,
-> e.g. `GiveSpell`/`SetAV`), added per-need. Until those land, `replay` does input + gates + shot,
-> not console staging. Status + plan: `../docs/plans/skytest-replay-handoff.md`. Runnable example:
-> `examples/format-demo.steps`.
+> **⚠ Console `exec` is not the staging path** — by design, not a bug to fix. Programmatic `exec`
+> (the probe's `CompileAndRun`) faults in the gamescope test session, headless _and_ visible, even
+> fully in-world. But the _interactive_ console works there (you can type `coc qasmoke` by hand),
+> so it's the **programmatic call path** that faults, not a missing subsystem — the exact cause is
+> unpinned and not worth pinning. The harness model is **engine calls for staging, the drive layer
+> for input**: stage world state with **direct-call** SkytestProbe commands (`give-spell`/`set-av`,
+> and `coc`/`placeatme` added per-need) and drive anything needing input through `tap`/`hold`/`drive`.
+> `exec` stays in the probe (SEH-guarded; it runs for real in a normal windowed game) but `replay`
+> does input + gates + shot, not console staging. Background:
+> `../docs/plans/skytest-replay-handoff.md`. Runnable example: `examples/format-demo.steps`.
 
 ## Boot straight into a test save (v2)
 

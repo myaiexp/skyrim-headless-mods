@@ -1,8 +1,16 @@
 # skytest replay — session handoff (2026-06-16)
 
-Mid-feature handoff. The replay **machinery is built, committed, and verified live**; one
-**design-level blocker** (console `exec`) and a **demo limitation** (qasmoke has no map)
-remain open and need a decision before the feature is "done" for its headline use case.
+Mid-feature handoff. The replay **machinery is built, committed, and verified live**. The two
+items once flagged as "blockers" — console `exec` and the qasmoke map demo — are **resolved**
+(2026-06-16), see below. No open decision blocks the feature.
+
+**Resolution in one line:** `exec` is *not a bug to fix* — the harness stages world state through
+**direct engine-call probe commands** (`give-spell`/`set-av`, with `coc`/`placeatme` added
+per-need) and drives input through the **headless drive layer**. Programmatic `exec` faults in the
+test session, but the *interactive* console works there, so it's the call path that faults, not a
+missing subsystem — and it's moot, because staging goes through engine calls by design. The map
+demo isn't blocked either: it just needs a per-need `coc` direct-call command + an exterior to
+travel to. (The forensic detail below is kept as the record of how this was diagnosed.)
 
 Spec: `skytest-replay-design.md`. Plan: `skytest-replay-plan.md`.
 
@@ -33,7 +41,17 @@ CommonLib header noise).
 
 ---
 
-## OPEN BLOCKER 1 — console `exec` does not work in the test session
+## RESOLVED 1 — console `exec` is not the staging path (use direct-call)
+
+> **Resolution (2026-06-16):** not a bug — by design. Programmatic `exec` faults in the test
+> session, but the *interactive* console works there (Mase hand-typed `coc qasmoke` in the same
+> session and it loaded), so the "console subsystem absent / console-less environment" theory in
+> the forensic notes below is **wrong** — it's the *programmatic* `CompileAndRun` call path that
+> faults, cause unpinned. Moot anyway: stage via direct engine-call probe commands, drive input
+> via the drive layer. Confirmed against the AutoCastSpell session (2026-06-14), which hit the
+> identical `exec` fault two days before replay existed and resolved it the same way (it built
+> `give-spell`/`set-av` after `exec player.addspell` AV'd). Replay didn't break `exec`; it was the
+> first feature whose *design* assumed `exec` works. The notes below stay as the diagnosis record.
 
 `exec <console>` faults: `exec: CompileAndRun faulted (console subsystem unavailable?)`.
 Confirmed in **both headless AND visible** gamescope, **fully in-world** (`status` acks ok,
@@ -70,7 +88,13 @@ Not recommended without new information.)
 
 ---
 
-## OPEN BLOCKER 2 — the demo menu (qasmoke has no map)
+## RESOLVED 2 — Map demo just needs a per-need `coc` + exterior (not blocked)
+
+> **Resolution (2026-06-16):** not a blocker — deferred polish. A real Map demo needs an exterior;
+> with the direct-call staging model that's just a per-need `coc`-equivalent command
+> (`PlayerCharacter::MoveTo` an exterior cell) built when a OneClickMap/Travel replay actually
+> wants it, plus an exterior fixture. Until then the committed `format-demo.steps` proves the
+> mechanism via the Console menu. The detail below stays for whoever builds the map demo.
 
 `SkytestBase` autoloads into **qasmoke** (interior test cell, no world map). So:
 - `tap m` there renders a **black** map and the `MapMenu` gate was unreliable (`open:false`).
@@ -85,10 +109,10 @@ map needs an **exterior** location, which needs either:
 - (b) direct-call cell-travel (Blocker 1's `coc` equivalent) to move to an exterior at replay
   time.
 
-**Decision pending** (Mase, end of this session): ship without console exec + add direct-call
-staging per-need? build direct-call `coc`/`placeatme` now? and which demo path (Console
-mechanism-proof, exterior save, or drop the menu step)? Mase's lean was unstated — he chose
-to end the session and continue debugging later.
+**Decision (made 2026-06-16):** ship without console `exec`; staging is direct-call probe commands
+added per-need (don't "fix" `exec`, don't pre-build the whole console surface). Demo path: keep the
+Console mechanism-proof (`format-demo.steps`); build the exterior Map demo later when a
+OneClickMap/Travel replay needs it (per-need `coc` command + exterior fixture).
 
 ---
 
@@ -123,13 +147,15 @@ start (e.g. `: > "$(_skytest_io_dir)/commands.jsonl"` in `_boot_test_session` be
 
 ## Next steps (suggested order)
 
-1. Decide Blocker 1 (direct-call staging now vs per-need) and Blocker 2 (demo path) with Mase.
-2. If per-need: leave as-is; the GhostAllies session adds `coc`/`placeatme`/`addspell` direct
-   calls + (maybe) an exterior save + swaps the demo to Map.
-3. Truncate `commands.jsonl` at boot (small, do anytime).
-4. The discoverability docs (README replay section, CLAUDE.md steer, `verb_help replay`,
-   `cmd_test` trailing line) were written this session and reflect the exec caveat — revisit
-   their wording if Blocker 1 changes the story.
+Both "blockers" are decided (see above) — what remains is per-need build-out:
+
+1. When a GhostAllies / OneClickMap replay needs it: add `coc`/`placeatme`/`addspell` direct-call
+   probe commands (+ exterior fixture for a Map demo), then route replay staging to them (or add a
+   `stage` step). Per-need, not speculative.
+2. Truncate `commands.jsonl` at boot (small, do anytime — in `docs/ideas.md`).
+3. The exec-caveat wording in the docs (README replay section + caveat box, finding #17,
+   probe-design as-built, this handoff) was corrected 2026-06-16 to the direct-call/drive model —
+   keep new docs consistent with it.
 
 ## git
 

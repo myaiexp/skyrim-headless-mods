@@ -172,12 +172,15 @@ Deltas from the contract, all driven by in-game findings + an adversarial review
   (the latter forces the TU to emit the engine-owned vtable → unresolved-symbol link errors).
 - **`exec` is gated + SEH-guarded.** `CompileAndRun` crashes at the main menu / mid-load (console
   compiler globals uninitialised) — gated on "world fully loaded" (`!MainMenu && !LoadingMenu &&
-player->Is3DLoaded()`; `Main::gameActive` is true even at the menu, so it's the wrong gate). And
-  in a **console-less environment (e.g. headless gamescope)** the compiler subsystem is absent and
-  `CompileAndRun` AVs even in-world — so the call is wrapped in SEH (`__try/__except`), turning the
-  AV into an `ok:false` "faulted" ack instead of a crash (zero cost in a normal windowed game,
-  where exec runs for real). **In-game `exec` (gold appears) still needs confirming in a normal
-  windowed session** — headless can't exercise the working path.
+player->Is3DLoaded()`; `Main::gameActive` is true even at the menu, so it's the wrong gate). It
+  also AVs in the gamescope test session even past that gate (in-world), so the call is wrapped in
+  SEH (`__try/__except`), turning the AV into an `ok:false` "faulted" ack instead of a crash (zero
+  cost in a normal windowed game, where exec runs for real). **Correction (2026-06-16):** the
+  original "the compiler subsystem is absent in a console-less environment" explanation is **wrong**
+  — the _interactive_ console works in the same test session (a hand-typed `coc qasmoke` loads
+  fine), so it's the **programmatic** `CompileAndRun` path that faults; cause unpinned. Moot in
+  practice: the harness stages via direct engine-call probe commands (`give-spell`/`set-av`,
+  `coc`/`placeatme` per-need), not console `exec` — so `exec` is intentionally not the staging path.
 - **Event filters resolve lazily + correctly.** `trace … refs:[…]` keeps a `hasFilter` flag so a
   filter that resolves to empty (e.g. `refs:[teammates]` before a save loads) matches **nothing**
   (not match-all), and the main-thread tick **re-resolves** armed filters each cycle so teammates

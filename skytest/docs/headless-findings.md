@@ -317,10 +317,13 @@ actually resolves the player actor (the probe logs `actor 3D not loaded yet` unt
 
 ## 17. Headless test-iteration cheat-sheet (cast/input mods)
 
-- **Set up game state with direct-call probe commands, not console `exec`.** `exec`/CompileAndRun
-  AVs in a console-less test session (SEH-caught → "console subsystem unavailable"). Use SkytestProbe
-  `give-spell` (add + equip to a hand) and `set-av` (e.g. magicka) — they call the engine directly.
-  There's no console command to equip a spell to a hand anyway.
+- **Stage game state with direct-call probe commands, not console `exec`.** Programmatic `exec`/
+  CompileAndRun faults in the test session (SEH-caught → "faulted"). NB the _interactive_ console
+  works in that same session (typing `coc qasmoke` by hand loads fine), so it's the **programmatic
+  call path** that faults, not a missing subsystem — cause unpinned, and moot: the harness model is
+  engine calls for staging, the drive layer for input. Use SkytestProbe `give-spell` (add + equip
+  to a hand) and `set-av` (e.g. magicka) — they call the engine directly. There's no console
+  command to equip a spell to a hand anyway.
 - **Bump `REL::Version` every debug rebuild.** A new DLL loads only at SKSE startup, so testing a
   build = `skytest stop` + `skytest test` (relaunch). The log truncates on load, but if two builds
   share a version the load-line is identical and a readiness `grep` can't tell stale content from

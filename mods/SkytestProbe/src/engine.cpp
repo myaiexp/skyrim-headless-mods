@@ -16,12 +16,15 @@ namespace
 	}
 
 	// SEH-isolated wrapper around the fragile engine compile. Script::CompileAndRun
-	// reaches into the console-compiler subsystem, which is uninitialized in a
-	// console-less context (e.g. headless): it then calls through a garbage function
-	// pointer -> EXCEPTION_ACCESS_VIOLATION. Catching the SEH access violation here
-	// honors the design's "never crash the game on bad input" contract: in a normal
-	// game this never fires (zero cost); in a console-less one exec degrades to an
-	// error line. This function holds NO C++ objects needing unwinding (SEH rule).
+	// faults (EXCEPTION_ACCESS_VIOLATION) when invoked programmatically in the gamescope
+	// test session, even fully in-world. NB the *interactive* console works in that same
+	// session (a hand-typed `coc qasmoke` loads fine), so this is the programmatic call
+	// path faulting, not a "missing console subsystem" (exact cause unpinned, and moot:
+	// the harness stages via direct engine-call probe commands, not exec). Catching the
+	// SEH access violation here honors the design's "never crash the game on bad input"
+	// contract: in a normal windowed game this never fires (zero cost; exec runs for
+	// real); in the test session exec degrades to an error line. This function holds NO
+	// C++ objects needing unwinding (SEH rule).
 	bool SafeCompileAndRun(RE::Script* a_script, RE::TESObjectREFR* a_target) noexcept
 	{
 		__try {
@@ -276,7 +279,9 @@ engine::ExecResult engine::RunConsoleCommand(const std::string& a_line)
 	// during the loading screen the console-compiler globals are uninitialized and it
 	// crashes (verified via headless smoke: EXCEPTION_ACCESS_VIOLATION in the compile
 	// path, with SkytestProbe frames in the stack). IsInWorld() is that exact gate
-	// (shared with `status` so exec and status can never disagree).
+	// (shared with `status` so exec and status can never disagree). NB: past this gate,
+	// programmatic exec STILL faults in the test session (see SafeCompileAndRun above) —
+	// the gate only rules out the menu/load crash, not the in-world programmatic-path AV.
 	if (!IsInWorld()) {
 		return ExecResult::kNotInWorld;
 	}
