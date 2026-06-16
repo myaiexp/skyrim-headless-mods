@@ -201,7 +201,9 @@ namespace
 			}
 			if (g_sawPlaying.load() && g_replyArmed.exchange(false)) {
 				// playing→stopped after the line was seen playing: fire the reply once.
-				SKSE::GetTaskInterface()->AddTask([]() { FireReplyNow(); });
+				if (auto* task = SKSE::GetTaskInterface()) {
+					task->AddTask([]() { FireReplyNow(); });
+				}
 			}
 		}
 	}
@@ -235,7 +237,11 @@ namespace
 	// still talking); the IsPlaying guard makes this a no-op when no reply is in flight.
 	void CutNpcReply()
 	{
-		SKSE::GetTaskInterface()->AddTask([]() {
+		auto* task = SKSE::GetTaskInterface();
+		if (!task) {
+			return;
+		}
+		task->AddTask([]() {
 			auto* mtm = RE::MenuTopicManager::GetSingleton();
 			if (!mtm) {
 				return;

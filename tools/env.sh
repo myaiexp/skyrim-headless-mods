@@ -12,8 +12,8 @@ GAME_DATA="${GAME_DATA:-$HOME/.steam/steam/steamapps/common/Skyrim Special Editi
 
 # Steam Proton prefix for Skyrim SE (appid 489830) — where Plugins.txt lives.
 STEAM_APPID="${STEAM_APPID:-489830}"
-PREFIX="$HOME/.steam/steam/steamapps/compatdata/$STEAM_APPID/pfx/drive_c/users/steamuser"
-PLUGINS_TXT="$PREFIX/AppData/Local/Skyrim Special Edition/Plugins.txt"
+PREFIX="${PREFIX:-$HOME/.steam/steam/steamapps/compatdata/$STEAM_APPID/pfx/drive_c/users/steamuser}"
+PLUGINS_TXT="${PLUGINS_TXT:-$PREFIX/AppData/Local/Skyrim Special Edition/Plugins.txt}"
 
 # Dedicated wine prefix used only to run the .NET-based PapyrusCompiler.exe.
 WINEPREFIX_PAPYRUS="${WINEPREFIX_PAPYRUS:-$HOME/.cache/papyrus-wine}"

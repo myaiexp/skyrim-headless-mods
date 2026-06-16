@@ -1,6 +1,7 @@
 #include "trace.h"
 
 #include <chrono>
+#include <format>
 #include <fstream>
 #include <mutex>
 
@@ -8,9 +9,22 @@
 
 namespace
 {
-	std::mutex            g_mtx;        // guards the appender + paths below
-	std::ofstream         g_out;        // append handle to trace.jsonl
-	bool                  g_ready = false;
+	// The appender state the detached command-poll thread can touch via trace::Write
+	// at any moment — including during DLL_PROCESS_DETACH on game exit. Held in a
+	// leaked, never-destroyed object (Construct-On-First-Use) so a late write never
+	// locks a destroyed mutex or writes a destroyed ofstream (use-after-destruction).
+	struct Appender
+	{
+		std::mutex    mtx;          // guards the appender below
+		std::ofstream out;          // append handle to trace.jsonl
+		bool          ready = false;
+	};
+	Appender& App()
+	{
+		static Appender* const a = new Appender();  // intentionally leaked (immortal)
+		return *a;
+	}
+
 	std::filesystem::path g_dir;        // …/SKSE/skytest
 	std::filesystem::path g_commands;   // …/SKSE/skytest/commands.jsonl
 	std::filesystem::path g_trace;      // …/SKSE/skytest/trace.jsonl
@@ -33,7 +47,8 @@ long long trace::NowMs()
 
 void trace::Init()
 {
-	std::scoped_lock lk(g_mtx);
+	Appender& app = App();
+	std::scoped_lock lk(app.mtx);
 
 	auto logDir = SKSE::log::log_directory();
 	if (!logDir) {
@@ -59,36 +74,46 @@ void trace::Init()
 		std::filesystem::rename(g_trace, g_tracePrev, ec);  // best-effort; ignore ec
 	}
 
-	g_out.open(g_trace, std::ios::out | std::ios::trunc);
-	if (!g_out.is_open()) {
+	app.out.open(g_trace, std::ios::out | std::ios::trunc);
+	if (!app.out.is_open()) {
 		SKSE::log::error("trace: could not open {} for writing", g_trace.string());
 		return;
 	}
-	g_ready = true;
+	app.ready = true;
+
+	// Version comes from the SKSEPluginInfo declaration (single source of truth),
+	// formatted major.minor.patch so the session-header line never drifts from the
+	// build. Defensive null guard: the singleton is set well before kDataLoaded.
+	std::string pluginVer = "unknown";
+	if (const auto* decl = SKSE::PluginDeclaration::GetSingleton()) {
+		const REL::Version v = decl->GetVersion();
+		pluginVer = std::format("{}.{}.{}", v.major(), v.minor(), v.patch());
+	}
 
 	json header{
 		{ "t", NowMs() },
 		{ "src", "session" },
-		{ "plugin", "0.1.0" },
+		{ "plugin", pluginVer },
 		{ "game", "1.6.1170" }
 	};
-	g_out << DumpLine(header) << '\n';
-	g_out.flush();
+	app.out << DumpLine(header) << '\n';
+	app.out.flush();
 
 	SKSE::log::info("trace: writing {}", g_trace.string());
 }
 
 void trace::Write(json a_obj)
 {
-	std::scoped_lock lk(g_mtx);
-	if (!g_ready) {
+	Appender& app = App();
+	std::scoped_lock lk(app.mtx);
+	if (!app.ready) {
 		return;
 	}
 	if (!a_obj.contains("t")) {
 		a_obj["t"] = NowMs();
 	}
-	g_out << DumpLine(a_obj) << '\n';
-	g_out.flush();
+	app.out << DumpLine(a_obj) << '\n';
+	app.out.flush();
 }
 
 void trace::Ack(const std::string& a_id, bool a_ok, const std::string& a_err)

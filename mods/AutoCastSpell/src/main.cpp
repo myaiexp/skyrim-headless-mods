@@ -84,6 +84,7 @@ namespace
 		g_injecting = true;
 		idm->SendEvent(&head);
 		g_injecting = false;
+		be->~ButtonEvent();
 		RE::free(be);
 	}
 

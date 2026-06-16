@@ -40,9 +40,16 @@ Event OnOptionKeyMapChange(Int oid, Int keyCode, String conflictControl, String 
 		If iToggleKey >= 0
 			UnregisterForKey(iToggleKey)
 		EndIf
-		iToggleKey = keyCode
-		SetKeyMapOptionValue(oid, keyCode)
-		RegisterForKey(keyCode)
+		If keyCode <= 0
+			; Cleared binding: SkyUI delivers keyCode 0. Go to the -1 unbound sentinel that
+			; OnKeyDown/OnGameReload gate on, and skip RegisterForKey.
+			iToggleKey = -1
+			SetKeyMapOptionValue(oid, -1)
+		Else
+			iToggleKey = keyCode
+			SetKeyMapOptionValue(oid, keyCode)
+			RegisterForKey(keyCode)
+		EndIf
 	EndIf
 EndEvent
 

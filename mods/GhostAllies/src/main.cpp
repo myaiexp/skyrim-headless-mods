@@ -324,6 +324,24 @@ namespace
 		InstallAddTargetRefusal();
 		SKSE::log::info("GhostAllies: hooked MagicTarget::AddTarget (Character vtable idx 4, vfunc 1) to refuse player hostile effects on teammates");
 	}
+
+	// On each game load (or new game), drop the per-teammate refusal-log throttle. It's a
+	// session-lifetime map keyed by FormID that's only ever inserted into (never erased), so
+	// clearing it here bounds its growth AND keeps it from carrying stale FormIDs across a
+	// reload within the same process — otherwise a re-recruited follower would never re-log and
+	// a freed FormID could later alias. (g_enrolled is reconciled in MaintainGhostGroup and is
+	// left alone.)
+	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
+	{
+		switch (a_msg->type) {
+		case SKSE::MessagingInterface::kPostLoadGame:
+		case SKSE::MessagingInterface::kNewGame:
+			g_addTargetSeen.clear();
+			break;
+		default:
+			break;
+		}
+	}
 }
 
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
@@ -343,6 +361,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 9, 0 }.string());
 
 	InstallHooks();
+	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 
 	return true;
 }

@@ -51,11 +51,20 @@ static void pump(int ms) {
                     EI_DEVICE_CAP_BUTTON, EI_DEVICE_CAP_KEYBOARD, NULL);
                 fprintf(stderr, "[ei] seat added, bound caps\n");
             } else if (t == EI_EVENT_DEVICE_ADDED) {
+                if (dev) ei_device_unref(dev);   // drop any prior device before re-acquiring
                 dev = ei_device_ref(ei_event_get_device(e));
                 fprintf(stderr, "[ei] device added\n");
             } else if (t == EI_EVENT_DEVICE_RESUMED) {
                 if (!dev) dev = ei_device_ref(ei_event_get_device(e));
                 fprintf(stderr, "[ei] device RESUMED (ready)\n");
+            } else if (t == EI_EVENT_DEVICE_PAUSED) {
+                // events are discarded until the next RESUMED; stop emulating and warn so a
+                // dropped command stream is visible rather than silently no-op'ing.
+                fprintf(stderr, "[ei] WARNING: device PAUSED — input dropped until RESUMED\n");
+            } else if (t == EI_EVENT_DEVICE_REMOVED) {
+                // device is already gone; release our ref and clear so a later ADDED/RESUMED re-acquires.
+                fprintf(stderr, "[ei] WARNING: device REMOVED — input dropped until re-added\n");
+                if (dev) { ei_device_unref(dev); dev = NULL; }
             } else if (t == EI_EVENT_DISCONNECT) {
                 fprintf(stderr, "[ei] DISCONNECTED by server\n");
                 exit(3);
@@ -104,6 +113,7 @@ int main(int argc, char **argv) {
     const char *sock = argv[1];
 
     ei = ei_new(NULL);
+    if (!ei) { fprintf(stderr, "ei_new failed\n"); return 2; }
     ei_configure_name(ei, "skyrim-driver");
     if (ei_setup_backend_socket(ei, sock) != 0) {
         fprintf(stderr, "failed to connect to EIS socket %s\n", sock);
@@ -129,12 +139,20 @@ int main(int argc, char **argv) {
                     EI_DEVICE_CAP_BUTTON, EI_DEVICE_CAP_KEYBOARD, NULL);
                 fprintf(stderr, "[ei] seat added, bound caps\n");
             } else if (t == EI_EVENT_DEVICE_ADDED) {
+                if (dev) ei_device_unref(dev);   // drop any prior device before re-acquiring
                 dev = ei_device_ref(ei_event_get_device(e));
                 fprintf(stderr, "[ei] device added\n");
             } else if (t == EI_EVENT_DEVICE_RESUMED) {
                 if (!dev) dev = ei_device_ref(ei_event_get_device(e));
                 ready = true;
                 fprintf(stderr, "[ei] device RESUMED (ready)\n");
+            } else if (t == EI_EVENT_DEVICE_PAUSED) {
+                // events are discarded until the next RESUMED; warn so a stall is visible.
+                fprintf(stderr, "[ei] WARNING: device PAUSED during handshake — waiting for RESUMED\n");
+            } else if (t == EI_EVENT_DEVICE_REMOVED) {
+                // device is already gone; release our ref and clear so a later ADDED/RESUMED re-acquires.
+                fprintf(stderr, "[ei] WARNING: device REMOVED during handshake — waiting for re-add\n");
+                if (dev) { ei_device_unref(dev); dev = NULL; }
             } else if (t == EI_EVENT_DISCONNECT) {
                 fprintf(stderr, "[ei] DISCONNECTED during handshake\n"); return 3;
             }

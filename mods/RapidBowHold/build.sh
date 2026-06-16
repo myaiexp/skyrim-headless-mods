@@ -29,6 +29,7 @@ ls -la "$BUILD/$ESP" "$BUILD/Scripts/$SCRIPT.pex"
 
 if [[ "${1:-}" == "--install" ]]; then
   echo ">> installing into live game"
+  mkdir -p "$GAME_DATA/Scripts"
   cp "$BUILD/$ESP" "$GAME_DATA/$ESP"
   cp "$BUILD/Scripts/$SCRIPT.pex" "$GAME_DATA/Scripts/$SCRIPT.pex"
   if grep -q "^\*$ESP$" "$PLUGINS_TXT"; then

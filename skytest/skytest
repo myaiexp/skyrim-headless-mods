@@ -106,6 +106,21 @@ say()  { printf 'skytest: %s\n' "$*"; }
 die()  { printf 'skytest: ERROR: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit 1; }
 usage_err() { printf 'skytest: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit 2; }
 jbool() { [ "$1" = 1 ] && printf true || printf false; }
+# Cross-invocation mutex (CLAUDE.md explicitly allows two CC sessions touching a Skyrim
+# folder at once). Any verb that mutates a profile, swaps the Data symlink, or writes the
+# gamescope pidfile must hold this lock so two skytests can't double-park Data or race the
+# profile build. Read-only verbs (status/help/ready/shot/drive) don't take it. Non-blocking
+# (`flock -n`): a second concurrent run fails fast with a clear message rather than hanging.
+# The lock file lives under the profiles dir (created on demand — it may not exist before
+# `init --commit`). fd 9 stays open for the life of THIS process, so the lock is held until
+# the verb finishes and the shell exits. A detached gamescope session does NOT inherit it
+# (gs_launch closes fd 9 in the child via `9>&-`) and `play` releases it before exec'ing the
+# game — otherwise stop/shot/drive on a live session would deadlock on its own lock.
+acquire_lock() {
+  mkdir -p "$PROFILES" 2>/dev/null || true
+  exec 9>"$PROFILES/.skytest.lock" || die "cannot open skytest lock file at $PROFILES/.skytest.lock"
+  flock -n 9 || die "another skytest is already running (profile lock held)" "wait for it to finish, or check: skytest status"
+}
 # Emit a JSON array of strings from stdin (one per line; blank lines ignored).
 json_arr() {
   local first=1 line out="["
@@ -140,6 +155,22 @@ guard_no_running_game() {
 
 # Where the real, full Data currently lives: FULL if migrated, else DATA.
 src_data() { if [ -L "$DATA" ]; then printf '%s' "$FULL"; else printf '%s' "$DATA"; fi; }
+
+# cmd_uninstall does `rm Data` then `mv -T full Data` — non-atomic. A kill (or PID-reuse
+# stale-symlink failure) between them leaves Data ABSENT while the real files sit orphaned
+# in .profiles/full. In that orphan state `[ ! -L Data ]` is true, so uninstall/normal/
+# status would all misreport "already done / not migrated" and never finish the move.
+# Detect it (Data neither a real path nor a symlink, but FULL exists) and complete the
+# interrupted `mv -T full Data` — restoring the original install. Returns 0 if it recovered
+# (caller should treat the orphan as handled), 1 if no orphan state was present.
+data_is_orphaned() { [ ! -e "$DATA" ] && [ ! -L "$DATA" ] && [ -d "$FULL" ]; }
+recover_orphaned_data() {
+  data_is_orphaned || return 1
+  say "WARNING: Data is missing but $FULL exists — an earlier uninstall was interrupted; completing it."
+  mv -T "$FULL" "$DATA" || die "could not complete the interrupted uninstall" "mv -T '$FULL' '$DATA'"
+  say "recovered: original Data/ restored from $FULL."
+  return 0
+}
 
 # Shared SKSE launch core: every launch path (direct play, gamescope test, setup-save)
 # runs the same `"$PROTON" run "$LOADER"`. This prepares its environment — cd to the
@@ -260,7 +291,11 @@ build_test_profile() {
 point_data() {                            # point_data full|vanilla|test
   local tgt="$PROFILES/$1"
   [ -d "$tgt" ] || die "profile not found: $1"
-  ln -s "$tgt" "$DATA.swap.$$"
+  # -sfn: force + no-deref. A prior point_data that died after `ln` but before `mv`
+  # leaves $DATA.swap.$$ behind; with PID reuse the next run's bare `ln -s` would
+  # descend INTO that leftover symlink-to-dir and create a nested link (a footgun).
+  # -fn replaces the leftover atomically instead of following it.
+  ln -sfn "$tgt" "$DATA.swap.$$"
   mv -T "$DATA.swap.$$" "$DATA"
 }
 
@@ -277,7 +312,7 @@ backup_plugins()  {
   fi
   cp -f "$PLUGINS_TXT" "$PROFILES/Plugins.txt.bak"
 }
-restore_plugins() { [ -f "$PROFILES/Plugins.txt.bak" ] && cp -f "$PROFILES/Plugins.txt.bak" "$PLUGINS_TXT"; }
+restore_plugins() { [ -f "$PROFILES/Plugins.txt.bak" ] && cp -f "$PROFILES/Plugins.txt.bak" "$PLUGINS_TXT"; return 0; }  # best-effort: a missing .bak must not abort a recovery chain under set -e
 
 write_test_plugins() {
   local mod="$1" f
@@ -330,13 +365,21 @@ inject_skytestprobe() {
 
 # Insert (or replace) SLocalSavePath under [General] in Skyrim.ini. Value comes via the
 # environment (NOT awk -v) so a trailing backslash in the Windows-style path is taken
-# literally rather than processed as an escape.
+# literally rather than processed as an escape. Returns non-zero if the key was NOT
+# written — a Skyrim.ini with no [General] header would otherwise emit unchanged + exit
+# 0, leaving the save path un-redirected while the caller stamps "saves isolated"
+# (silently reintroducing #13). We track an 'ins' flag and, if no [General] header was
+# seen, APPEND one with the key in END so isolation always takes effect.
 set_ini_save_path() {
   SKYTEST_SAVEPATH="$1" awk '
     /^[[:space:]]*SLocalSavePath[[:space:]]*=/ { next }                       # drop any existing
     { print }
     /^\[General\]/ && !ins { print "SLocalSavePath=" ENVIRON["SKYTEST_SAVEPATH"]; ins=1 }
+    END { if (!ins) { print "[General]"; print "SLocalSavePath=" ENVIRON["SKYTEST_SAVEPATH"] } }
   ' "$SKYRIM_INI" > "$SKYRIM_INI.skytest.tmp" && mv -f "$SKYRIM_INI.skytest.tmp" "$SKYRIM_INI"
+  # Confirm the key+value is actually present now (guards an awk/append failure too).
+  # grep -F so the trailing backslash in the Windows-style value isn't a regex escape.
+  grep -qF "SLocalSavePath=$1" "$SKYRIM_INI"
 }
 
 # Redirect this test session's save path to an isolated dir holding only the base save,
@@ -351,9 +394,19 @@ isolate_saves() {
   mkdir -p "$SAVES_TEST_DIR"
   cp -f "$SAVES_DIR/$BASE_SAVE_NAME.ess" "$SAVES_TEST_DIR/"
   [ -f "$SAVES_DIR/$BASE_SAVE_NAME.skse" ] && cp -f "$SAVES_DIR/$BASE_SAVE_NAME.skse" "$SAVES_TEST_DIR/"
+  # Write the INI backup AND the isolation flag BEFORE mutating the live ini. A kill
+  # between the ini edit and the flag write would otherwise leave SLocalSavePath
+  # redirected with no flag to trigger deisolate_saves — a permanent un-restorable
+  # redirect (the full modded game would then boot into Saves_skytest). With the
+  # backup+flag stamped first, a kill at ANY later point leaves the flag present so
+  # deisolate_saves always restores Skyrim.ini from $INI_BAK.
   cp -f "$SKYRIM_INI" "$INI_BAK"
-  set_ini_save_path 'Saves_skytest\'
   echo "$SAVES_TEST_DIR" > "$SAVES_ISO_FLAG"
+  # A failed insert (e.g. awk couldn't write the key) is FATAL: proceeding would launch
+  # the test with the real ~350 modded saves visible, so StartOnSave grabs one of them
+  # (missing-content modal, never reaches SkytestBase) — the exact #13 bug. die() leaves
+  # the flag set, so deisolate_saves (run by stop/normal/play) still restores the ini.
+  set_ini_save_path 'Saves_skytest\' || die "failed to redirect SLocalSavePath in $SKYRIM_INI — refusing to launch (would autoload a real modded save, #13)" "skytest normal"
   say "saves isolated -> Saves_skytest (only $BASE_SAVE_NAME visible to the test)"
 }
 
@@ -431,6 +484,7 @@ cmd_init() {
   fi
 
   # --- commit: the one sensitive step, each part verified ---
+  acquire_lock            # mutex: --commit moves Data + builds profiles (finding #7)
   guard_no_running_game
   [ -L "$DATA" ] && die "already migrated (Data is a symlink). Nothing to do."
   [ -d "$DATA" ] || die "Data is not a real directory; aborting."
@@ -645,11 +699,12 @@ cmd_replay() {
   [ "$script" = "-" ] || script="$(realpath "$script")"
 
   # --dry-run: print the normalized plan and exit. No boot, no profile mutation (the
-  # parser is a pure lint), so the live Data symlink is never touched.
+  # parser is a pure lint), so the live Data symlink is never touched — NO lock taken.
   if [ -n "$dryrun" ]; then replay_parse "$script"; return $?; fi
 
   [ -n "$mod" ] || usage_err "replay: missing <mod>" "$usage"
 
+  acquire_lock            # mutex: from here replay builds/parks the test profile (finding #7)
   local brc=0; _boot_test_session "$mod" "$deps" "$backend" || brc=$?   # || so set -e ignores 1/10
   [ "$brc" = 10 ] && return 0
   if [ "$brc" != 0 ]; then
@@ -681,7 +736,16 @@ cmd_drive() {
 }
 cmd_stop() {
   gs_session_alive || die "no live test session to stop" "skytest status"
-  gs_stop || true                      # gs_stop warns on its own stderr if a straggler survived
+  # Capture gs_stop's rc: it returns non-zero when a process from the test session
+  # survived the kill (the gamescope leader OR its wine/SkyrimSE.exe child). If ANY
+  # straggler is still alive we must NOT swap Data -> full — that surviving game would
+  # then read its SKSE plugins from 'full' while it loaded from 'test' (the cross-profile
+  # crash). Leave Data on the test profile and bail loudly so the user can kill the pid.
+  local rc=0; gs_stop || rc=$?
+  if [ "$rc" != 0 ]; then
+    local p; p="$(running_game_pids | head -1)"
+    die "a game process from the test profile is still alive${p:+ (pid $p)} — Data left on the test profile (NOT swapped to full). Kill it, then run: skytest normal" "kill ${p:-<pid>}; skytest normal"
+  fi
   point_data full
   restore_plugins
   deisolate_saves
@@ -730,6 +794,9 @@ cmd_setup_save() {
 }
 
 cmd_normal() {
+  # Orphan recovery: if an uninstall was interrupted (Data absent, FULL present), finish
+  # the move instead of misreporting "already normal" on the `[ ! -L ]` branch below.
+  if data_is_orphaned; then recover_orphaned_data; rm -rf "$VANILLA" "$TEST"; restore_plugins; deisolate_saves; say "Data → original (recovered)"; return 0; fi
   if [ ! -L "$DATA" ]; then say "already normal — Data is the real directory."; return 0; fi
   guard_no_live_session   # forcing Data -> full under a live test session = cross-profile crash
   point_data full; restore_plugins; deisolate_saves; say "Data → full"
@@ -748,6 +815,7 @@ cmd_play() {
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then say "would launch full modded game (NO_LAUNCH set)"; return 0; fi
   say "launching full modded game via the fast direct path..."
   skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
+  exec 9>&-                        # release the cross-run lock: the game would inherit fd 9 across exec and hold it for the whole session
   exec "$PROTON" run "$LOADER"     # blocking, no gamescope — the daily-driver fast path
 }
 
@@ -786,8 +854,14 @@ cmd_playtest() {
 
 cmd_status() {
   local json=""; [ "${1:-}" = "--json" ] && json=1
-  local migrated tgt base hf hv ht sess_pid="" iso
-  if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")"); else migrated=0; tgt=""; fi
+  # 3-state, not 2: an interrupted uninstall leaves Data ABSENT (neither symlink nor real
+  # dir) with the real files orphaned in .profiles/full. Report that distinctly instead of
+  # the misleading "not migrated (Data is the original real directory)". Status is read-only
+  # — it only WARNS with the recovery command (cmd_normal/uninstall do the actual fix).
+  local migrated tgt base hf hv ht sess_pid="" iso orphaned=0
+  if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")")
+  elif data_is_orphaned; then migrated=0; tgt="orphaned"; orphaned=1
+  else migrated=0; tgt=""; fi
   base_save_exists && base=1 || base=0
   [ -f "$SAVES_ISO_FLAG" ] && iso=1 || iso=0
   [ -d "$FULL" ]    && hf=1 || hf=0
@@ -822,6 +896,12 @@ cmd_status() {
     fi
     echo "  skytest test <mod>        start a drivable test session"
     echo "  skytest play              launch the full modded game"
+  elif [ "$orphaned" = 1 ]; then
+    printf '%-10s ORPHANED — Data is MISSING but %s exists (an uninstall was interrupted)\n' state "$FULL"
+    echo
+    echo "Next steps (Data must be restored before launching):"
+    echo "  skytest uninstall         complete the interrupted uninstall (restore original Data/)"
+    echo "  skytest normal            same recovery, keeping the profile scheme"
   else
     printf '%-10s not migrated (Data is the original real directory)\n' state
     echo
@@ -832,6 +912,9 @@ cmd_status() {
 }
 
 cmd_uninstall() {
+  # Orphan recovery first: a prior uninstall killed between `rm Data` and `mv full Data`
+  # leaves Data absent + FULL present. Finish that move, then fall through to clean up.
+  if data_is_orphaned; then recover_orphaned_data; rm -rf "$VANILLA" "$TEST"; restore_plugins; deisolate_saves; say "reverted: original Data/ restored, profiles removed."; return 0; fi
   if [ ! -L "$DATA" ]; then say "already uninstalled — Data is the original real directory."; return 0; fi
   guard_no_live_session   # uninstall mv's FULL back over Data — same unpark hazard
   guard_no_running_game
@@ -933,8 +1016,9 @@ and live for probing. The session stays up on success AND on a step failure (the
   --dry-run    print the normalized step plan and exit (a lint; no boot, no profile change)
 .steps verbs: exec <console> | tap <key> | key <k…> | hold <LMB|RMB|key> <dur|until:C> |
               wait <dur|until:C> | shot [name].   Gates: until:inworld, until:menu:<Name>.
-NOTE: console `exec` currently faults in the test session (compiler subsystem absent) — see
-the README's replay section + docs/plans/skytest-replay-handoff.md.
+NOTE: console `exec` faults on game 1.6.1170 — this CommonLib build mis-binds CompileAndRun
+(stale Address Library id, older than the runtime; would fault windowed too). Stage via
+direct-call probe commands instead. Pinned in skytest/docs/headless-findings.md #18.
 Examples:
   skytest replay mods/GhostAllies/build/GhostAllies.dll smoke.steps --headless
   skytest replay --dry-run skytest/examples/format-demo.steps
@@ -1024,6 +1108,18 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 case "${1:-}" in
   status|init|setup-save|test|replay|ready|shot|drive|stop|play|playtest|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
+esac
+
+# Mutex (finding #7): take the cross-invocation lock for verbs that mutate a profile, swap
+# Data, or write the pidfile. Read-only verbs (status/ready/shot/drive) skip it. init and
+# replay are conditional — `init --commit` mutates but bare `init` is a preview, and
+# `replay --dry-run` is a pure lint — so THEY acquire_lock internally at the mutation point,
+# not here.
+case "${1:-}" in
+  setup-save|test|stop|play|playtest|normal|uninstall) acquire_lock ;;
+  ""|status|init|replay|ready|shot|drive) ;;  # read-only (init/replay self-lock at mutation)
+  -*) ;;  # stray unknown option — usage_err in the next block, no lock needed
+  *)  acquire_lock ;;  # bare positional = mod-path shortcut for `test` (mutating)
 esac
 
 case "${1:-}" in

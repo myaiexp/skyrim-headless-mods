@@ -70,7 +70,17 @@ for (var i = 3; i < args.Length; i++)
 }
 var fullName = fullNameArg ?? questEdid;
 
-var modKey = ModKey.FromNameAndExtension(System.IO.Path.GetFileName(outPath));
+ModKey modKey;
+try
+{
+    modKey = ModKey.FromNameAndExtension(System.IO.Path.GetFileName(outPath));
+}
+catch (System.ArgumentException)
+{
+    System.Console.Error.WriteLine(
+        $"error: '{outPath}' lacks a recognized plugin extension (.esp, .esm, or .esl)");
+    return 1;
+}
 var mod = new SkyrimMod(modKey, SkyrimRelease.SkyrimSE);
 
 var quest = new Quest(mod.GetNextFormKey(), SkyrimRelease.SkyrimSE)

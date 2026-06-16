@@ -31,17 +31,35 @@ EIDRIVER="$SCRIPT_DIR/eidriver/eidriver"
 
 # --- session liveness --------------------------------------------------------
 
-# True iff GS_PIDFILE holds a live pid whose /proc cmdline is gamescope. The
+# True iff GS_PIDFILE holds a live pid that is the real gamescope EXECUTABLE. The
 # pidfile-not-cmdline-grep discipline (finding #11): `pgrep -f gamescope` matches
-# any process whose argv contains that word, including this very script. Shared by
-# the launch guard, status, shot, and stop.
+# any process whose argv contains that word, including this very script. Even the
+# old narrower `grep -q gamescope` over /proc/<pid>/cmdline matched the launcher
+# bash shell — whose argv is the inner-shell script TEXT containing "gamescope" —
+# in the window BEFORE its `exec gamescope` ran (and would falsely confirm a corpse
+# whose pid got reused by a same-named shell). Match argv[0] (first NUL-delimited
+# field) instead, and prefer the exact exe path via /proc/<pid>/exe when resolvable.
+# Shared by the launch guard, status, shot, and stop.
 gs_session_alive() {
   local pid
   [ -s "$GS_PIDFILE" ] || return 1
   read -r pid < "$GS_PIDFILE" || return 1
   [ -n "$pid" ] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
-  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q gamescope
+  local gs_bin exe argv0
+  gs_bin="$(command -v gamescope 2>/dev/null || true)"
+  exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+  if [ -n "$exe" ]; then
+    # Strip a kernel " (deleted)" suffix (gamescope upgraded mid-session).
+    exe="${exe% (deleted)}"
+    [ -n "$gs_bin" ] && [ "$exe" = "$gs_bin" ] && return 0
+    [ "$(basename "$exe")" = gamescope ] && return 0
+    return 1
+  fi
+  # /proc/<pid>/exe unreadable (e.g. permissions): fall back to argv[0] only — the
+  # FIRST NUL-delimited cmdline field, never an argv substring (which catches the shell).
+  argv0="$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -1 || true)"
+  [ "$(basename "$argv0")" = gamescope ]
 }
 
 # Fast-fail for the readiness poll: pidfile present but its pid dead => the session
@@ -79,13 +97,15 @@ gs_launch() {
   # useless for a pidfile (finding #11). Run an inner shell that records its own pid
   # then `exec`s gamescope: the pid survives the exec, so $$ here IS the compositor
   # (and the SIGUSR2 / session-kill target). Positionals sidestep quoting the
-  # space-bearing PROTON/SKYDIR paths.
+  # space-bearing PROTON/SKYDIR paths. `9>&-` closes the cross-run lock fd (skytest
+  # acquire_lock) in the detached child: without it the live session inherits the flock
+  # and the next `skytest stop`/`test`/`drive` would deadlock on its own session's lock.
   # shellcheck disable=SC2016  # $$/$1.. MUST stay literal — they expand in the inner shell
   setsid bash -c '
       echo "$$" > "$1"
       exec gamescope --backend "$2" -W "$3" -H "$4" -- "$5" run "$6"
   ' _ "$GS_PIDFILE" "$backend" "$GS_WIDTH" "$GS_HEIGHT" "$PROTON" "$LOADER" \
-      > "$GS_LOG" 2>&1 < /dev/null &
+      > "$GS_LOG" 2>&1 < /dev/null 9>&- &
   disown
 
   local _i
@@ -282,15 +302,24 @@ gs_stop() {
   sleep 1
 
   # Liveness re-check without a self-matching cmdline grep (finding #11): targeted
-  # mode tests the exact pid; pattern mode pgreps but drops our own shell + parent.
+  # mode must confirm BOTH the gamescope leader pid AND the actual game child are gone.
+  # The leader (gamescope) can die while a wine/SkyrimSE.exe child lives on in the same
+  # session — and cmd_stop swaps Data -> full on a clean return, so a surviving child
+  # would then read SKSE plugins from the WRONG profile. So check the whole session:
+  # any process still carrying SID == the session pid means a straggler (the game child)
+  # survived. (kill -9 -- -PGID + the per-pid sweep above should have cleared it; if not,
+  # report it — Data must NOT be swapped.) Pattern mode pgreps but drops our shell+parent.
   local alive=""
   if [ -n "$pid" ]; then
-    kill -0 "$pid" 2>/dev/null && alive=1 || alive=""
+    kill -0 "$pid" 2>/dev/null && alive="$pid"
+    if [ -z "$alive" ]; then
+      alive="$(ps -e -o pid=,sid= | awk -v s="$pid" '$2==s {print $1; exit}')"
+    fi
   else
     alive="$(pgrep -f 'gamescope --backend' | grep -vw "$$" | grep -vw "${PPID:-0}" | head -1 || true)"
   fi
   if [ -n "$alive" ]; then
-    printf 'skytest: WARNING: gamescope test session still alive after stop (%s).\n' "$mode" >&2
+    printf 'skytest: WARNING: gamescope test session still alive after stop (%s, straggler pid %s).\n' "$mode" "$alive" >&2
     return 1
   fi
   say "test session stopped ($mode)."

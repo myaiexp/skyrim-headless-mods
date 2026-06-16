@@ -33,7 +33,11 @@ require_key() { [ -n "${NEXUS_API_KEY:-}" ] || \
 # http_get <path>  -> sets HTTP_CODE, BODY, RL_DAILY, RL_HOURLY
 http_get() {
   local raw
-  raw=$(xh --ignore-stdin --print=hb GET "$BASE$1" "apikey:${NEXUS_API_KEY:-}" "accept:application/json" 2>/dev/null)
+  # Pass the apikey OFF the command line: HTTPie/xh's `header:@file` reads the
+  # value from a path, and a process substitution feeds it via a pipe (no argv
+  # element, no on-disk temp file). The key flows through the `printf` *builtin*,
+  # so it never lands in any external process's /proc/<pid>/cmdline either.
+  raw=$(xh --ignore-stdin --print=hb GET "$BASE$1" apikey:@<(printf '%s' "${NEXUS_API_KEY:-}") "accept:application/json" 2>/dev/null)
   raw=${raw//$'\r'/}
   HTTP_CODE=$(printf '%s\n' "$raw" | head -1 | awk '{print $2}')
   RL_DAILY=$(printf      '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-daily-remaining"{print $2; exit}')

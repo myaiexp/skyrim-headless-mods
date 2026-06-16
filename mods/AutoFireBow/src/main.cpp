@@ -88,6 +88,7 @@ namespace
 		g_injectingSynthetic = true;
 		idm->SendEvent(&head);
 		g_injectingSynthetic = false;
+		be->~ButtonEvent();
 		RE::free(be);
 	}
 

@@ -176,7 +176,7 @@ Behavior:
 
 **Test Cases (compile assertions):**
 ```bash
-cd /home/mse/Projects/skyrim-headless-mods
+cd ~/Projects/skyrim-headless-mods
 tools/compile-papyrus.sh AutoFireBow    mods/AutoFireBow/src/papyrus /tmp/afb-pex
 tools/compile-papyrus.sh AutoFireBowMCM mods/AutoFireBow/src/papyrus /tmp/afb-pex
 # both must exit 0 and produce the .pex:

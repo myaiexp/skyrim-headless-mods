@@ -73,9 +73,9 @@ gamescope backend by absorbing the five headless scripts.
   `launch_and_hold` must run it without replacing its own shell so it can keep polling. The exact
   decomposition (function vs vars) is the implementer's call — the contract is: one source of the env +
   command, no internal exec.
-- Path standardization: one canonical `STEAM` base = `/home/mse/.local/share/Steam` (where Proton +
+- Path standardization: one canonical `STEAM` base = `~/.local/share/Steam` (where Proton +
   `launch-skse.sh` already point); derive `SKYDIR`, `PROFILES`, `PREFIX`, `SAVES_DIR`, `PLUGINS_TXT`,
-  `PROTON` from it. Replace the current `/home/mse/.steam/steam/…` `ROOT` usages. Net behavior identical
+  `PROTON` from it. Replace the current `~/.steam/steam/…` `ROOT` usages. Net behavior identical
   (symlinked same target); the point is one base path, no dual scheme.
 - `source "$SCRIPT_DIR/lib/gamescope.sh"` near the top (after `SCRIPT_DIR`/`REPO_ROOT` resolve).
 - Reroute the three launch sites off the external `launch-skse.sh` onto the shared core, **preserving

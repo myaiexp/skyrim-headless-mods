@@ -88,3 +88,20 @@ The Papyrus compiler needs the vanilla + SKSE base API source trees. The third-p
 (Bethesda's vanilla stubs + `.flg`, SKSE's sources) are **not redistributed here**. They're
 git-ignored, and you populate them locally from your own game + SKSE install. See
 `tools/papyrus-sources/README.md`. (SkyUI's MCM base classes are open-source and stay committed.)
+
+## License
+
+This repo's own code is **MIT** (see [`LICENSE`](LICENSE)). It vendors a few third-party assets that
+keep their own separate terms and credits:
+
+- **nlohmann/json** — MIT (header-only JSON, used by the SKSE C++ tier).
+- **SkyUI MCM sources** — by the SkyUI team; the open-source MCM base classes, redistributed under
+  their terms.
+- **Start On Save** ([Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/56795)) — by
+  **powerofthree**, bundled in `skytest/base-skse/` by permission (powerofthree's permissive
+  reuse-with-credit terms).
+- **DBVO `dialoguemenu.swf` / `.as`** — by **MathiewMay** (Dragonborn Voice Over), recompiled and
+  redistributed with the author's permission. See `mods/DBVODialogueTweaks/README.md`.
+
+All other Bethesda/SKSE files the toolchain needs (vanilla stubs, `.flg`, the CK Papyrus compiler)
+are **not** redistributed here: they are git-ignored and populated locally from your own install.

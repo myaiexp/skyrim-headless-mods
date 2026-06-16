@@ -9,11 +9,13 @@
 #   shot [name]         checkpoint screenshot of the reached state
 # (also wired, not shown: key <k…>, hold <LMB|RMB|key> <dur|until:COND>)
 #
-# IMPORTANT — `exec <console>` is intentionally absent. Console exec (CompileAndRun)
-# FAULTS in any gamescope test session (headless AND visible): the script-compiler
-# subsystem is absent. So world-staging a console command would do (coc / placeatme /
-# addspell) does NOT work via `exec` here — it must go through direct-call SkytestProbe
-# commands, added per-need. See docs/plans/skytest-replay-handoff.md + headless-findings.md.
+# IMPORTANT — `exec <console>` is intentionally absent. Programmatic exec (CompileAndRun)
+# is mis-bound on game 1.6.1170: this CommonLib build predates that runtime, so the bound
+# Address Library id is stale and the call lands on the wrong function and AVs (pinned in
+# docs/headless-findings.md #18 — not a headless limit; would fault windowed too). So
+# world-staging a console command would do (coc / placeatme / addspell) does NOT work via
+# `exec` here — it must go through direct-call SkytestProbe commands, added per-need. See
+# docs/plans/skytest-replay-handoff.md + headless-findings.md.
 #
 # Menu choice: we open the dev Console (tilde) because from the qasmoke base save (an
 # interior test cell) Favorites/Map render unreliably, while Console always opens. Once an

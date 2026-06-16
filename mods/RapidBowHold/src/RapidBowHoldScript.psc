@@ -60,6 +60,7 @@ Event OnControlDown(string control)
         if PlayerRef && IsBowEquipped() && !PlayerRef.IsWeaponDrawn()
             PlayerRef.DrawWeapon()
         endif
+        lastSafetyTime = Utility.GetCurrentRealTime()
         RegisterForSingleUpdate(safetyMaxDrawSeconds)
     endif
 EndEvent
@@ -86,12 +87,18 @@ Event OnAnimationEvent(ObjectReference akSource, string asEventName)
 EndEvent
 
 Event OnUpdate()
-    if isRapid && IsValidRapidState()
-        float now = Utility.GetCurrentRealTime()
-        if (now - lastSafetyTime) > (safetyMaxDrawSeconds * 0.9)
-            Debug.Trace("[RBH] SAFETY fired (full-draw event missed)")
-            lastSafetyTime = now
-            FireAndRestart()
+    if isRapid
+        ; Re-arm the self-perpetuating timer whenever the hold is still active, even if the
+        ; state is transiently invalid (menu open, mounted, sheathed) -- otherwise a single
+        ; bad poll would kill the timer for the rest of the hold. The fire decision stays
+        ; gated on a valid state + elapsed time.
+        if IsValidRapidState()
+            float now = Utility.GetCurrentRealTime()
+            if (now - lastSafetyTime) > (safetyMaxDrawSeconds * 0.9)
+                Debug.Trace("[RBH] SAFETY fired (full-draw event missed)")
+                lastSafetyTime = now
+                FireAndRestart()
+            endif
         endif
         RegisterForSingleUpdate(safetyMaxDrawSeconds)
     endif
@@ -102,6 +109,9 @@ EndEvent
 ; ---------------------------------------------------------------------------
 
 function FireAndRestart()
+    ; Stamp the draw cycle so the safety timer measures elapsed time since the last actual
+    ; fire (not since save load) -- otherwise the first poll always trips the safety.
+    lastSafetyTime = Utility.GetCurrentRealTime()
     Debug.SendAnimationEvent(PlayerRef, "attackRelease")
     Utility.Wait(releaseToRedraw)
     Debug.SendAnimationEvent(PlayerRef, "bowAttackStart")

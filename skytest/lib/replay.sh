@@ -51,7 +51,13 @@ _replay_parse_stream() {
     case "$verb" in
       exec)
         # the ENTIRE rest of the line, verbatim — console commands contain spaces.
-        printf 'STEP exec line=%s\n' "$rest"
+        # A bare `exec` (empty rest) is a parse error like tap/key/hold/wait, so the
+        # --dry-run lint catches it instead of silently sending an empty console command.
+        if [ -z "$rest" ]; then
+          printf "replay: line %d: 'exec' needs a console command\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP exec line=%s\n' "$rest"
+        fi
         ;;
       tap)
         read -r key _ <<<"$rest"                  # one key (first token)
@@ -189,7 +195,11 @@ _json_escape() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s'
 _replay_sleep_dur() {
   local d="$1" secs
   case "$d" in
-    *ms) secs="$(awk "BEGIN{printf \"%.3f\", ${d%ms}/1000}")" ;;
+    # Pass the ms count as awk DATA (-v), never spliced into the program text: a malformed
+    # token can't inject code, and the BEGIN guard rejects a non-numeric `ms` with a clean
+    # non-zero return instead of an awk syntax error.
+    *ms) secs="$(awk -v ms="${d%ms}" 'BEGIN{if(ms+0!=ms)exit 1; printf "%.3f", ms/1000}')" \
+           || { printf "replay: bad duration '%s' (use Nms or Ns)\n" "$d" >&2; return 2; } ;;
     *s)  secs="${d%s}" ;;
     *)   printf "replay: bad duration '%s' (use Nms or Ns)\n" "$d" >&2; return 2 ;;
   esac

@@ -28,6 +28,7 @@ skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [sca
 skytest drive <cmd> …          # inject input (tap|seq|key|click|abs|rel|raw)
 skytest stop                   # tear down the session + restore Data → full
 skytest play                   # launch the FULL modded game over the fast direct path (blocking)
+skytest playtest [--headless]  # FULL modded profile under a drivable gamescope session (no swap/inject)
 skytest status                 # show profile + live test session (also the no-arg default)
 skytest normal                 # force Data → full (recover after a crash)
 skytest uninstall              # revert Data to the original real directory
@@ -209,6 +210,10 @@ Start On Save lives **only in the test profile**, never in vanilla, so `setup-sa
 menu. If no `SkytestBase.ess` exists yet, `skytest <mod>` just launches to the menu (no autoload).
 The DLL + ini template live in `base-skse/`; the source archive is in the managing repo's `01-core/`.
 
+> [**Start On Save**](https://www.nexusmods.com/skyrimspecialedition/mods/56795) is by
+> **powerofthree**, redistributed here under its permissive terms (powerofthree's mods may be
+> reused/redistributed with credit). All credit for Start On Save goes to powerofthree.
+
 **SkytestProbe (runtime debug toolkit).** `skytest <mod>` also injects **SkytestProbe** into the
 test profile **unconditionally** (DLL-only/Address-Library-only, like Start On Save but with no
 save condition; ini copied verbatim). It's a pre-compiled probe plugin: write JSON commands to
@@ -217,8 +222,9 @@ in the same dir: arm engine event sinks (`trace`), dump an actor's state incl. c
 (`dump`), `watch` an actor value, run a console line (`exec`), `anim-trace`, `marker`, `status`;
 F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
 mods, and it is what `skytest ready` polls. Passive until armed, never crashes on bad input. Built
-from `../mods/SkytestProbe` (`./build.sh`); skytest reads the DLL + `SkytestProbe.ini` straight from
-that build output: the canonical copy, no vendored duplicate. Contract in
+from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that build output
+(`build/SkytestProbe.dll`) and the **ini** from the source dir (`SkytestProbe.ini`, alongside
+`build.sh`): the canonical copies, no vendored duplicate. Contract in
 `../docs/plans/skytest-probe-design.md`. skytest degrades gracefully if the DLL hasn't been built.
 
 ## Notes

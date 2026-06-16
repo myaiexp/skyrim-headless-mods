@@ -167,7 +167,7 @@ skytest/
 
 ## Path cleanup (folded into the merge)
 
-`skytest` uses `/home/mse/.steam/steam/…`; `headless/` uses `/home/mse/.local/share/Steam/…`. They
+`skytest` uses `~/.steam/steam/…`; `headless/` uses `~/.local/share/Steam/…`. They
 resolve to the same install via symlink, but the merged tool standardizes on **one** set —
 `.local/share/Steam`, which is where Proton and `launch-skse.sh` already point. Low-risk (same
 target), removes the dual-path confusion. Confirm the EIS socket path
