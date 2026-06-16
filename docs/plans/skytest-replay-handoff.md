@@ -141,6 +141,36 @@ clears it too. Done; `docs/ideas.md` item closed.
 
 ---
 
+## RESOLVED 4 — `hold <key>` double-resolved the keycode (silent no-op) — FIXED 2026-06-16
+
+> Found in the 2026-06-16 **replay audit** pass. `hold <LMB|RMB>` was fine; `hold <KEY>` (any
+> keyboard key — `hold tilde …`, `hold w …`) **never pressed the key**, and reported the step OK.
+> The `tap`/`key` key-name guard (RESOLVED-adjacent, "Next steps" item 2) did **not** cover it —
+> `hold` bypassed the guard by pre-resolving. **Fixed** in `_replay_step_hold` (lib/replay.sh).
+
+**Root cause — double resolution.** For a keyboard key, `_replay_step_hold` resolved the name to a
+keycode itself (`kc="$(gs_keycode "$target")"`) and then called `gs_drive key "$kc" 1`. But
+`gs_drive`'s `key` subcommand **also** resolves its first arg name→code (`gs_keycode "$1"`), exactly
+like `tap`/`seq`. So it re-ran `gs_keycode 18` → `unknown key: 18` → rc 2, **before** the eidriver
+call. The press (and release) silently no-op'd. Worse, `_replay_step_hold` did **not** check the
+press rc, so the failure was swallowed: with the gate/sleep succeeding, the step returned 0 and
+`replay` logged `step N ok: hold` while the key was never held. (`LMB`/`RMB` escaped this because
+they use the `btn` subcommand, which takes raw 272/273 codes and never re-resolves.)
+
+The unit harness **masked** it: it stubs `gs_drive` (so the second resolution never runs) and the
+assertion baked in the pre-resolved code (`drive key 18 1`). `hold` was also "wired, not shown" in
+`format-demo.steps` and never run live before this audit — so the bug shipped unobserved.
+
+**Fix.** Pass the key **name** to `gs_drive key` (single resolution, same as `tap`/`seq`), and
+**check the press rc** so a bad name / dead socket aborts *before* the gate instead of burning the
+timeout. Verified live (headless): `hold tilde until:menu:Console` → press lands, Console opens, gate
+satisfies in ~1 poll (no 180 s hang), release sent, `shot` shows the console-open warning. Repro
+before the fix: `skytest drive key e 1` → ok; `skytest drive key 18 1` → `unknown key: 18` (the exact
+internal call `hold` made). Unit test updated to assert the **name** is emitted + a new case locks in
+the press-failure abort; `bash skytest/lib/replay.test.sh` → 27 passed.
+
+---
+
 ## Gotchas for the next session
 
 - **`_boot_test_session` cd's to `$SKYDIR`** (via `gs_launch`→`skse_env_export`) before
@@ -167,10 +197,11 @@ Both "blockers" are decided (see above) — what remains is per-need build-out:
    probe commands (+ exterior fixture for a Map demo), then route replay staging to them (or add a
    `stage` step). Per-need, not speculative.
 2. ~~Truncate `commands.jsonl` at boot.~~ **DONE** — `gs_reset_io` clears `commands.jsonl` +
-   `trace.jsonl` before `gs_launch` (see RESOLVED 3). ~~Make `tap`/`key` validate key names.~~
-   **DONE** — `gs_drive` now guards `gs_keycode`'s rc (a typo'd key aborts `input failed` instead
-   of silently no-op'ing). Optional remainder: validate key names at *parse* time (`--dry-run`
-   catch) — deferred, would couple the pure parser to `gs_keycode` (`docs/ideas.md`).
+   `trace.jsonl` before `gs_launch` (see RESOLVED 3). ~~Make `tap`/`key`/`hold` validate key
+   names.~~ **DONE** — `gs_drive` guards `gs_keycode`'s rc for `tap`/`seq`/`key`, and `hold` now
+   passes the name through (no pre-resolution) + checks the press rc (RESOLVED 4). Optional
+   remainder: validate key names at *parse* time (`--dry-run` catch) — deferred, would couple the
+   pure parser to `gs_keycode` (`docs/ideas.md`).
 3. The exec-caveat wording in the docs (README replay section + caveat box, finding #17,
    probe-design as-built, this handoff) was corrected 2026-06-16 to the direct-call/drive model —
    keep new docs consistent with it.

@@ -145,11 +145,23 @@ ack_i="$(index_of 'ack exec-1')"; tap_i="$(index_of 'drive tap e')"
 check "exec acked before next input" 1 \
   "$([ "$ack_i" -ge 0 ] && [ "$tap_i" -gt "$ack_i" ] && echo 1 || echo 0)"
 
-# a non-LMB/RMB hold target resolves through gs_keycode to a key hold/release
+# a non-LMB/RMB hold target passes the key NAME to gs_drive (NOT a pre-resolved keycode):
+# gs_drive resolves+validates the name itself, exactly like tap/seq. Pre-resolving here
+# double-resolves — gs_drive would re-run gs_keycode on "18" ("unknown key: 18") and the
+# press would silently no-op. So the emitted stream must carry the name, not the code.
 EMITTED=(); GATE_RC=0
-gs_keycode() { case "$1" in e) echo 18 ;; *) return 2 ;; esac; }   # local stub for this case
 replay_run - <<<'hold e 200ms' >/dev/null 2>&1
-check "hold key press/release" 'drive key 18 1|drive key 18 0' "$(emitted_str)"
+check "hold key passes name not code" 'drive key e 1|drive key e 0' "$(emitted_str)"
+
+# a press that FAILS (bad key name / dead socket) aborts BEFORE the gate and is non-zero —
+# it must not be swallowed (a gate on a key that never went down would burn the timeout).
+# Stub gs_drive to fail the press; the gate must NOT run and replay_run must be non-zero.
+EMITTED=(); GATE_RC=0
+gs_drive() { EMITTED+=("drive $*"); return 2; }                    # press fails
+replay_run - <<<'hold e until:inworld' >/dev/null 2>&1; rc=$?
+check_rc "hold press failure -> non-zero"   2 "$rc"
+check    "hold press failure skips the gate" 'drive key e 1' "$(emitted_str)"
+gs_drive() { EMITTED+=("drive $*"); }                             # restore the passing stub
 
 printf '\nreplay.test.sh: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

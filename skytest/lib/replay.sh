@@ -222,19 +222,26 @@ _replay_step_exec() {
 # gate's exit code (0 satisfied, non-zero -> caller aborts after the release).
 _replay_step_hold() {
   local target="$1" gate="$2" gate_timeout="$3"
-  local press release kc rc=0
+  local press release rc=0
   case "$target" in
     LMB) press=(btn 272 1); release=(btn 272 0) ;;
     RMB) press=(btn 273 1); release=(btn 273 0) ;;
-    *)   kc="$(gs_keycode "$target")" || return 2
-         press=(key "$kc" 1); release=(key "$kc" 0) ;;
+    # A keyboard key: pass the NAME to `gs_drive key`, which resolves+validates it (same
+    # as tap/seq). Pre-resolving to a keycode HERE double-resolves — gs_drive then re-runs
+    # gs_keycode on the numeric code, which is not a known key name ("unknown key: 18"),
+    # so the press silently no-ops and the held key never lands. Names only.
+    *)   press=(key "$target" 1); release=(key "$target" 0) ;;
   esac
-  gs_drive "${press[@]}"
+  # Abort BEFORE the gate if the press itself fails (bad key name / dead EIS socket): a
+  # gate waiting on a key that never went down would just burn the whole timeout. Nothing
+  # is held on a failed press, so no release is owed. rc unchecked on press would swallow
+  # this — the exact footgun gs_drive's gs_keycode guard exists to prevent (tap/seq).
+  gs_drive "${press[@]}" || return 2
   case "$gate" in
     until:*) replay_wait_gate "${gate#until:}" "$gate_timeout" || rc=$? ;;
     *)       _replay_sleep_dur "$gate" || rc=$? ;;
   esac
-  gs_drive "${release[@]}"
+  gs_drive "${release[@]}"   # best-effort; the key IS down, so always attempt the release
   return "$rc"
 }
 
