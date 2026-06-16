@@ -638,6 +638,9 @@ cmd_replay() {
 
   script="$(_replay_resolve_script "$script" "$mod")"
   [ "$script" = "-" ] || [ -e "$script" ] || usage_err "replay: script not found: $script" "$usage"
+  # Absolutize NOW (CWD is still the caller's): _boot_test_session cd's to $SKYDIR before
+  # replay_run reads the script, so a relative path would dangle. ('-' = stdin, left alone.)
+  [ "$script" = "-" ] || script="$(realpath "$script")"
 
   # --dry-run: print the normalized plan and exit. No boot, no profile mutation (the
   # parser is a pure lint), so the live Data symlink is never touched.
