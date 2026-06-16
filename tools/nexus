@@ -36,8 +36,10 @@ http_get() {
   raw=$(xh --ignore-stdin --print=hb GET "$BASE$1" "apikey:${NEXUS_API_KEY:-}" "accept:application/json" 2>/dev/null)
   raw=${raw//$'\r'/}
   HTTP_CODE=$(printf '%s\n' "$raw" | head -1 | awk '{print $2}')
-  RL_DAILY=$(printf  '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-daily-remaining"{print $2; exit}')
-  RL_HOURLY=$(printf '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-hourly-remaining"{print $2; exit}')
+  RL_DAILY=$(printf      '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-daily-remaining"{print $2; exit}')
+  RL_HOURLY=$(printf     '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-hourly-remaining"{print $2; exit}')
+  RL_DAILY_LIM=$(printf  '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-daily-limit"{print $2; exit}')
+  RL_HOURLY_LIM=$(printf '%s\n' "$raw" | awk -F': *' 'tolower($1)=="x-rl-hourly-limit"{print $2; exit}')
   BODY=$(printf '%s\n' "$raw" | awk 'f{print} /^$/{f=1}')
 }
 
@@ -98,7 +100,7 @@ render() {  # $@ = game:id / id tokens
 
   local n=${#IDS[@]} plural=s; [ "$n" -eq 1 ] && plural=
   printf '%d mod%s · %d live · %d not live' "$n" "$plural" "$live" "$notlive"
-  [ -n "${RL_DAILY:-}" ] && printf '          rate %s/2500 daily · %s/100 hourly' "$RL_DAILY" "$RL_HOURLY"
+  [ -n "${RL_DAILY:-}" ] && printf '          rate %s/%s daily · %s/%s hourly' "$RL_DAILY" "${RL_DAILY_LIM:-?}" "$RL_HOURLY" "${RL_HOURLY_LIM:-?}"
   printf '\n'
 
   local -a TR=()
@@ -134,7 +136,7 @@ do_validate() {
   name=$(jq -r '.name // "?"' <<<"$BODY")
   prem=$(jq -r 'if .is_premium then "yes" else "no" end' <<<"$BODY")
   printf 'key OK · user %s · premium %s' "$name" "$prem"
-  [ -n "${RL_DAILY:-}" ] && printf ' · rate %s/2500 daily · %s/100 hourly' "$RL_DAILY" "$RL_HOURLY"
+  [ -n "${RL_DAILY:-}" ] && printf ' · rate %s/%s daily · %s/%s hourly' "$RL_DAILY" "${RL_DAILY_LIM:-?}" "$RL_HOURLY" "${RL_HOURLY_LIM:-?}"
   printf '\n'
 }
 

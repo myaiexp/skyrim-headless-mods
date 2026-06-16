@@ -35,7 +35,7 @@ nexus help
 | --- | --- |
 | REST v1 base | `https://api.nexusmods.com/v1` |
 | Auth header | `apikey: <KEY>` |
-| Rate limit | 2,500 req / 24h, then 100 / h; `429` on exceed. Headers `X-RL-{Daily,Hourly}-Remaining`. |
+| Rate limit | Read live from `X-RL-{Daily,Hourly}-Limit` — **20,000/day + 2,000/h** on a non-premium key (verified 2026-06-16; higher than Nexus's older 2,500/100 docs). `X-RL-*-Remaining` track usage; `429` on exceed. |
 | getMod | `GET /v1/games/{game}/mods/{id}.json` |
 | validate | `GET /v1/users/validate.json` (key check + rate headers) |
 | GraphQL v2 | `https://api.nexusmods.com/v2/graphql` exists but is in-development/unstable — v1 REST is the stable choice for reads. |
@@ -46,15 +46,15 @@ nexus help
 **`status` enum:** `published`, `not_published`, `under_moderation`, `publish_with_game`,
 `hidden`, `removed`, `wastebinned`. **"Live"** = `available == true && status == "published"`.
 
-### Under-review detection (important caveat)
+### Under-review detection (confirmed 2026-06-16)
 
 - A **stranger** querying a not-yet-public mod gets **404** (the API mirrors site visibility).
-- The mod's **owner**, authenticated with their own `apikey`, is *expected* to get **200** with the
-  real `status` (e.g. `under_moderation`) for their own under-review mod — so `nexus status`/`live`
-  on your own key is a real "is it out of review yet" check.
-- This owner-visibility behavior is **inferred, not documented** by Nexus. Verify it empirically
-  against your own under-review mod before trusting it; if the owner also gets 404 while under review,
-  `nexus` will report `not_visible` until it goes public (still a usable signal, just coarser).
+- The mod's **owner**, authenticated with their own `apikey`, gets **200** with the real `status` —
+  **verified**: `nexus status 182628` returned `under_moderation` for the owner while the mod was
+  still in review. So `nexus status`/`live` on your own key is a real "is it out of review yet" check
+  (`live` exits 0 once `status == published && available`).
+- While a mod is under moderation the API **omits `name` (and `summary`)**, so the tool shows `?` for
+  the name until it's published; stats like `endorsement_count` are still returned.
 
 ### No write API
 
