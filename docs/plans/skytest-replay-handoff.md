@@ -116,14 +116,28 @@ OneClickMap/Travel replay needs it (per-need `coc` command + exterior fixture).
 
 ---
 
-## Smaller finding — `commands.jsonl` is never truncated
+## RESOLVED 3 — stale probe IO faked instant readiness (replay broke on the 2nd run) — FIXED 2026-06-16
 
-Every new test session spawns a fresh probe that re-reads `…/SKSE/skytest/commands.jsonl`
-from offset 0, so it **re-runs the entire command history** (was 571 lines after a few test
-runs). Harmless-ish (old `exec`s just re-fault, gates match on `src`/`.ack` with per-run ids)
-but it lags probe responses and pollutes traces. **Fix:** truncate `commands.jsonl` at session
-start (e.g. `: > "$(_skytest_io_dir)/commands.jsonl"` in `_boot_test_session` before
-`gs_launch`, after `mkdir -p` the dir). In `docs/ideas.md`. Not done this session.
+> Found in the 2026-06-16 **test+audit** pass. The "`commands.jsonl` is never truncated /
+> harmless-ish" note below **understated it**: the sibling `trace.jsonl` has the *same*
+> never-truncated lifetime, and that one was **not** harmless — it broke `skytest replay`
+> (and `test` readiness, and any `until:inworld` gate) on every run after a session that ended
+> in-world. **Fixed** by `gs_reset_io` (clears both files in `_boot_test_session` before
+> `gs_launch`). Verified: replay went from a 0.129s false boot → a real 27.97s boot
+> (`booting → main-menu → in-world`), all 4 `format-demo.steps` steps green, `rc=0`.
+
+**Root cause.** `gs_wait_ready` (and `replay_wait_gate` for `until:inworld`) `grep … | tail -1`
+the last `"src":"status"` line in `trace.jsonl`. The probe only truncates `trace.jsonl` when it
+*loads* (rotates it to `trace.prev.jsonl`, `trace.cpp:56/62`) — seconds into boot. The readiness
+poll runs *immediately* after `gs_launch`, in the window **before** the probe loads, so it reads
+the **prior** session's last line. That line is `inWorld:true` whenever the previous session ended
+in-world (which `replay`/`test` leave it doing). Result: readiness returns instantly, replay races
+ahead, and `tap` fails `failed to connect to EIS socket` because the compositor's EIS server isn't
+up yet. Smoking gun: `trace.prev.jsonl` ended `{"inWorld":true,"mainMenu":false,"is3D":true}`.
+
+**Also (the original, milder half):** a fresh probe re-reads `commands.jsonl` from offset 0 and
+re-runs the **entire** command history (re-faulting old `exec`s, flooding the new trace). Same fix
+clears it too. Done; `docs/ideas.md` item closed.
 
 ---
 
@@ -152,7 +166,9 @@ Both "blockers" are decided (see above) — what remains is per-need build-out:
 1. When a GhostAllies / OneClickMap replay needs it: add `coc`/`placeatme`/`addspell` direct-call
    probe commands (+ exterior fixture for a Map demo), then route replay staging to them (or add a
    `stage` step). Per-need, not speculative.
-2. Truncate `commands.jsonl` at boot (small, do anytime — in `docs/ideas.md`).
+2. ~~Truncate `commands.jsonl` at boot.~~ **DONE** — `gs_reset_io` clears `commands.jsonl` +
+   `trace.jsonl` before `gs_launch` (see RESOLVED 3). What remains here: optionally make
+   `tap`/`key`/`hold` validate key names (a typo'd key silently no-ops today — `docs/ideas.md`).
 3. The exec-caveat wording in the docs (README replay section + caveat box, finding #17,
    probe-design as-built, this handoff) was corrected 2026-06-16 to the direct-call/drive model —
    keep new docs consistent with it.

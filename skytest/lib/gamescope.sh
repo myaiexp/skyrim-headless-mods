@@ -107,6 +107,26 @@ _skytest_io_dir() { printf '%s' "$MYGAMES/SKSE/skytest"; }
 # the poll retries. Callers inject their own unique "id".
 _probe_send() { printf '%s\n' "$1" >> "$(_skytest_io_dir)/commands.jsonl" 2>/dev/null || true; }
 
+# gs_reset_io — clear the probe IO files BEFORE a launch so a new session can never
+# read the PRIOR session's state. Two distinct stale-state bugs, one fix:
+#   trace.jsonl     — gs_wait_ready / replay gates grep the LAST "src":"status" line.
+#                     The probe only truncates trace.jsonl when it LOADS (seconds into
+#                     boot); the readiness poll runs in the window BEFORE that, so it
+#                     matches the prior session's last status. If that was inWorld:true
+#                     (true whenever a session ended in-world), readiness returns INSTANTLY
+#                     — a false positive — and replay drives input before the EIS server
+#                     is up. Clearing it here means "no status line yet" => keep waiting.
+#   commands.jsonl  — a fresh probe re-reads it from offset 0 and re-runs the whole
+#                     history (re-faulting old execs, flooding the new trace).
+# Called by _boot_test_session before gs_launch — guards already ensured no live probe
+# holds these files, so the truncate can't race a writer.
+gs_reset_io() {
+  local dir; dir="$(_skytest_io_dir)"
+  mkdir -p "$dir" 2>/dev/null || true
+  : > "$dir/commands.jsonl" 2>/dev/null || true
+  : > "$dir/trace.jsonl"    2>/dev/null || true
+}
+
 # --- readiness ---------------------------------------------------------------
 
 # gs_wait_ready [timeout=180] — block until the probe reports inWorld:true.

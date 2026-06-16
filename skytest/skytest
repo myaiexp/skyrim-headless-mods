@@ -549,6 +549,7 @@ _boot_test_session() {
   point_data test
   say "Data -> test."
 
+  gs_reset_io   # clear stale probe IO so readiness can't match a prior session's inWorld:true (false-positive boot)
   gs_launch "$backend"
 
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then

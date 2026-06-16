@@ -19,9 +19,19 @@ skytest-replay-handoff.md`. Deferred:
   (interior, no world map), so `tap m` renders black and the `MapMenu` gate is unreliable. An
   exterior save would make a real OneClickTravel-relevant map demo possible — but it changes
   shared test infra (every test autoloads `SkytestBase`), so it's a deliberate call.
-- **Truncate `commands.jsonl` at session start.** A fresh probe re-reads the file from offset 0,
-  so every boot re-runs the entire command history (lags probe responses, pollutes traces).
-  `: > "$(_skytest_io_dir)/commands.jsonl"` in `_boot_test_session` before `gs_launch`.
+- **~~Truncate `commands.jsonl` at session start.~~ DONE (2026-06-16).** Folded into a bigger fix:
+  `gs_reset_io` now clears **both** `commands.jsonl` and `trace.jsonl` in `_boot_test_session`
+  before `gs_launch`. The `trace.jsonl` half fixed a real bug — `gs_wait_ready`/replay gates were
+  matching a **prior** session's last `inWorld:true` status line (the probe only truncates trace on
+  load, after the readiness poll already ran), faking instant readiness and driving replay input
+  before the EIS server was up. See the handoff's "stale-IO readiness" finding.
+- **Validate key names in `tap`/`key`/`hold` steps.** `gs_drive`'s `tap`/`seq`/`key` embed
+  `gs_keycode "$k"` in a command substitution without checking its exit code; an unknown key →
+  empty arg → `eidriver` taps keycode 0 (a silent no-op) yet returns success, so the replay step
+  reports `ok` and a **downstream gate** is what visibly fails — confusing. `hold` already guards
+  (`kc=$(gs_keycode …) || return 2`). Make `tap`/`seq`/`key` do the same so a typo'd key aborts
+  cleanly with `input failed` (or, stronger: validate key names at parse time so `--dry-run` catches
+  them — but that couples the currently-pure parser to `gs_keycode`). Found in the 2026-06-16 audit.
 - **`charged` / `actorcount` gates** (from the design) — not built; add per the first script that
   needs them, each as one `resolve_gate` row + one direct-call probe handler (the `is-menu-open`
   commit is the template).
