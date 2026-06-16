@@ -219,13 +219,6 @@ SkytestProbe.ini`); the committed copy under `skytest/base-skse/` and `build.sh 
   gone, so the build output is the single canonical copy — no tracked binary duplicate.
   (`po3_StartOnSave.{dll,ini.template}` stays vendored in `base-skse/` — genuinely third-party, no
   in-repo source.)
-- **CI-style headless mod check** (was item 4 of the v2 handoff). A thin layer: boot a test profile
-  headless → run a console batch (coc + spawn + assert, via SkytestProbe `exec`) → read `trace.jsonl`
-  → quit, for non-interactive mod smoke tests. **Unblocked once the merge (now DESIGNED, above)
-  lands** — it composes the merge's detached headless launch + `skytest ready`/`exec`/`stop`
-  primitives into one blocking smoke verb (e.g. `skytest smoke <mod> <batch>`). (Per-mod fixture
-  wiring for this is the "Per-mod fixture autoexec convention" item under the 2026-06-11 SkytestProbe
-  section.)
 
 ## 2026-06-12 — headless+skytest merge follow-ups
 
