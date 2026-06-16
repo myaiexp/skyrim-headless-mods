@@ -235,6 +235,17 @@ Deferred out of the merge design (`docs/plans/headless-skytest-merge-design.md`,
   bolts on without reworking the input path. Pairs with the SKSE ground-truth tie-in (probe `status`
   as the per-step sync gate instead of fixed sleeps).
 
+  > **DESIGNED 2026-06-16 — the step-file half** (`docs/plans/skytest-replay-design.md`). The
+  > CC-authored step-script format + `skytest replay <mod> <script>` interpreter is designed:
+  > line-based `.steps` files (`exec`/`tap`/`key`/`hold`/`wait`/`shot`), probe-gated `until:` sync
+  > (reuses `IsInWorld`; `menu`/`charged`/`actorcount` gates added to SkytestProbe **permanently**
+  > as scripts first need them — no speculative vocabulary), replay reaches a target state and leaves
+  > the session detached for live probing (no baked-in verdict). **Still deferred:** _raw
+  > human-input capture_ — a person physically plays, raw libei events recorded + wall-clock
+  > re-synced; this is the camera/pointer-motion path, its own harder feature (the designed half is
+  > discrete input only, CC-driven). A _tee-recorder_ (auto-log my `drive`/`exec` into a draft) was
+  > considered and **dropped** — rationale in the design doc's "author, not capture" section.
+
 ## 2026-06-14 — SkytestProbe MCM reveal/drive
 
 State: **reveal v1 designed** (`docs/plans/skytest-probe-mcm-reveal-design.md`) — read-only `mcm-list`
