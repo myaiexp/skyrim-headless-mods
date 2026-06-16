@@ -1,8 +1,8 @@
-# papyrus-compiler — populate before first compile
+# papyrus-compiler: populate before first compile
 
 This dir holds **Bethesda's Creation Kit Papyrus compiler** (`PapyrusCompiler.exe`,
 `PapyrusAssembler.exe`, `PCompiler.dll`) and its runtime DLLs (Antlr, StringTemplate). It's
-third-party IP, so it's git-ignored — populate it locally from your own install, once.
+third-party IP, so it's git-ignored. Populate it locally from your own install, once.
 
 The compiler ships with the **Creation Kit** (and with many modding tool bundles). Copy the
 contents of the CK's `Papyrus Compiler` folder here:

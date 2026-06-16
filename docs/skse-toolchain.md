@@ -1,22 +1,22 @@
 # The headless SKSE C++ toolchain (tier 2)
 
-How a native **SKSE plugin** (a Windows `.dll`) gets built here entirely on Linux — no
+How a native **SKSE plugin** (a Windows `.dll`) gets built here entirely on Linux: no
 Windows, no Visual Studio, no MSVC, no vcpkg. This is the second tier of headless modding
 (tier 1 = Papyrus, see [papyrus-toolchain.md](papyrus-toolchain.md)); it exists because some engine behaviour
 is unreachable from Papyrus (see [papyrus-limits.md](papyrus-limits.md)).
 
 **Status: working, and shipping a real hook.** `mods/AutoFireBow/` builds a valid SKSE-shaped
 `AutoFireBow.dll` against CommonLibSSE-NG, fully cross-compiled, and it loads in-game. It now
-implements option 1 — a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
+implements option 1: a vtable hook on `ArrowProjectile::GetPowerSpeedMult` that forces full bow
 charge for the player (verified in-game on 1.6.1170). See
 [skse-tier-bringup.md](skse-tier-bringup.md) for the charge → power details.
 
 ## The idea
 
-A SKSE plugin is an x86-64 PE DLL using the MSVC C++ ABI. You don't need MSVC to produce that —
+A SKSE plugin is an x86-64 PE DLL using the MSVC C++ ABI. You don't need MSVC to produce that:
 `clang-cl` (Clang's MSVC-compatible driver) emits MSVC-ABI objects, `lld-link` links them into a
 PE, and the Windows SDK + CRT headers/libs come from `xwin` (which downloads and repacks
-Microsoft's redistributable SDK — no Windows install). CommonLibSSE-NG is pulled and built from
+Microsoft's redistributable SDK, no Windows install). CommonLibSSE-NG is pulled and built from
 source by CMake's FetchContent, so there's no vcpkg either.
 
 ```
@@ -33,7 +33,7 @@ source by CMake's FetchContent, so there's no vcpkg either.
 | Piece                                                        | What                                         | Source                                                                                                                                                                                                         |
 | ------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `clang` / `clang-cl`                                         | compiler driver, MSVC mode                   | system `clang` package (already installed)                                                                                                                                                                     |
-| `lld-link`, `llvm-rc`, `llvm-lib`, `llvm-dlltool`, `llvm-mt` | PE linker + MSVC-style tools                 | `lld` + `llvm` Arch packages, **extracted (no root)** into `~/.local/llvm-extra` — they link against the already-installed `llvm-libs`, so their version **must match** `clang` (here 22.1.5). See note below. |
+| `lld-link`, `llvm-rc`, `llvm-lib`, `llvm-dlltool`, `llvm-mt` | PE linker + MSVC-style tools                 | `lld` + `llvm` Arch packages, **extracted (no root)** into `~/.local/llvm-extra`. They link against the already-installed `llvm-libs`, so their version **must match** `clang` (here 22.1.5). See note below. |
 | `xwin`                                                       | downloads/repacks the MSVC CRT + Windows SDK | prebuilt binary from GitHub releases → `~/.local/bin/xwin`                                                                                                                                                     |
 | Windows SDK + CRT                                            | headers + import libs                        | `xwin splat` → `~/.local/xwin-sdk` (x86_64, desktop variant, ~640 MB)                                                                                                                                          |
 | CommonLibSSE-NG, spdlog, rapidcsv                            | the SKSE library + its deps                  | CMake FetchContent (pinned), built from source                                                                                                                                                                 |
@@ -52,7 +52,7 @@ needs the `liblld*.so` from that prefix's `lib/`, which is why `cross-env.sh` pu
 Building MSVC-targeted C++ on Linux with Clang hits two issues that the toolchain handles:
 
 1. **`-fdelayed-template-parsing`** (set in `cmake/clang-cl-msvc.cmake`). CommonLibSSE-NG has a
-   few template methods with typos / missing members that are **never instantiated** — MSVC
+   few template methods with typos / missing members that are **never instantiated**. MSVC
    never compiles uninstantiated template bodies, so it never sees them. Clang does conforming
    current-instantiation name lookup at _parse_ time and rejects them. This flag defers body
    parsing to instantiation (MSVC semantics), so the dead code is never checked.
@@ -94,7 +94,7 @@ is cached in `build/_deps` and rebuilds are incremental.
    ```bash
    xwin --accept-license --arch x86_64 --cache-dir ~/.cache/xwin splat --output ~/.local/xwin-sdk
    ```
-3. That's it — `cross-env.sh` wires the rest and creates the `.lib` symlinks on first build.
+3. That's it: `cross-env.sh` wires the rest and creates the `.lib` symlinks on first build.
 
 ## Verifying a built DLL
 

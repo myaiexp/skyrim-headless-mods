@@ -3,7 +3,7 @@
 How a Skyrim SE mod gets built here without any GUI tools. Two independent halves: the
 **plugin** (`.esp`) and the **script** (`.pex`).
 
-## 1. The plugin — Mutagen (`tools/EspGen`)
+## 1. The plugin: Mutagen (`tools/EspGen`)
 
 A `.esp`/`.esm`/`.esl` is a binary record file. For a pure-logic script mod you need exactly
 one record: a **Quest** that is _Start Game Enabled_ and has a Papyrus script attached (via
@@ -22,9 +22,9 @@ The output is a tiny (~200 byte) plugin. Mutagen is the same engine the Synthesi
 framework is built on, so this scales to real record edits (items, leveled lists, patches),
 not just script hosts.
 
-## 2. The script — `PapyrusCompiler.exe` under wine
+## 2. The script: `PapyrusCompiler.exe` under wine
 
-Papyrus source (`.psc`) compiles to bytecode (`.pex`) with `PapyrusCompiler.exe` — a CLI
+Papyrus source (`.psc`) compiles to bytecode (`.pex`) with `PapyrusCompiler.exe`, a CLI
 tool that ships with the Creation Kit (and bundled inside some mods, e.g. Nemesis). It's a
 .NET Framework app; **wine** (with `wine-mono`) runs it fine headlessly.
 
@@ -38,25 +38,25 @@ tools/compile-papyrus.sh <ScriptName> <src-dir> <out-dir>
 
 To compile _any_ script, the compiler must resolve the **entire transitive type graph** of
 everything the script references. `extends Quest` + a call to `Actor.GetEquippedWeapon()`
-drags in `Actor` → `GlobalVariable`, `Package`, `Idle`, `Light`, `Projectile`, … — most of
+drags in `Actor` → `GlobalVariable`, `Package`, `Idle`, `Light`, `Projectile`, …, most of
 the game's script API. So you need the full vanilla source tree, **plus** SKSE's augmented
 versions (for `IsBow()`, `RegisterForControl`, `Debug.SendAnimationEvent`, etc.).
 
-`tools/papyrus-sources/` provides both (the third-party trees are git-ignored — populate them
+`tools/papyrus-sources/` provides both (the third-party trees are git-ignored, populate them
 locally from your own game + SKSE install, see `tools/papyrus-sources/README.md`):
 
-- `vanilla/` — 77 vanilla base API scripts (every native type: `Actor`, `Form`, `Weapon`,
+- `vanilla/`: 77 vanilla base API scripts (every native type: `Actor`, `Form`, `Weapon`,
   `GlobalVariable`, `Light`, …). The other ~1200 vanilla scripts are quest/scene logic that
-  type resolution never needs. *(Bethesda IP — git-ignored.)*
-- `skse/` — 62 SKSE source scripts (the ones SKSE extends). *(SKSE IP — git-ignored.)*
-- `TESV_Papyrus_Flags.flg` — the user-flags file the compiler requires. *(Bethesda IP — git-ignored.)*
-- `skyui/` — SkyUI MCM base classes. *(Open-source — committed.)*
+  type resolution never needs. *(Bethesda IP, git-ignored.)*
+- `skse/`: 62 SKSE source scripts (the ones SKSE extends). *(SKSE IP, git-ignored.)*
+- `TESV_Papyrus_Flags.flg`: the user-flags file the compiler requires. *(Bethesda IP, git-ignored.)*
+- `skyui/`: SkyUI MCM base classes. *(Open-source, committed.)*
 
 **Import order matters** and is set in `compile-papyrus.sh`: `mod-src ; skse ; vanilla`. The
 mod's own source wins first; SKSE versions override vanilla for the scripts SKSE extends (so
 SKSE-only functions resolve); vanilla fills everything else.
 
-## 3. Extracting game assets — Mutagen (`tools/BsaExtract`)
+## 3. Extracting game assets: Mutagen (`tools/BsaExtract`)
 
 Vanilla assets live in `.bsa` archives. Mutagen reads them too, so when you need a real
 reference (e.g. the exact control-event names in `interface/controls/pc/controlmap.txt`),

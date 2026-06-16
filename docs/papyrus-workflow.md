@@ -1,7 +1,7 @@
 # Papyrus build / install / iterate
 
 The build is easy. The _iterate_ loop has two gotchas that will eat hours if you don't know
-them — both learned the hard way.
+them, both learned the hard way.
 
 ## Build
 
@@ -33,11 +33,11 @@ _old_ code still ran (zero new log output).
 
 So every script change: **build → `--install` → quit Skyrim to desktop → relaunch.**
 
-## Gotcha 2: scripts bake into saves — kick the quest
+## Gotcha 2: scripts bake into saves, kick the quest
 
 A Start-Game-Enabled quest's script instance is persisted into your save. Once it's run
 `OnInit` there, it won't run it again, and a replaced script version may not cleanly
-resurrect — leaving a dead "zombie" instance that produces no events.
+resurrect, leaving a dead "zombie" instance that produces no events.
 
 After a fresh launch, force a clean restart of the quest from the console (`~`):
 
@@ -68,7 +68,7 @@ Enable `Debug.Trace` output and read it. Logs rotate at:
 ```
 
 (`Papyrus.0.log` = current/most recent session; `.1` = previous, etc.) Generous `Debug.Trace`
-calls turn "it doesn't work" into "execution reached X but not Y" — which is how every bug in
+calls turn "it doesn't work" into "execution reached X but not Y", which is how every bug in
 RapidBowHold was actually located (dead control hook, wrong API names, early-firing animation
 event, and both gotchas above).
 

@@ -21,7 +21,7 @@ bow's full-draw cadence. Reacts to the game's own animation events; no custom an
 ## How it works
 
 1. `OnControlDown` for the attack control sets "rapid mode" on. The control bound to **LMB**
-   is the user-event **`Right Attack/Block`** (right hand = main weapon — counterintuitive but
+   is the user-event **`Right Attack/Block`** (right hand = main weapon, counterintuitive but
    confirmed from `controlmap.txt`); both attack controls are registered for robustness.
 2. When the bow reaches full draw, the game emits the `BowDrawn` animation event.
 3. On that event the script sends `attackRelease` (looses a full-strength arrow), waits
@@ -44,7 +44,7 @@ After `--install`: **fully restart Skyrim**, then console (`~`):
 ## Status / notes
 
 - **Working, verified in-game.** The loop self-sustains at the bow's full-draw rate (~2.5 s
-  per shot for a standard bow — every shot full power, which is the intent).
+  per shot for a standard bow, every shot full power, which is the intent).
 - The current `src/RapidBowHoldScript.psc` is the **instrumented (debug) build**: it traces
   every animation event and sends three candidate redraw events (`bowAttackStart`,
   `BowDrawStart`, `bowDraw`) because we confirmed the loop works but didn't isolate which
@@ -55,6 +55,6 @@ After `--install`: **fully restart Skyrim**, then console (`~`):
 
 ## Tuning
 
-- `safetyMaxDrawSeconds` (top of the script) — fallback timeout if `BowDrawn` is missed.
+- `safetyMaxDrawSeconds` (top of the script): fallback timeout if `BowDrawn` is missed.
 - If a different setup looses on a different event, the candidates are in
   `FireFullDrawAndRestart()`; the `[anim]` trace in the Papyrus log shows the real cycle.
