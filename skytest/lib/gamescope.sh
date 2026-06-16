@@ -193,6 +193,7 @@ gs_keycode() {
     backspace) echo 14 ;;  up) echo 103 ;;  down) echo 108 ;;  left) echo 105 ;;  right) echo 106 ;;
     pageup) echo 104 ;;    pagedown) echo 109 ;;  home) echo 102 ;;  end) echo 107 ;;
     tilde|console|grave) echo 41 ;;  # ` — opens the dev console in-game
+    q) echo 16 ;;  # default Favorites-menu key
     e) echo 18 ;;  r) echo 19 ;;  m) echo 50 ;;  w) echo 17 ;;  a) echo 30 ;;  s) echo 31 ;;  d) echo 32 ;;
     f) echo 33 ;;  y) echo 21 ;;  n) echo 49 ;;  j) echo 36 ;;  i) echo 23 ;;
     *) echo "unknown key: $1" >&2; return 2 ;;
@@ -212,12 +213,13 @@ gs_drive() {
     seq)   local args=() k; for k in "$@"; do args+=(tap "$(gs_keycode "$k")" sleep 120); done
            "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
     key)   "$EIDRIVER" "$GS_EIS_SOCK" key "$(gs_keycode "$1")" "$2" ;;
+    btn)   "$EIDRIVER" "$GS_EIS_SOCK" btn "$1" "$2" ;;   # mouse button hold/release (272=L 273=R), $2: 1=down 0=up
     click) if [ "$#" -ge 2 ]; then "$EIDRIVER" "$GS_EIS_SOCK" clickat "$1" "$2"
            else "$EIDRIVER" "$GS_EIS_SOCK" click; fi ;;
     rel)   "$EIDRIVER" "$GS_EIS_SOCK" rel "$1" "$2" ;;
     abs|moveto|mv) "$EIDRIVER" "$GS_EIS_SOCK" moveto "$1" "$2" ;;
     raw)   "$EIDRIVER" "$GS_EIS_SOCK" "$@" ;;
-    *) usage_err "drive: usage: skytest drive {tap|seq|key|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
+    *) usage_err "drive: usage: skytest drive {tap|seq|key|btn|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
   esac
 }
 

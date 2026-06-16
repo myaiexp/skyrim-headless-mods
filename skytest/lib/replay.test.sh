@@ -102,7 +102,7 @@ check "resolve menu pred" '.menu=="FavoritesMenu" and .open==true'        "$gp"
 
 # an empty menu name is rejected (not a silent {"menu":""})
 gc='' gs='' gp=''
-menu_empty_err="$(resolve_gate "menu:" gc gs gp 2>&1)"; rc=$?
+resolve_gate "menu:" gc gs gp 2>/dev/null; rc=$?
 check_rc "resolve menu: empty name non-zero" 2 "$rc"
 
 # unknown gate condition is a clear error, not a silent hang — replay_wait_gate
@@ -112,8 +112,44 @@ check_rc  "wait bogus non-zero"     2 "$rc"
 contains  "wait bogus message" "replay: unknown gate condition 'bogus'" "$bogus_err"
 
 # =============================================================================
-# (Task 3 interpreter-stream assertions are appended when that task lands.)
+# Task 3 — step interpreter (assert the emitted IO stream, no game)
+# These stubs OVERRIDE the real IO boundary; they must come AFTER the Task 2 cases,
+# which need the real resolve_gate / replay_wait_gate.
 # =============================================================================
+EMITTED=()
+gs_drive()         { EMITTED+=("drive $*"); }
+gs_shot()          { EMITTED+=("shot $*"); printf '/tmp/shot.png\n'; }
+_probe_send()      { EMITTED+=("send $*"); }
+GATE_RC=0 ACK_RC=0
+replay_wait_gate() { EMITTED+=("gate $1"); return "$GATE_RC"; }
+_replay_wait_ack() { EMITTED+=("ack $1"); _replay_ack_err=""; return "$ACK_RC"; }
+
+emitted_str() { local IFS='|'; printf '%s' "${EMITTED[*]}"; }
+index_of() { local i; for i in "${!EMITTED[@]}"; do [ "${EMITTED[$i]}" = "$1" ] && { printf '%s' "$i"; return; }; done; printf -- '-1'; }
+
+# hold LMB until:charged -> press, gate poll, release, in that exact order
+EMITTED=(); GATE_RC=0
+replay_run - <<<'hold LMB until:charged' >/dev/null 2>&1
+check "hold emits press/gate/release" 'drive btn 272 1|gate charged|drive btn 272 0' "$(emitted_str)"
+
+# a failed gate STILL releases the button before aborting, and replay_run is non-zero
+EMITTED=(); GATE_RC=1
+replay_run - <<<'hold LMB until:charged' >/dev/null 2>&1; rc=$?
+check_rc "failed gate -> non-zero"  1 "$rc"
+check    "failed gate still releases" 'drive btn 272 0' "${EMITTED[-1]}"
+
+# exec waits for its ack BEFORE the next step's input goes out
+EMITTED=(); GATE_RC=0 ACK_RC=0
+replay_run - <<<$'exec player.additem 0xf 100\ntap e' >/dev/null 2>&1
+ack_i="$(index_of 'ack exec-1')"; tap_i="$(index_of 'drive tap e')"
+check "exec acked before next input" 1 \
+  "$([ "$ack_i" -ge 0 ] && [ "$tap_i" -gt "$ack_i" ] && echo 1 || echo 0)"
+
+# a non-LMB/RMB hold target resolves through gs_keycode to a key hold/release
+EMITTED=(); GATE_RC=0
+gs_keycode() { case "$1" in e) echo 18 ;; *) return 2 ;; esac; }   # local stub for this case
+replay_run - <<<'hold e 200ms' >/dev/null 2>&1
+check "hold key press/release" 'drive key 18 1|drive key 18 0' "$(emitted_str)"
 
 printf '\nreplay.test.sh: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -160,3 +160,140 @@ replay_wait_gate() {
   printf 'replay: gate %s timed out after %ss\n' "$cond" "$timeout" >&2
   return 1
 }
+
+# --- interpreter --------------------------------------------------------------
+
+# Minimal JSON-string escaping for an embedded console line (backslash + quote). Console
+# commands rarely carry either, but the line goes into a JSON object the probe parses.
+_json_escape() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s' "$s"; }
+
+# Sleep a `<N>ms` / `<N>s` duration (the only non-gate wait the design permits). awk does
+# the ms→s divide since bash has no float math; sleep takes the fractional seconds.
+_replay_sleep_dur() {
+  local d="$1" secs
+  case "$d" in
+    *ms) secs="$(awk "BEGIN{printf \"%.3f\", ${d%ms}/1000}")" ;;
+    *s)  secs="${d%s}" ;;
+    *)   printf "replay: bad duration '%s' (use Nms or Ns)\n" "$d" >&2; return 2 ;;
+  esac
+  sleep "$secs"
+}
+
+# Wait for an exec command's Ack (matched on `.ack`, NOT a trace `src` — that's what
+# tells an exec-ack apart from a gate record). 0 = ok:true, 1 = ack-timeout, 2 = ok:false
+# or session death (with the probe's error text in $_replay_ack_err). Short bound (10s):
+# an exec spawn/grant completes within a couple of probe poll ticks or never.
+_replay_ack_err=""
+_replay_wait_ack() {
+  local id="$1" timeout="${2:-10}"
+  local trace; trace="$(_skytest_io_dir)/trace.jsonl"
+  local deadline=$((SECONDS + timeout)) line ok
+  _replay_ack_err=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if gs_session_dead; then _replay_ack_err="session died"; return 2; fi
+    if [ -f "$trace" ]; then
+      line="$(grep -F "\"ack\":\"$id\"" "$trace" 2>/dev/null | tail -1 || true)"
+      if [ -n "$line" ]; then
+        ok="$(printf '%s' "$line" | jq -r '.ok' 2>/dev/null || echo null)"
+        [ "$ok" = "true" ] && return 0
+        if [ "$ok" = "false" ]; then
+          _replay_ack_err="$(printf '%s' "$line" | jq -r '.err // "exec failed"' 2>/dev/null || echo 'exec failed')"
+          return 2
+        fi
+      fi
+    fi
+    sleep 0.5
+  done
+  _replay_ack_err="ack timeout (${timeout}s)"
+  return 1
+}
+
+# exec one console line through the probe and BLOCK on its ack, so a spawn/grant has
+# actually applied before a later gate reads world state. Returns _replay_wait_ack's code.
+_replay_step_exec() {
+  local id="$1" line="$2" esc
+  esc="$(_json_escape "$line")"
+  _probe_send "{\"id\":\"exec-$id\",\"cmd\":\"exec\",\"line\":\"$esc\"}"
+  _replay_wait_ack "exec-$id"
+}
+
+# hold <target> <gate>: press, gate, release. The release ALWAYS runs — even when the
+# gate times out — so a failed gate never leaves a button/key stuck down. Returns the
+# gate's exit code (0 satisfied, non-zero -> caller aborts after the release).
+_replay_step_hold() {
+  local target="$1" gate="$2" gate_timeout="$3"
+  local press release kc rc=0
+  case "$target" in
+    LMB) press=(btn 272 1); release=(btn 272 0) ;;
+    RMB) press=(btn 273 1); release=(btn 273 0) ;;
+    *)   kc="$(gs_keycode "$target")" || return 2
+         press=(key "$kc" 1); release=(key "$kc" 0) ;;
+  esac
+  gs_drive "${press[@]}"
+  case "$gate" in
+    until:*) replay_wait_gate "${gate#until:}" "$gate_timeout" || rc=$? ;;
+    *)       _replay_sleep_dur "$gate" || rc=$? ;;
+  esac
+  gs_drive "${release[@]}"
+  return "$rc"
+}
+
+# replay_run <script_file|-> [gate_timeout=180] — parse the script, then run each step in
+# order. Aborts on the FIRST failure with `replay: step N (<verb>) failed: <reason>` and a
+# non-zero return — a wrong setup state must never bleed into the live mod test. Held
+# input is always released before an abort (see _replay_step_hold).
+replay_run() {
+  local script="${1:?replay_run: script required}" gate_timeout="${2:-180}"
+  local plan
+  plan="$(replay_parse "$script")" || { printf 'replay: parse failed — not running %s\n' "$script" >&2; return 2; }
+
+  local stepno=0 execid=0 stepline body verb args rc reason
+  while IFS= read -r stepline; do
+    case "$stepline" in 'STEP '*) ;; *) continue ;; esac
+    stepno=$((stepno + 1))
+    body="${stepline#STEP }"
+    verb="${body%%[[:space:]]*}"
+    args="${body#"$verb"}"; args="${args#"${args%%[![:space:]]*}"}"
+    rc=0 reason=""
+    case "$verb" in
+      exec)
+        execid=$((execid + 1))
+        _replay_step_exec "$execid" "${args#line=}" || { rc=$?; reason="${_replay_ack_err:-exec failed}"; }
+        ;;
+      tap)
+        gs_drive tap "${args#key=}" || { rc=$?; reason="input failed"; }
+        ;;
+      key)
+        local keys="${args#keys=}"
+        # shellcheck disable=SC2086  # intentional split: seq takes each key as its own arg
+        gs_drive seq ${keys//,/ } || { rc=$?; reason="input failed"; }
+        ;;
+      hold)
+        local f1 f2 ht hg
+        read -r f1 f2 _ <<<"$args"
+        ht="${f1#target=}"; hg="${f2#gate=}"
+        _replay_step_hold "$ht" "$hg" "$gate_timeout" || { rc=$?; reason="gate '$hg' not reached (input released)"; }
+        ;;
+      wait)
+        local wg="${args#gate=}"
+        case "$wg" in
+          until:*) replay_wait_gate "${wg#until:}" "$gate_timeout" || { rc=$?; reason="gate '$wg' not reached"; } ;;
+          *)       _replay_sleep_dur "$wg" || { rc=$?; reason="bad duration '$wg'"; } ;;
+        esac
+        ;;
+      shot)
+        local sn="${args#name=}"
+        if [ -n "$sn" ]; then gs_shot "$sn"; else gs_shot; fi || { rc=$?; reason="screenshot failed"; }
+        ;;
+      *)
+        rc=2; reason="unhandled verb (parser/interpreter mismatch)"
+        ;;
+    esac
+    if [ "$rc" -ne 0 ]; then
+      printf 'replay: step %d (%s) failed: %s\n' "$stepno" "$verb" "$reason" >&2
+      return "$rc"
+    fi
+    printf 'replay: step %d ok: %s\n' "$stepno" "$verb" >&2
+  done <<<"$plan"
+  return 0
+}
