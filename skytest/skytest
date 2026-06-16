@@ -80,6 +80,12 @@ SAVES_ISO_FLAG="$PROFILES/.saves-isolated"
 # shellcheck source=lib/gamescope.sh
 source "$SCRIPT_DIR/lib/gamescope.sh"
 
+# The replay interpreter (sourced AFTER gamescope.sh — it reuses _skytest_io_dir /
+# _probe_send / gs_session_dead / gs_drive / gs_shot from there). Provides replay_parse /
+# replay_wait_gate / replay_run for `skytest replay`. See lib/replay.sh + docs/plans/skytest-replay-*.
+# shellcheck source=lib/replay.sh
+source "$SCRIPT_DIR/lib/replay.sh"
+
 # Base test save (built by --setup-save) and the Start On Save autoload plugin.
 BASE_SAVE_NAME="SkytestBase"
 SOS_DLL="$SCRIPT_DIR/base-skse/po3_StartOnSave.dll"
@@ -511,30 +517,17 @@ launch_and_hold() {
 # and is DETACHED: launch -> wait for in-world -> return, so CC can issue shot/drive/
 # ready as separate commands. There is no EXIT-trap restore (a detached session can't
 # be trap-covered) — `skytest stop` tears down AND restores Data -> full.
-cmd_test() {
-  local mod="" deps="" backend="wayland"
-  local usage="skytest test <mod-dir-or-file> [--with a.dll,b.dll] [--headless]"
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --headless) backend="headless"; shift ;;
-      --sdl)      backend="sdl"; shift ;;   # visible fallback if --backend wayland misbehaves under Hyprland
-      --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
-      -*)         usage_err "test: unknown option: $1" "$usage" ;;
-      *)          if [ -z "$mod" ]; then mod="$1"; else usage_err "test: unexpected arg: $1" "$usage"; fi; shift ;;
-    esac
-  done
-
-  [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
+# Boot a vanilla+<mod> gamescope test session — the shared core of `test` and `replay`,
+# so both boot IDENTICALLY (same guards, same isolation, same readiness wait). Takes an
+# already-absolute, existing <mod> path. Runs the guards (refuse BEFORE rebuilding/parking
+# the profile — a second launch over a live session would double-park Data with no trap to
+# undo it), builds the test profile, injects the probe (+ StartOnSave / saves-isolation if
+# a base save exists), parks Data -> test, launches gamescope, and waits for in-world.
+# Returns: 0 in-world, 1 timed out (session still live), 10 SKYTEST_NO_LAUNCH handled (no
+# session launched). Dies on a guard failure or a boot crash (those are fatal for both verbs).
+_boot_test_session() {
+  local mod="$1" deps="${2:-}" backend="${3:-wayland}"
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
-  [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
-  # Resolve to an absolute path: build_test_profile symlinks $mod verbatim into the
-  # profile's SKSE/Plugins, so a RELATIVE arg (e.g. `mods/X/build/X.dll`, which passes
-  # the -e check from CWD) would create a symlink that dangles relative to the Plugins
-  # dir — and SKSE silently SKIPS a dangling plugin (no load, no error). Absolutizing
-  # here makes the README's relative-path examples work and kills that silent footgun.
-  mod="$(realpath "$mod")"
-  # Refuse BEFORE rebuilding/parking the profile — a second launch over a live session
-  # would double-park Data with no trap to undo it (detached model has no auto-restore).
   guard_no_live_session
   guard_no_running_game
   skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
@@ -561,16 +554,111 @@ cmd_test() {
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then
     point_data full; restore_plugins
     say "(SKYTEST_NO_LAUNCH) built + injected + swapped profile, then restored Data -> full. No game launched."
-    return 0
+    return 10
   fi
 
   local rc=0; gs_wait_ready || rc=$?
-  case "$rc" in
-    2) die "test session died during boot - check $GS_LOG" "skytest stop" ;;
-    1) say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready" ;;
-  esac
+  [ "$rc" = 2 ] && die "test session died during boot - check $GS_LOG" "skytest stop"
+  return "$rc"
+}
+
+cmd_test() {
+  local mod="" deps="" backend="wayland"
+  local usage="skytest test <mod-dir-or-file> [--with a.dll,b.dll] [--headless]"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --headless) backend="headless"; shift ;;
+      --sdl)      backend="sdl"; shift ;;   # visible fallback if --backend wayland misbehaves under Hyprland
+      --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
+      -*)         usage_err "test: unknown option: $1" "$usage" ;;
+      *)          if [ -z "$mod" ]; then mod="$1"; else usage_err "test: unexpected arg: $1" "$usage"; fi; shift ;;
+    esac
+  done
+
+  [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
+  [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
+  # Resolve to an absolute path: build_test_profile symlinks $mod verbatim into the
+  # profile's SKSE/Plugins, so a RELATIVE arg (e.g. `mods/X/build/X.dll`, which passes
+  # the -e check from CWD) would create a symlink that dangles relative to the Plugins
+  # dir — and SKSE silently SKIPS a dangling plugin (no load, no error). Absolutizing
+  # here makes the README's relative-path examples work and kills that silent footgun.
+  mod="$(realpath "$mod")"
+
+  # `|| brc=$?` so a non-zero boot status (1 timed-out, 10 NO_LAUNCH) doesn't trip set -e.
+  local brc=0; _boot_test_session "$mod" "$deps" "$backend" || brc=$?
+  [ "$brc" = 10 ] && return 0
+  [ "$brc" = 1 ]  && say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready"
   say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
   say "when done:  skytest stop   (tears down + restores Data -> full)"
+}
+
+# Resolve a .steps arg to a path. '-' (stdin) or anything containing '/' is taken as-is;
+# a bare name resolves under the mod's own dir in mods/ (mods/<Name>/<name>.steps, per the
+# design's "scripts live next to the mod they test"). <mod-abs> may be empty (dry-run with
+# a path), in which case a bare name is left CWD-relative.
+_replay_resolve_script() {
+  local script="$1" mod_abs="$2"
+  case "$script" in
+    -|*/*) printf '%s' "$script" ;;
+    *)
+      case "$mod_abs" in
+        */mods/*) local rel="${mod_abs#*/mods/}"; printf '%s/mods/%s/%s' "$REPO_ROOT" "${rel%%/*}" "$script" ;;
+        ?*)       printf '%s/%s' "$(dirname "$mod_abs")" "$script" ;;
+        *)        printf '%s' "$script" ;;
+      esac ;;
+  esac
+}
+
+cmd_replay() {
+  local mod="" script="" deps="" backend="wayland" dryrun=""
+  local usage="skytest replay <mod> <script.steps> [--with a,b] [--headless] [--dry-run]"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --headless) backend="headless"; shift ;;
+      --sdl)      backend="sdl"; shift ;;
+      --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --dry-run)  dryrun=1; shift ;;
+      -*)         [ "$1" = "-" ] || usage_err "replay: unknown option: $1" "$usage" ;&  # lone '-' = stdin script
+      *)          if [ -z "$mod" ]; then mod="$1"
+                  elif [ -z "$script" ]; then script="$1"
+                  else usage_err "replay: unexpected arg: $1" "$usage"; fi; shift ;;
+    esac
+  done
+
+  # `replay --dry-run <script>` (one positional) lints a script with no mod context — the
+  # lone positional landed in $mod, so move it to $script.
+  if [ -n "$dryrun" ] && [ -z "$script" ] && [ -n "$mod" ]; then script="$mod"; mod=""; fi
+  [ -n "$script" ] || usage_err "replay: missing <script>" "$usage"
+
+  # Resolve the mod first (needed both to boot AND to resolve a bare script name under mods/).
+  if [ -n "$mod" ]; then
+    [ -e "$mod" ] || usage_err "replay: mod path not found: $mod" "$usage"
+    mod="$(realpath "$mod")"
+  fi
+
+  script="$(_replay_resolve_script "$script" "$mod")"
+  [ "$script" = "-" ] || [ -e "$script" ] || usage_err "replay: script not found: $script" "$usage"
+
+  # --dry-run: print the normalized plan and exit. No boot, no profile mutation (the
+  # parser is a pure lint), so the live Data symlink is never touched.
+  if [ -n "$dryrun" ]; then replay_parse "$script"; return $?; fi
+
+  [ -n "$mod" ] || usage_err "replay: missing <mod>" "$usage"
+
+  local brc=0; _boot_test_session "$mod" "$deps" "$backend" || brc=$?   # || so set -e ignores 1/10
+  [ "$brc" = 10 ] && return 0
+  if [ "$brc" != 0 ]; then
+    say "session not in-world (boot timed out); not replaying. Inspect: skytest ready / skytest shot. Tear down: skytest stop"
+    return 1
+  fi
+
+  say "booted — replaying: $script"
+  if replay_run "$script"; then
+    say "replayed to target state; session live — probe it (skytest shot/drive/exec) or tear down with skytest stop"
+  else
+    say "replay aborted (see the step error above); session left live — inspect (skytest shot/drive), then skytest stop"
+    return 1
+  fi
 }
 
 # ready / shot / drive / stop — operate on the running gamescope test session that
@@ -896,7 +984,7 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 
 # per-verb help: `skytest <verb> --help`
 case "${1:-}" in
-  status|init|setup-save|test|ready|shot|drive|stop|play|playtest|normal|uninstall)
+  status|init|setup-save|test|replay|ready|shot|drive|stop|play|playtest|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
 esac
 
@@ -905,6 +993,7 @@ case "${1:-}" in
   init)         shift; cmd_init "$@" ;;
   setup-save)   cmd_setup_save ;;
   test)         shift; cmd_test "$@" ;;
+  replay)       shift; cmd_replay "$@" ;;
   ready)        shift; cmd_ready "$@" ;;
   shot)         shift; cmd_shot "$@" ;;
   drive)        shift; cmd_drive "$@" ;;
