@@ -46,6 +46,11 @@ namespace engine
 	WorldState GetWorldState();
 	bool       IsInWorld();  // == GetWorldState().inWorld; the exec/console gate
 
+	// Is the named UI menu currently open? Null-safe: false when the UI singleton is
+	// unavailable (pre-load). Main-thread only (UI access). Mirrors the IsMenuOpen
+	// calls in GetWorldState.
+	bool IsMenuOpen(const std::string& a_menu);
+
 	// Run one console command line, fire-and-forget (ConsoleUtilSSE-NG technique).
 	enum class ExecResult
 	{

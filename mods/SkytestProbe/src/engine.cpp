@@ -258,6 +258,15 @@ bool engine::IsInWorld()
 	return GetWorldState().inWorld;
 }
 
+bool engine::IsMenuOpen(const std::string& a_menu)
+{
+	auto* ui = RE::UI::GetSingleton();
+	if (!ui) {
+		return false;  // pre-load: UI singleton not up yet
+	}
+	return ui->IsMenuOpen(a_menu);
+}
+
 engine::ExecResult engine::RunConsoleCommand(const std::string& a_line)
 {
 	if (a_line.empty()) {

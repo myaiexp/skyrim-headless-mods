@@ -308,6 +308,20 @@ namespace
 			return;
 		}
 
+		if (c == "is-menu-open") {
+			const std::string menu = JStr(cmd, "menu");
+			if (menu.empty()) {
+				trace::Ack(id, false, "is-menu-open: missing menu");
+				return;
+			}
+			EnqueueMain([id, menu]() {
+				const bool open = engine::IsMenuOpen(menu);
+				trace::Write(json{ { "src", "menu" }, { "menu", menu }, { "open", open } });
+				trace::Ack(id, true);
+			});
+			return;
+		}
+
 		if (c == "mcm-list") {
 			EnqueueMain([id]() {
 				const int n = engine::WriteMcmList();
