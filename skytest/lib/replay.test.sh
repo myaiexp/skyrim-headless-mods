@@ -82,6 +82,24 @@ unknown_err="$(replay_parse - <<<'frobnicate 3' 2>&1 >/dev/null)"; rc=$?
 check_rc  "unknown verb non-zero"   2 "$rc"
 contains  "unknown verb line number" "line 1: unknown step 'frobnicate'" "$unknown_err"
 
+# a step missing a required argument is ALSO a parse error (line N), caught by --dry-run —
+# not a silent no-op or a confusing runtime failure. tap/key need a key; hold needs a gate.
+tap_err="$(replay_parse - <<<'tap' 2>&1 >/dev/null)"; rc=$?
+check_rc  "tap no key non-zero"   2 "$rc"
+contains  "tap no key message"    "line 1: 'tap' needs a key" "$tap_err"
+
+key_err="$(replay_parse - <<<'key' 2>&1 >/dev/null)"; rc=$?
+check_rc  "key no keys non-zero"  2 "$rc"
+contains  "key no keys message"   "line 1: 'key' needs at least one key" "$key_err"
+
+hold_err="$(replay_parse - <<<'hold LMB' 2>&1 >/dev/null)"; rc=$?
+check_rc  "hold no gate non-zero" 2 "$rc"
+contains  "hold no gate message"  "line 1: 'hold' needs" "$hold_err"
+
+wait_err="$(replay_parse - <<<'wait' 2>&1 >/dev/null)"; rc=$?
+check_rc  "wait no gate non-zero" 2 "$rc"
+contains  "wait no gate message"  "line 1: 'wait' needs" "$wait_err"
+
 # =============================================================================
 # Task 2 — gate resolver + unknown-condition path
 # =============================================================================

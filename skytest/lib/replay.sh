@@ -21,8 +21,9 @@
 # replay_parse <file|-> — read a .steps file (or `-` for stdin) and emit one
 # normalized line per step to stdout: `STEP <verb> <k=v>…`. Blank lines and `#`
 # comments are dropped (but still counted, so error line numbers match the file).
-# An unknown verb prints `replay: line N: unknown step '<verb>'` to stderr and makes
-# the whole parse exit non-zero (a script lint). Pure text — no I/O beyond the read.
+# An unknown verb, or a step missing a required argument (tap/key need a key, hold needs
+# <target> <gate>, wait needs a gate), prints `replay: line N: …` to stderr and makes the
+# whole parse exit non-zero — a script lint caught by `--dry-run`. Pure text, no I/O beyond the read.
 replay_parse() {
   local src="${1:?replay_parse: file ('-' for stdin) required}"
   if [ "$src" = "-" ]; then
@@ -37,7 +38,7 @@ replay_parse() {
 # file redirect or the inherited stdin without duplicating the loop.
 _replay_parse_stream() {
   local line trimmed verb rest lineno=0 rc=0
-  local target gate key name
+  local target gate key keys name
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
     line="${line%$'\r'}"                          # tolerate CRLF
@@ -54,22 +55,38 @@ _replay_parse_stream() {
         ;;
       tap)
         read -r key _ <<<"$rest"                  # one key (first token)
-        printf 'STEP tap key=%s\n' "$key"
+        if [ -z "$key" ]; then
+          printf "replay: line %d: 'tap' needs a key\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP tap key=%s\n' "$key"
+        fi
         ;;
       key)
         # a sequence of taps -> comma list (subshell contains the IFS change).
-        printf 'STEP key keys=%s\n' \
-          "$(IFS=' '; read -ra _k <<<"$rest"; IFS=','; printf '%s' "${_k[*]}")"
+        keys="$(IFS=' '; read -ra _k <<<"$rest"; IFS=','; printf '%s' "${_k[*]}")"
+        if [ -z "$keys" ]; then
+          printf "replay: line %d: 'key' needs at least one key\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP key keys=%s\n' "$keys"
+        fi
         ;;
       hold)
         # `hold <TARGET> <GATE>` — GATE is one token (a duration or until:<COND>),
         # NOT another key. read peels target then gate; any trailing junk is ignored.
         read -r target gate _ <<<"$rest"
-        printf 'STEP hold target=%s gate=%s\n' "$target" "$gate"
+        if [ -z "$target" ] || [ -z "$gate" ]; then
+          printf "replay: line %d: 'hold' needs <LMB|RMB|key> <dur|until:COND>\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP hold target=%s gate=%s\n' "$target" "$gate"
+        fi
         ;;
       wait)
         read -r gate _ <<<"$rest"                 # one gate token
-        printf 'STEP wait gate=%s\n' "$gate"
+        if [ -z "$gate" ]; then
+          printf "replay: line %d: 'wait' needs <dur|until:COND>\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP wait gate=%s\n' "$gate"
+        fi
         ;;
       shot)
         read -r name _ <<<"$rest"                 # optional name (empty = default path)
@@ -289,8 +306,11 @@ replay_run() {
         esac
         ;;
       shot)
-        local sn="${args#name=}"
-        if [ -n "$sn" ]; then gs_shot "$sn"; else gs_shot; fi || { rc=$?; reason="screenshot failed"; }
+        # Capture gs_shot's stdout (the written path) and report it through replay's own
+        # stderr log, so a `shot` step doesn't splice a bare path into stdout mid-run.
+        local sn="${args#name=}" out=""
+        if [ -n "$sn" ]; then out="$(gs_shot "$sn")"; else out="$(gs_shot)"; fi || { rc=$?; reason="screenshot failed"; }
+        [ "$rc" = 0 ] && printf 'replay: shot -> %s\n' "$out" >&2
         ;;
       *)
         rc=2; reason="unhandled verb (parser/interpreter mismatch)"

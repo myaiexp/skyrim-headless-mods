@@ -863,6 +863,7 @@ Verbs:
   drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
   stop              tear down the test session + restore Data → full
   play              launch the full modded game (fast path, blocking, not drivable)
+  playtest          full modded profile under a DRIVABLE gamescope session   [--headless]
   normal            force Data → full (recover after a crash)
   uninstall         revert to the original real Data/ directory
 
@@ -983,6 +984,19 @@ EOF
 skytest play — launch the full modded game over the fast direct SKSE path
 Examples:
   skytest play
+EOF
+;;
+    playtest) cat <<'EOF'
+skytest playtest — launch the FULL modded profile under a DRIVABLE gamescope session
+(real load order + SkyUI + every SKSE plugin), so MCMs and load-order-dependent mods can be
+screenshot/driven — the vanilla+1 `test` profile can't reach those. No SkytestProbe in 'full',
+so ready/exec don't apply: use shot/drive and read the in-game console / SKSE logs. Boots to the
+menu; load a save via drive. Tear down with skytest stop.
+  --headless   no window (offscreen render); default is a window nested in Hyprland
+  --sdl        visible fallback if wayland misbehaves under Hyprland
+Examples:
+  skytest playtest
+  skytest playtest --headless
 EOF
 ;;
     normal) cat <<'EOF'

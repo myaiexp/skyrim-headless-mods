@@ -26,12 +26,17 @@ skytest-replay-handoff.md`. Deferred:
   load, after the readiness poll already ran), faking instant readiness and driving replay input
   before the EIS server was up. See the handoff's "stale-IO readiness" finding.
 - **~~Validate key names in `tap`/`key` steps.~~ DONE (2026-06-16).** `gs_drive`'s `tap`/`seq`/`key`
-  now capture `gs_keycode`'s rc (`kc=$(gs_keycode …) || return 2`, like `hold` always did) instead
-  of inlining the substitution; an unknown key was producing an empty arg → `eidriver` tapped
-  keycode 0 (a silent no-op that still exited 0), so a typo'd key reported `ok` and a downstream
-  gate was what failed. `seq` validates every key before driving any (no half-applied sequence).
-  Deferred-stronger option (not done): also validate at parse time so `--dry-run` catches typos —
-  rejected for now because it would couple the currently-pure parser to `gs_keycode`.
+  now capture `gs_keycode`'s rc (`kc=$(gs_keycode …) || return 2`) instead of inlining the
+  substitution; an unknown key was producing an empty arg → `eidriver` tapped keycode 0 (a silent
+  no-op that still exited 0), so a typo'd key reported `ok` and a downstream gate was what failed.
+  `seq` validates every key before driving any (no half-applied sequence). **`hold` (2026-06-16
+  audit):** it did the OPPOSITE of capturing the rc — it pre-resolved the name to a keycode and
+  passed that to `gs_drive key`, which re-resolves name→code, so it double-resolved (`unknown key:
+  18`), the press silently no-op'd, and the unchecked press rc hid it. Now `hold` passes the key
+  *name* through and checks the press rc (handoff RESOLVED 4). **Parse-time presence checks: DONE
+  (2026-06-16) —** a `tap`/`key`/`hold`/`wait` missing its required argument is now a `--dry-run`
+  lint error (`line N`). Still deferred: validating key *names* at parse time (the original
+  "stronger option"), which would couple the pure parser to `gs_keycode`.
 - **`charged` / `actorcount` gates** (from the design) — not built; add per the first script that
   needs them, each as one `resolve_gate` row + one direct-call probe handler (the `is-menu-open`
   commit is the template).

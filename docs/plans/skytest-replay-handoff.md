@@ -171,6 +171,25 @@ the press-failure abort; `bash skytest/lib/replay.test.sh` → 27 passed.
 
 ---
 
+## Audit polish — three smaller fixes from the same 2026-06-16 pass
+
+All from the replay audit's "minor observations" (the `exec`/CompileAndRun fault was deliberately
+left as the bigger separate issue). Unit suite now **35 passed**.
+
+- **Parse-time presence validation.** A `tap`/`key` with no key, or a `hold`/`wait` missing its
+  gate/target, used to slip through the parser and either silently no-op or fail with a confusing
+  runtime error. The parser now rejects them as a lint (`replay: line N: 'tap' needs a key`, etc.),
+  exit 2 — caught by `--dry-run` before any boot. Key-*name* validation stays deferred (parser↔
+  `gs_keycode` coupling); this is structural-presence only. Tests added per step.
+- **`shot` stdout no longer polluted.** `gs_shot` echoes the written path on stdout; in a replay run
+  that spliced a bare `/tmp/…png` line into stdout between the `skytest:`/`replay:` messages. The
+  `shot` step now captures it and reports `replay: shot -> <path>` on **stderr** with the rest.
+  Verified headless: stdout carries no stray path; stderr shows the line.
+- **`skytest playtest --help`.** `playtest` was dispatchable and in `init`'s "next steps" but had no
+  `verb_help` case (fell through to generic help) and was absent from the main verb list. Added both.
+
+---
+
 ## Gotchas for the next session
 
 - **`_boot_test_session` cd's to `$SKYDIR`** (via `gs_launch`→`skse_env_export`) before
@@ -199,9 +218,10 @@ Both "blockers" are decided (see above) — what remains is per-need build-out:
 2. ~~Truncate `commands.jsonl` at boot.~~ **DONE** — `gs_reset_io` clears `commands.jsonl` +
    `trace.jsonl` before `gs_launch` (see RESOLVED 3). ~~Make `tap`/`key`/`hold` validate key
    names.~~ **DONE** — `gs_drive` guards `gs_keycode`'s rc for `tap`/`seq`/`key`, and `hold` now
-   passes the name through (no pre-resolution) + checks the press rc (RESOLVED 4). Optional
-   remainder: validate key names at *parse* time (`--dry-run` catch) — deferred, would couple the
-   pure parser to `gs_keycode` (`docs/ideas.md`).
+   passes the name through (no pre-resolution) + checks the press rc (RESOLVED 4). ~~Parse-time
+   *presence* checks.~~ **DONE** — a step missing a required arg is a `--dry-run` lint error (see
+   "Audit polish" below). Optional remainder: validate key *names* at parse time — deferred, would
+   couple the pure parser to `gs_keycode` (`docs/ideas.md`).
 3. The exec-caveat wording in the docs (README replay section + caveat box, finding #17,
    probe-design as-built, this handoff) was corrected 2026-06-16 to the direct-call/drive model —
    keep new docs consistent with it.
