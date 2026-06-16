@@ -15,9 +15,12 @@
 set -uo pipefail
 
 BASE="https://api.nexusmods.com/v1"
-DEFAULT_GAME="${NEXUS_GAME:-skyrimspecialedition}"
 SELF="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Optional git-ignored local config (NEXUS_API_KEY=, NEXUS_MODS=, NEXUS_GAME=).
+# Skipped if NEXUS_API_KEY is already in the environment, so an inline export wins.
+[ -z "${NEXUS_API_KEY:-}" ] && [ -f "$SCRIPT_DIR/$SELF.env" ] && . "$SCRIPT_DIR/$SELF.env"
+DEFAULT_GAME="${NEXUS_GAME:-skyrimspecialedition}"
 NAME_W=32
 
 FULL=0; JSON=0
@@ -25,7 +28,7 @@ FULL=0; JSON=0
 die() { printf 'Error: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Try: %s\n' "$2" >&2; exit "${3:-2}"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found — install it (e.g. pacman -S $1)" "" 2; }
 require_key() { [ -n "${NEXUS_API_KEY:-}" ] || \
-  die "NEXUS_API_KEY not set" "export NEXUS_API_KEY=…  (https://www.nexusmods.com/users/myaccount?tab=api)" 2; }
+  die "NEXUS_API_KEY not set" "put it in $SCRIPT_DIR/$SELF.env (cp $SELF.env.example $SELF.env) or export it — key at https://www.nexusmods.com/users/myaccount?tab=api" 2; }
 
 # http_get <path>  -> sets HTTP_CODE, BODY, RL_DAILY, RL_HOURLY
 http_get() {
@@ -146,7 +149,8 @@ Usage:
   $SELF validate            check the API key + show rate limits
 
 Flags:  --full  (all columns)    --json  (raw mod objects, for jq)
-Auth:   export NEXUS_API_KEY=…    https://www.nexusmods.com/users/myaccount?tab=api
+Auth:   NEXUS_API_KEY in env, or in git-ignored $SCRIPT_DIR/$SELF.env
+        (cp $SELF.env.example $SELF.env) — key: https://www.nexusmods.com/users/myaccount?tab=api
 Game:   default \$NEXUS_GAME or $DEFAULT_GAME
 
 Examples:

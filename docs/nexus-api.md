@@ -15,12 +15,16 @@ nexus validate            check the API key + show rate limits
 nexus help
 ```
 
-- **Auth:** `export NEXUS_API_KEY=<key>` — personal key from
-  <https://www.nexusmods.com/users/myaccount?tab=api>. `tools/env.sh` is **tracked**, so the
-  key must live in your environment, never in the repo.
+- **Auth / config:** put the key in a git-ignored **`tools/nexus.env`** — `cp tools/nexus.env.example
+  tools/nexus.env` and fill in `NEXUS_API_KEY` (personal key from
+  <https://www.nexusmods.com/users/myaccount?tab=api>). The tool auto-sources it. `tools/env.sh` is
+  **tracked**, so the key must never go there; `nexus.env` is the right home (not committed, and unlike
+  `~/.bashrc` it isn't swept into config-sync'd dotfiles). An exported `NEXUS_API_KEY` in the
+  environment takes precedence and skips the file.
 - **Default game:** `$NEXUS_GAME` or `skyrimspecialedition`. Override per call as the 2nd arg.
-- **Watchlist** (for the no-arg grid): `NEXUS_MODS="skyrimspecialedition:182628 skyrimspecialedition:<id>"`,
-  or one `game:id` per line in `tools/nexus.mods` (git-ignored).
+- **Watchlist** (for the no-arg grid): set `NEXUS_MODS` in `nexus.env` (or the environment) —
+  `"skyrimspecialedition:182628 skyrimspecialedition:<id>"` — or one `game:id` per line in
+  `tools/nexus.mods` (git-ignored).
 - **Needs:** `xh`, `jq`. Output is a dense text grid (no ANSI); `--json` emits raw mod objects for `jq`.
 - **Exit codes:** `0` ok / live · `1` not-live (for `live`) or unexpected · `2` usage / bad key / rate-limited.
 - **Wait until published:** `until nexus live 182628; do sleep 600; done`.

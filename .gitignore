@@ -5,7 +5,9 @@ obj/
 # Papyrus compiler scratch (wine prefix is external; nothing to track here)
 *.tmp
 
-# Local Nexus API watchlist for `tools/nexus` (your own mod ids — not repo content).
+# Local Nexus API config for `tools/nexus` — holds your API key + watchlist.
+# (nexus.env.example IS tracked; the real nexus.env / nexus.mods are not.)
+tools/nexus.env
 tools/nexus.mods
 
 # SKSE C++ plugin build output (CMake + FetchContent deps; large, regenerated)
