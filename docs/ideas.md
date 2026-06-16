@@ -25,13 +25,13 @@ skytest-replay-handoff.md`. Deferred:
   matching a **prior** session's last `inWorld:true` status line (the probe only truncates trace on
   load, after the readiness poll already ran), faking instant readiness and driving replay input
   before the EIS server was up. See the handoff's "stale-IO readiness" finding.
-- **Validate key names in `tap`/`key`/`hold` steps.** `gs_drive`'s `tap`/`seq`/`key` embed
-  `gs_keycode "$k"` in a command substitution without checking its exit code; an unknown key →
-  empty arg → `eidriver` taps keycode 0 (a silent no-op) yet returns success, so the replay step
-  reports `ok` and a **downstream gate** is what visibly fails — confusing. `hold` already guards
-  (`kc=$(gs_keycode …) || return 2`). Make `tap`/`seq`/`key` do the same so a typo'd key aborts
-  cleanly with `input failed` (or, stronger: validate key names at parse time so `--dry-run` catches
-  them — but that couples the currently-pure parser to `gs_keycode`). Found in the 2026-06-16 audit.
+- **~~Validate key names in `tap`/`key` steps.~~ DONE (2026-06-16).** `gs_drive`'s `tap`/`seq`/`key`
+  now capture `gs_keycode`'s rc (`kc=$(gs_keycode …) || return 2`, like `hold` always did) instead
+  of inlining the substitution; an unknown key was producing an empty arg → `eidriver` tapped
+  keycode 0 (a silent no-op that still exited 0), so a typo'd key reported `ok` and a downstream
+  gate was what failed. `seq` validates every key before driving any (no half-applied sequence).
+  Deferred-stronger option (not done): also validate at parse time so `--dry-run` catches typos —
+  rejected for now because it would couple the currently-pure parser to `gs_keycode`.
 - **`charged` / `actorcount` gates** (from the design) — not built; add per the first script that
   needs them, each as one `resolve_gate` row + one direct-call probe handler (the `is-menu-open`
   commit is the template).

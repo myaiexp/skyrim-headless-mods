@@ -167,8 +167,10 @@ Both "blockers" are decided (see above) — what remains is per-need build-out:
    probe commands (+ exterior fixture for a Map demo), then route replay staging to them (or add a
    `stage` step). Per-need, not speculative.
 2. ~~Truncate `commands.jsonl` at boot.~~ **DONE** — `gs_reset_io` clears `commands.jsonl` +
-   `trace.jsonl` before `gs_launch` (see RESOLVED 3). What remains here: optionally make
-   `tap`/`key`/`hold` validate key names (a typo'd key silently no-ops today — `docs/ideas.md`).
+   `trace.jsonl` before `gs_launch` (see RESOLVED 3). ~~Make `tap`/`key` validate key names.~~
+   **DONE** — `gs_drive` now guards `gs_keycode`'s rc (a typo'd key aborts `input failed` instead
+   of silently no-op'ing). Optional remainder: validate key names at *parse* time (`--dry-run`
+   catch) — deferred, would couple the pure parser to `gs_keycode` (`docs/ideas.md`).
 3. The exec-caveat wording in the docs (README replay section + caveat box, finding #17,
    probe-design as-built, this handoff) was corrected 2026-06-16 to the direct-call/drive model —
    keep new docs consistent with it.

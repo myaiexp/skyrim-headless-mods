@@ -228,11 +228,18 @@ gs_drive() {
   [ -x "$EIDRIVER" ] || die "eidriver not built" "skytest/eidriver/build.sh"
   [ -S "$GS_EIS_SOCK" ] || die "no EIS socket at $GS_EIS_SOCK (is a test session up?)" "skytest test <mod>"
   local cmd="${1:-}"; shift || true
+  # tap/seq/key resolve key NAMES to codes; gs_keycode returns 2 + a stderr breadcrumb on an
+  # unknown name. Capture its rc (`|| return 2`) instead of inlining the substitution: an
+  # unresolved name otherwise yields an empty arg -> eidriver taps keycode 0 (a SILENT no-op
+  # that still exits 0), so a typo'd key in a .steps would report `ok` and a downstream gate
+  # would be what fails. seq validates EVERY key before driving any, so a bad key never leaves
+  # a sequence half-applied. (hold, in lib/replay.sh, already guards the same way.)
+  local kc
   case "$cmd" in
-    tap)   "$EIDRIVER" "$GS_EIS_SOCK" tap "$(gs_keycode "$1")" ;;
-    seq)   local args=() k; for k in "$@"; do args+=(tap "$(gs_keycode "$k")" sleep 120); done
+    tap)   kc="$(gs_keycode "$1")" || return 2; "$EIDRIVER" "$GS_EIS_SOCK" tap "$kc" ;;
+    seq)   local args=() k; for k in "$@"; do kc="$(gs_keycode "$k")" || return 2; args+=(tap "$kc" sleep 120); done
            "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
-    key)   "$EIDRIVER" "$GS_EIS_SOCK" key "$(gs_keycode "$1")" "$2" ;;
+    key)   kc="$(gs_keycode "$1")" || return 2; "$EIDRIVER" "$GS_EIS_SOCK" key "$kc" "$2" ;;
     btn)   "$EIDRIVER" "$GS_EIS_SOCK" btn "$1" "$2" ;;   # mouse button hold/release (272=L 273=R), $2: 1=down 0=up
     click) if [ "$#" -ge 2 ]; then "$EIDRIVER" "$GS_EIS_SOCK" clickat "$1" "$2"
            else "$EIDRIVER" "$GS_EIS_SOCK" click; fi ;;
