@@ -141,7 +141,18 @@ json_arr() {
 # The gamescope/proton launcher references skse64_loader.exe (not SkyrimSE.exe), so it's
 # matched only once the game actually spawns. Self/parent excluded so the cmdline grep
 # can't self-match (findings #11). Echoes the matching pid(s), newest-relevant first.
-running_game_pids() { pgrep -f 'SkyrimSE\.exe' 2>/dev/null | grep -vw "$$" | grep -vw "${PPID:-0}" || true; }
+#
+# Exclude tooling that merely names the exe as an ARGUMENT, not as the running program —
+# notably Ghidra (`analyzeHeadless -import .../SkyrimSE.exe[.unpacked.exe]`). With the RE
+# tier (docs/ghidra.md), analysing the binary while testing is a normal concurrent workflow,
+# and a bare `pgrep -f SkyrimSE\.exe` false-positives on it. The real proton/wine game never
+# has ghidra/analyzeHeadless/java in its cmdline, so filtering those is safe.
+running_game_pids() {
+  pgrep -f 'SkyrimSE\.exe' 2>/dev/null | grep -vw "$$" | grep -vw "${PPID:-0}" | while read -r _gp; do
+    tr '\0' ' ' < "/proc/$_gp/cmdline" 2>/dev/null | grep -qiE 'ghidra|analyzeheadless|/java ' && continue
+    echo "$_gp"
+  done || true
+}
 game_running() { [ -n "$(running_game_pids | head -1)" ]; }
 
 # Refuse up front when a Skyrim is already running — the #1 source of "why is my test
