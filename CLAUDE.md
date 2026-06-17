@@ -105,5 +105,6 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 - **`skytest/docs/headless-findings.md`** — gamescope/libei dead-ends + the headless-screenshot open item; read before changing the display/input approach.
 - **`docs/papyrus-{toolchain,workflow,limits}.md`** — the Papyrus tier end to end + its hard limits.
 - **`docs/skse-{toolchain,tier-bringup}.md`** — the SKSE C++ tier bring-up.
+- **`docs/ghidra.md`** — the headless Ghidra RE tier (`tools/ghidra/ghidra.sh`): disassemble `SkyrimSE.exe` to find non-virtual hook seams the Address-Library tier can't reach (analyse once, query many; PyGhidra in a venv).
 - **`docs/nexus-api.md`** — the Nexus Mods read-only API + `tools/nexus` (mod release-status / stats checker).
 - **`docs/ideas.md`** — deferred features + tech debt. **`docs/plans/`** — design/plan/handoff per topic.

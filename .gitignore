@@ -34,3 +34,18 @@ tools/papyrus-sources/TESV_Papyrus_Flags.flg
 # Populate from your own game install — see tools/papyrus-compiler/README.md.
 tools/papyrus-compiler/*
 !tools/papyrus-compiler/README.md
+
+# Ghidra reverse-engineering workspace: project data (.rep/.gpr) + logs are large
+# and contain disassembly of Bethesda's SkyrimSE.exe (third-party IP) — never commit.
+# The headless scripts under tools/ghidra/scripts/ ARE committed.
+tools/ghidra/projects/
+tools/ghidra/*.log
+tools/ghidra/*.out
+
+# Disassembly dumps of SkyrimSE.exe (third-party IP) — never commit.
+tools/ghidra/out/
+
+tools/ghidra/.venv/
+
+# Steamless unpacker + the SkyrimSE.exe copy/unpacked output (third-party + game IP).
+tools/ghidra/.steamless/

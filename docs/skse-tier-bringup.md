@@ -55,7 +55,8 @@ Verification points (confirm when we actually build, don't assume):
   high-process draw timer) and the function that turns it into projectile power.
 - Tools: Address Library, existing open-source plugins that touch archery (e.g. Manual
   Crossbow Reload, Bow Charge Plus equivalents, SmoothCam's aim code) as references for
-  offsets/patterns. Ghidra/IDA on `SkyrimSE.exe` if needed.
+  offsets/patterns. Ghidra on `SkyrimSE.exe` when an offset has no Address-Library seam —
+  the headless RE tier is set up and reproducible: see `docs/ghidra.md` (`tools/ghidra/ghidra.sh`).
 
 ## Next steps
 

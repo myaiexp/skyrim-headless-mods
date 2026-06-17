@@ -7,13 +7,17 @@ spells (Firebolt) physically pass through the whole party to hit the enemy behin
 slot 0x09 ghost-group write, enroll/restore confirmed, no crash);
 (2) a **`MagicTarget::AddTarget` refusal** = the player's hostile magic deals **no friendly damage**
 to teammates (covers continuous streams Flames/Sparks, whose damage flows through the magic layer).
-**Parked as structurally infeasible:** making **continuous streams** (Flames/Sparks =
-`FlameProjectile`/`BeamProjectile`) physically *pass through* a teammate. Unlike discrete
-projectiles, those subclasses expose no collision-point vfunc (slot `0xBE`); their stop point is
-computed inside non-virtual `UpdateImpl` via a **layer**-filtered world cast that ignores systemGroup
-entirely — no Address-Library-resolvable seam, and no existing mod does it (see "## v2 design" §2b).
-So for streams the practical outcome is "no friendly damage," not pass-through. Pivoted away from the
-original collision-filter approach (see "Pivot" below).
+**Parked as structurally infeasible — but that premise was DISPROVEN by RE on 2026-06-17 (§2b
+callout; `docs/ghidra.md`, `docs/ideas.md`).** The claim below — that the stream's stop point is
+computed inside non-virtual `UpdateImpl` via a layer-filtered world cast — was inferred without
+Ghidra. The decrypted `FlameProjectile::UpdateImpl` actually does positioning/aim/lifetime with **no
+collision cast at all**, so streams are **not proven infeasible**; the real target-gating lives
+elsewhere (likely magic aim/target-acquisition). The original (now-suspect) reasoning, retained for
+history: making **continuous streams** (Flames/Sparks = `FlameProjectile`/`BeamProjectile`) physically
+*pass through* a teammate — those subclasses expose no collision-point vfunc (slot `0xBE`); their stop
+point was *believed* computed inside non-virtual `UpdateImpl` via a **layer**-filtered world cast that
+ignores systemGroup. So for streams the shipped outcome is "no friendly damage," not pass-through.
+Pivoted away from the original collision-filter approach (see "Pivot" below).
 **Type:** SKSE C++ plugin (tier 2), CommonLibSSE-NG, headless clang-cl toolchain
 **Target:** Skyrim SE/AE **v1.6.1170**, SKSE
 **Working name:** `GhostAllies` (provisional, rename freely)
@@ -179,6 +183,17 @@ best design, not merely the tidy one.
 | `BarrierProjectile`| ❌ deferred | wall spells — not an aimed flyer |
 
 ### 2b. Continuous spells — damage refused (works), pass-through infeasible (parked)
+
+> **⚠️ CHALLENGED BY RE (2026-06-17) — the "infeasible" premise below is disproven.** This section
+> claims the stream's stop point is computed inside `FlameProjectile/BeamProjectile::UpdateImpl` via
+> a layer-filtered world cast. That was an *inference made without Ghidra*. Disassembling the
+> SteamStub-**decrypted** binary (see `docs/ghidra.md`; the on-disk exe is encrypted, so any earlier
+> static guess saw garbage) shows `FlameProjectile::UpdateImpl` (VA `0x1407d5760`) is **positioning +
+> orientation + homing aim + lifetime — no collision cast at all.** The systemGroup family failed
+> because `UpdateImpl` does no collision here, not because of a layer-vs-group cast. **Stream
+> pass-through is NOT proven infeasible.** The real target-gating is elsewhere (likely magic
+> aim/target-acquisition). See `docs/ideas.md` 2026-06-17. Treat everything below as the old
+> (mistaken) rationale, retained for history.
 
 Flame/beam/cone are continuous-collision streams. In-game the stamp **fires on them** (the phantom
 exists, the group is written) **but the follower still takes damage** — their damage isn't gated by

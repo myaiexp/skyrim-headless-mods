@@ -2,6 +2,29 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
+## 2026-06-17 — Ghidra RE tier + GhostAllies stream pass-through reopened
+
+Set up a **headless, reproducible Ghidra tier** (`docs/ghidra.md`, `tools/ghidra/ghidra.sh`) to
+disassemble `SkyrimSE.exe` for hook points the Address-Library tier can't reach. Two findings:
+
+- **SkyrimSE.exe is SteamStub-DRM encrypted** (`.bind` section, Variant 3.1 x64): the on-disk
+  `.text` is garbage until unpacked with Steamless (`ghidra.sh unpack`). Any prior *inference* about
+  these functions' internals was made without ever seeing real code — suspect accordingly.
+- **The "continuous streams can't pass through" parked reason is DISPROVEN.** Decompiling the
+  decrypted `FlameProjectile::UpdateImpl` (vtable slot `0xAB`, VA `0x1407d5760`) shows it is
+  **positioning + orientation + homing-target aim + lifetime** — matrix/transform math end to end
+  (helpers `0x1401d0ec0` = 3×3 matmul, `0x140d19e40` = build-rotation-from-direction, `0x1407ecbf0`
+  /`0x140851dc0` = compute the flame node transform / homing aim-point). **There is no
+  layer-filtered world cast and no collision "stop point" anywhere in it** — contrary to
+  `ghost-allies-design.md` §2b, which assumed (pre-Ghidra) the stop point was computed there. So the
+  systemGroup family didn't fail because "the cast uses layer not group" — it failed because
+  `UpdateImpl` does no collision at all. **Stream pass-through is therefore not proven infeasible.**
+- **Next step (tractable now the pipeline works):** find where the flame's effective target is
+  actually gated — almost certainly the **magic aim / target-acquisition** path (the flame homes
+  toward an acquired ref; if the ally is acquired, the enemy behind is never targeted), not the
+  projectile's own update. Trace that pick → decide buildable-vs-dead with a real seam, not a guess.
+  Verify any candidate hook in-engine with `skytest test GhostAllies --headless`.
+
 ## 2026-06-16 — skytest replay follow-ups (feature built; staging model decided)
 
 Replay machinery shipped & verified live; staging model settled in `docs/plans/
