@@ -57,9 +57,24 @@ namespace
 		spdlog::set_default_logger(std::move(logger));
 	}
 
+	// A "ghost ally" is any actor the player's projectiles + hostile magic should pass through /
+	// not harm: the player's TEAMMATES (hired followers, IsPlayerTeammate) AND the player's own
+	// SUMMONS — conjured atronachs/familiars and reanimated thralls. Summons are identified by
+	// their commanding actor being the player, which deliberately scopes this to OUR summons (an
+	// enemy conjurer's atronach has a different commanding actor and stays a normal, hittable
+	// target). Both categories are enrolled in the same kGhostGroup, so one mechanism serves both.
+	bool IsGhostAlly(RE::Actor* a_actor, RE::PlayerCharacter* a_player)
+	{
+		if (a_actor->IsPlayerTeammate()) {
+			return true;
+		}
+		auto commander = a_actor->GetCommandingActor();
+		return commander && commander.get() == a_player;
+	}
+
 	// --- Whole-party ghost-group membership --------------------------------------
 	//
-	// FormID -> the teammate's ORIGINAL systemGroup, saved when we enrolled it into the ghost
+	// FormID -> the ghost-ally's ORIGINAL systemGroup, saved when we enrolled it into the ghost
 	// group. We must always be able to restore an actor's real group when it stops being a
 	// teammate, so we never strand an actor in kGhostGroup. Enroll/restore is done lazily from
 	// the stamp path (no SKSE event hooking): each player shot reconciles the map against the
@@ -84,7 +99,7 @@ namespace
 			if (!actor || actor.get() == a_player) {
 				continue;
 			}
-			if (!actor->IsPlayerTeammate()) {
+			if (!IsGhostAlly(actor.get(), a_player)) {
 				continue;
 			}
 			auto* ctrl = actor->GetCharController();
@@ -103,7 +118,7 @@ namespace
 			}
 			const std::uint32_t ghosted = (info & 0x0000FFFF) | (kGhostGroup << 16);
 			CharController_SetCollisionFilterInfo(ctrl, ghosted);
-			SKSE::log::info("enrolled teammate {} ({:08X}) orig group {}",
+			SKSE::log::info("enrolled ghost-ally {} ({:08X}) orig group {}",
 				actor->GetName(), id, group);
 		}
 
@@ -112,8 +127,8 @@ namespace
 			const RE::FormID id = it->first;
 			auto*            form = RE::TESForm::LookupByID(id);
 			auto*            actor = form ? form->As<RE::Actor>() : nullptr;
-			const bool       stillTeammate = actor && actor->IsPlayerTeammate();
-			if (stillTeammate) {
+			const bool       stillAlly = actor && IsGhostAlly(actor, a_player);
+			if (stillAlly) {
 				++it;
 				continue;
 			}
@@ -125,7 +140,7 @@ namespace
 					CharController_SetCollisionFilterInfo(ctrl, restored);
 				}
 			}
-			SKSE::log::info("restored teammate {:08X}", id);
+			SKSE::log::info("restored ghost-ally {:08X}", id);
 			it = g_enrolled.erase(it);
 		}
 	}
@@ -274,7 +289,8 @@ namespace
 		{
 			auto* target = a_this ? a_this->GetTargetStatsObject() : nullptr;
 			auto* actor = target ? target->As<RE::Actor>() : nullptr;
-			if (actor && actor->IsPlayerTeammate()) {
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (actor && player && IsGhostAlly(actor, player)) {
 				const bool playerCast = a_data.caster && a_data.caster->IsPlayerRef();
 				// Prefer the specific effect being added; fall back to the parent spell.
 				const bool hostile =
@@ -284,7 +300,7 @@ namespace
 					// Throttle: a concentration spell calls AddTarget every tick, so log only
 					// the first refusal per teammate (enough to confirm the hook is working).
 					if (g_addTargetSeen.emplace(actor->GetFormID(), 0).second) {
-						SKSE::log::info("AddTarget refusing player hostile effects on teammate {} ({:08X})",
+						SKSE::log::info("AddTarget refusing player hostile effects on ghost-ally {} ({:08X})",
 							actor->GetName(), actor->GetFormID());
 					}
 					return false;  // drop the effect: no hostile magic applied to the teammate
@@ -322,7 +338,7 @@ namespace
 		// magic-target system, not AddImpact — proven in-game). Refuse player-shot hostile
 		// magic effects on teammates at MagicTarget::AddTarget instead.
 		InstallAddTargetRefusal();
-		SKSE::log::info("GhostAllies: hooked MagicTarget::AddTarget (Character vtable idx 4, vfunc 1) to refuse player hostile effects on teammates");
+		SKSE::log::info("GhostAllies: hooked MagicTarget::AddTarget (Character vtable idx 4, vfunc 1) to refuse player hostile effects on ghost-allies (teammates + player summons)");
 	}
 
 	// On each game load (or new game), drop the per-teammate refusal-log throttle. It's a
@@ -347,7 +363,7 @@ namespace
 // Declarative SKSE plugin metadata (CommonLibSSE-NG). Exported as
 // SKSEPlugin_Version + SKSEPlugin_Query so SKSE recognises and loads the DLL.
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 9, 0 },
+	.Version = REL::Version{ 0, 10, 0 },
 	.Name = "GhostAllies",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,

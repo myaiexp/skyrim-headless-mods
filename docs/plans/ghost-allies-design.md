@@ -1,7 +1,10 @@
 # GhostAllies — design
 
 **Status:** v1 ✅ shipped (arrows through nearest follower). **v2 ✅ shipped & verified in-game
-(final: 2026-06-14, v0.9.0).** Two mechanisms, both verified:
+(final: 2026-06-14, v0.9.0).** **v2.1 ✅ (v0.10.0, 2026-06-17, verified headless): summon bypass** —
+`IsGhostAlly()` extends membership from teammates to the player's own summons (commanded by the
+player), so both the stamp and the AddTarget refusal now cover conjured/reanimated allies (see
+`docs/ideas.md` 2026-06-17). Two mechanisms, both verified:
 (1) the **systemGroup stamp** = true pass-through for **discrete** projectiles — arrows + aimed
 spells (Firebolt) physically pass through the whole party to hit the enemy behind (`bhkCharacterController`
 slot 0x09 ghost-group write, enroll/restore confirmed, no crash);

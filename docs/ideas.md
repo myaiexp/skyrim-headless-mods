@@ -74,9 +74,13 @@ party; the player's hostile magic deals no friendly damage to teammates. Still d
 - **Runes + wall spells.** `GrenadeProjectile` (runes / lobbed) and `BarrierProjectile` (wall
   spells) are explicitly out of v2 scope — different (arc / placed) collision feel. Add later by
   extending the same unified `UpdateImpl` stamp to those subclass vtables.
-- **Broaden the "phase through" target set beyond teammates.** Player summons (atronachs,
-  reanimated thralls) and optionally any non-hostile actor. v2 keys off `IsPlayerTeammate()`; each
-  extra category is a different engine flag — fold them into the same "ghost group" membership set.
+- **~~Player summons~~ DONE (v0.10.0, 2026-06-17, verified in-engine).** `IsGhostAlly()` now ORs
+  `IsPlayerTeammate()` with "commanded by the player" (`GetCommandingActor() == player`), so conjured
+  atronachs/familiars + reanimated thralls join the same ghost group (one predicate, both the stamp
+  and the AddTarget refusal). Verified headless: a conjured Familiar logged `enrolled ghost-ally …
+  orig group 203`, missiles stamped, AddTarget refused its damage. Scoped to OUR summons (an enemy
+  conjurer's atronach has a different commanding actor, stays hittable). **Still deferred:** any
+  *non-hostile* actor (a different, broader flag) — fold into the same membership set when wanted.
 - **MCM / INI configuration.** Toggles for: arrows on/off, spells on/off, per-projectile-type, and
   which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
   already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
