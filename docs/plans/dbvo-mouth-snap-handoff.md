@@ -66,7 +66,29 @@ full-profile copy was a stale Jun-14 build before; refreshed 2026-06-18).
 4. From "facing Lydia": next **E = talk**; further **E = advance/skip a topic**, which fires the mod's
    `CutNpcReply` → the snap.
 
-## Preliminary finding (the surprise — investigate first next time)
+## CONFIRMED (2026-06-18): the mouth lives in `transitionTargetKeyFrame`
+
+**Resolved.** A keyframe sweep across all 13 `BSFaceGenAnimationData` keyframes, captured while Lydia
+talked + was skipped, showed **only `transitionTargetKeyFrame` (offset 0x18) moves** — peak 1.000,
+`maxIdx` jumping 3/4/7/12 (phoneme shapes). `phenomeKeyFrame@80`, `expression`, `modifier`, and every
+`unk*` stayed flat 0.0. So v4's "phoneme keyframe holds the mouth" is **wrong for this setup** — the
+live lip animation is the *transition target*. The snap is observable: `transitionTarget` 1.000 → 0
+between consecutive samples at a cut (~19 s into the recording).
+
+Consequences:
+
+- The fix must ease **`transitionTargetKeyFrame->values`**, not phoneme/modifier.
+- `facegen-close` (Reset-based) is likely the **wrong lever**: `Reset()`'s flags are
+  expression/phoneme/modifier/custom (not the transition target), and its `SetSpeakingDone(true)` (pump
+  stop) probably dominates. Leading fix = **owned per-frame ramp of the transition target to 0** (~150 ms).
+- `transitionTargetKeyFrame` reads like a *target* (stepwise-constant per phoneme), so the rendered
+  mouth interpolates toward it — easing the target down should make the visible close smooth.
+
+**Next experiment:** a self-triggering eased close on `transitionTargetKeyFrame` (the probe waits until
+the target is nonzero = speaking, then ramps it to 0 itself over N ms) — removes CC round-trip latency
+from the timing. Build it, rebuild+restart, drive once, read the ramp-vs-snap in `trace.jsonl`.
+
+### Original symptom (now explained)
 
 With `facegen-watch speaker` armed on Lydia (`0x000A2C94`), the captured samples showed:
 

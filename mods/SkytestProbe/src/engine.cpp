@@ -612,12 +612,45 @@ void engine::DumpFaceGen(RE::Actor* a_actor, const char* a_src)
 		return o;
 	};
 
+	// Compact {count,max,maxIdx} for a keyframe — used to sweep EVERY morph keyframe and
+	// find which one carries the live mouth animation (phenomeKeyFrame read flat 0.0 during
+	// speech, so the value is elsewhere — likely transitionTargetKeyFrame).
+	auto compact = [](RE::BSFaceGenKeyframeMultiple& a_kf) {
+		float         maxv = 0.0F;
+		std::uint32_t maxi = 0;
+		if (a_kf.values && a_kf.count > 0 && a_kf.count <= 256) {
+			for (std::uint32_t i = 0; i < a_kf.count; ++i) {
+				if (a_kf.values[i] > maxv) {
+					maxv = a_kf.values[i];
+					maxi = i;
+				}
+			}
+		}
+		return trace::json{ { "count", a_kf.count }, { "max", maxv }, { "maxIdx", maxi } };
+	};
+
 	{
 		RE::BSSpinLockGuard locker(fg->lock);
 		line["exprOverride"] = fg->exprOverride;
-		line["phoneme"]      = summarize(fg->phenomeKeyFrame);  // the mouth shapes
-		line["expression"]   = summarize(fg->expressionKeyFrame);
-		line["modifier"]     = summarize(fg->modifierKeyFrame);
+		// Sweep every keyframe (names tagged by struct offset) to locate the mouth driver.
+		trace::json kf = trace::json::object();
+		if (fg->transitionTargetKeyFrame) {
+			kf["transitionTarget@18"] = compact(*fg->transitionTargetKeyFrame);
+		}
+		kf["expression@20"] = compact(fg->expressionKeyFrame);
+		kf["unk040@40"]     = compact(fg->unk040);
+		kf["modifier@60"]   = compact(fg->modifierKeyFrame);
+		kf["phoneme@80"]    = compact(fg->phenomeKeyFrame);
+		kf["custom@A0"]     = compact(fg->customKeyFrame);
+		kf["unk0C0@C0"]     = compact(fg->unk0C0);
+		kf["unk0E0@E0"]     = compact(fg->unk0E0);
+		kf["unk100@100"]    = compact(fg->unk100);
+		kf["unk120@120"]    = compact(fg->unk120);
+		kf["unk140@140"]    = compact(fg->unk140);
+		kf["unk160@160"]    = compact(fg->unk160);
+		kf["unk180@180"]    = compact(fg->unk180);
+		line["kf"]      = std::move(kf);
+		line["phoneme"] = summarize(fg->phenomeKeyFrame);  // full values for the v4 field
 	}
 	trace::Write(std::move(line));
 }
