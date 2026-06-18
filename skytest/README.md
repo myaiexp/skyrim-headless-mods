@@ -219,8 +219,9 @@ test profile **unconditionally** (DLL-only/Address-Library-only, like Start On S
 save condition; ini copied verbatim). It's a pre-compiled probe plugin: write JSON commands to
 `…/SKSE/skytest/commands.jsonl` and the running game writes structured traces to `trace.jsonl`
 in the same dir: arm engine event sinks (`trace`), dump an actor's state incl. collision group
-(`dump`), `watch` an actor value, run a console line (`exec`), `anim-trace`, `marker`, `status`;
-F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
+(`dump`), `watch` an actor value, sample a face's morph keyframes (`facegen-watch`) / force a
+parameterized facegen reset (`facegen-close`) — both accept a `speaker` ref (the live dialogue NPC)
+— run a console line (`exec`), `anim-trace`, `marker`, `status`; F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
 mods, and it is what `skytest ready` polls. Passive until armed, never crashes on bad input. Built
 from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that build output
 (`build/SkytestProbe.dll`) and the **ini** from the source dir (`SkytestProbe.ini`, alongside

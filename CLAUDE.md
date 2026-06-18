@@ -94,6 +94,11 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
   stripped out. Need a new signal for a test (a sync gate, a state query)? Add it to SkytestProbe so
   the next test reuses it. Never park probe code in the mod-under-test or delete it once the test
   passes.
+- **Using skytest to debug a mod improves skytest too.** When a debugging session hits harness
+  friction (a verb that misbehaves, a missing boot path, a stale-injection gotcha) or learns a
+  reusable trick, fold the fix/instrument/gotcha back into skytest or its docs _in the same session_
+  — don't just work around it. The harness accretes alongside the mods it tests. (Companion to the
+  SkytestProbe-instrumentation norm.)
 - **Describe a skytest session as _detached_, never by duration or "heaviness."** Don't say "takes a
   while" / "heavy" — say what it does and that you fire it off and keep working. (Mirrors the global
   "no duration/work-amount framing" rule.)

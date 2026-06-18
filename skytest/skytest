@@ -358,20 +358,21 @@ inject_startonsave() {
   sed "s/@BASE_SAVE@/$BASE_SAVE_NAME/" "$SOS_INI_TEMPLATE" > "$TEST/SKSE/Plugins/po3_StartOnSave.ini"
 }
 
-# Inject SkytestProbe into the TEST profile, unconditionally (mirrors the StartOnSave
-# symlink injection but with NO save-existence condition; the ini is copied verbatim,
-# no sed substitution). Gives every isolated test the runtime probe toolkit — CC writes
+# Inject SkytestProbe into a profile (default TEST; `playtest` passes FULL), unconditionally
+# (mirrors the StartOnSave symlink injection but with NO save-existence condition; the ini is
+# copied verbatim, no sed substitution). Gives the session the runtime probe toolkit — CC writes
 # probe specs to commands.jsonl, the running game writes traces to trace.jsonl (both under
 # the SKSE log dir's skytest/). Degrades to a warning (not a hard failure) if the DLL
 # hasn't been built yet, so skytest still works without it.
 inject_skytestprobe() {
+  local prof="${1:-$TEST}"   # default the TEST profile; playtest passes $FULL
   if [ ! -f "$PROBE_DLL" ]; then
     say "note: SkytestProbe DLL absent at $PROBE_DLL — skipping probe injection (build it in ~/Projects/skyrim-headless-mods/mods/SkytestProbe)."
     return 0
   fi
-  mkdir -p "$TEST/SKSE/Plugins"
-  ln -sfn "$PROBE_DLL" "$TEST/SKSE/Plugins/SkytestProbe.dll"
-  [ -f "$PROBE_INI_TEMPLATE" ] && cp -f "$PROBE_INI_TEMPLATE" "$TEST/SKSE/Plugins/SkytestProbe.ini"
+  mkdir -p "$prof/SKSE/Plugins"
+  ln -sfn "$PROBE_DLL" "$prof/SKSE/Plugins/SkytestProbe.dll"
+  [ -f "$PROBE_INI_TEMPLATE" ] && cp -f "$PROBE_INI_TEMPLATE" "$prof/SKSE/Plugins/SkytestProbe.ini"
 }
 
 # Insert (or replace) SLocalSavePath under [General] in Skyrim.ini. Value comes via the
@@ -833,11 +834,11 @@ cmd_play() {
 # Like `play`, but under a DETACHED, drivable gamescope session instead of the blocking
 # direct path. Boots the FULL modded profile (real load order + SkyUI + every SKSE plugin),
 # so MCMs and load-order-dependent mods can be screenshot/driven — the vanilla+1 `test`
-# profile can't reach those. gs_launch wraps whatever Data points at, so this is just
-# `test` minus the profile swap and minus any injection: `full` stays pristine. No
-# SkytestProbe here (it lives only in the test profile), so `ready`/`exec` don't apply —
-# use `shot`/`drive` and read the in-game console / SKSE logs. Boots to the menu; load a
-# save via `drive`. Tear down with `skytest stop`.
+# profile can't reach those. Refreshes SkytestProbe into `full` + resets its IO on launch, so
+# the probe commands (`facegen-*`, `dump`, `watch`, …) work here too. NOTE: `ready`/
+# `gs_wait_ready` is unreliable on full (just wait ~10s after the save loads); it boots to the
+# MENU (drive E,E / Continue to a save); and autosave can clobber a hand-made test save. Tear
+# down with `skytest stop`.
 cmd_playtest() {
   local backend="wayland"
   case "${1:-}" in
@@ -857,10 +858,12 @@ cmd_playtest() {
   backup_plugins
   [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
   point_data full
+  inject_skytestprobe "$FULL"   # refresh the probe in full so playtest debugging gets the current build
+  gs_reset_io                   # clear stale commands.jsonl/trace.jsonl (the test path does this; play didn't)
   say "Data -> full (real modded load order). Launching drivable $backend session..."
   gs_launch "$backend"
-  say "session live ($backend). No SkytestProbe in 'full' -> observe with 'skytest shot';"
-  say "load a save from the menu via 'skytest drive', then shot/drive. Tear down: skytest stop"
+  say "session live ($backend). SkytestProbe active in 'full' -> probe via …/SKSE/skytest/commands.jsonl;"
+  say "boots to the MENU (drive E,E / Continue), then wait ~10s ('ready' is unreliable on full). Tear down: skytest stop"
 }
 
 cmd_status() {

@@ -2,6 +2,16 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
+## 2026-06-18 — skytest `playtest` boot-into-save
+
+`playtest` (full modded profile, drivable) boots to the **main menu** — there's no StartOnSave in
+`full`, so reaching a specific modded save means menu-nav (E,E/Continue) + a ~10 s wait, and autosave
+can clobber the prepared save mid-test. **Idea:** a boot-into-save for `playtest` (inject po3
+StartOnSave into `full` pinned to a chosen save, like the `test` path does for `SkytestBase`, e.g.
+`skytest playtest --save <name>`), so debugging a full-load-order mod drops straight into a prepared
+scene. Would have saved most of the DBVO mouth-snap session. Watch the autosave-overwrite hazard
+(consider also disabling autosaves for the session). Related: `docs/plans/dbvo-mouth-snap-handoff.md`.
+
 ## 2026-06-17 — Ghidra RE tier + GhostAllies stream pass-through reopened
 
 Set up a **headless, reproducible Ghidra tier** (`docs/ghidra.md`, `tools/ghidra/ghidra.sh`) to

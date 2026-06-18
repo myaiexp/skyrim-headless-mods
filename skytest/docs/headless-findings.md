@@ -376,3 +376,21 @@ chase one binding would risk regressing all six verified mods, so it's deliberat
 fault-capture instrumentation stays in SkytestProbe as the permanent record. To actually restore
 exec later: update CommonLibSSE-NG to a build that matches the runtime (or hardcode the correct
 1.6.1170 CompileAndRun offset in the probe), then re-run the headless `test` + `exec` repro.
+
+## 19. `playtest` (full profile) gotchas — readiness, autosave, boot-to-menu
+
+Debugging a mod that needs the full load order goes through `playtest` (vanilla+1 `test` can't load a
+modded save). Three things bite, learned 2026-06-18 chasing the DBVO dialogue mouth-snap:
+
+- **`ready`/`gs_wait_ready` is unreliable on `full`** — it polls SkytestProbe's `status`, but on the
+  full profile it never returns cleanly. Don't poll it; just **wait ~10 s** after the save loads, or
+  watch `trace.jsonl` for `"src":"face"`/event lines to confirm you're live.
+- **`full` boots to the MAIN MENU** (no StartOnSave there) — drive **E, E** (first E dismisses the
+  Anniversary notice, second = Continue → newest save). There's a ~200 ms double-press guard on
+  Skyrim dialogue, so rapid E taps aren't truly instant.
+- **Autosave can clobber/teleport your test save.** An autosave fired mid-test, overwrote the prepared
+  save, and the target NPC teleported. **Disable autosaves** (Settings → Gameplay) before driving, or
+  reload + delete the bad autosave.
+
+`playtest` now refreshes SkytestProbe into `full` + resets the probe IO on launch (it didn't before —
+you'd get a stale DLL and stale `commands.jsonl`), so `facegen-*`/`dump`/`watch` work there now.
