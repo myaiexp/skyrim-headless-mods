@@ -240,6 +240,32 @@ namespace
 			return;
 		}
 
+		if (c == "facegen-ramp") {
+			const bool on = JBool(cmd, "on", true);
+			if (!on) {  // facegen-ramp on:false cancels the active ramp
+				EnqueueMain([id]() {
+					engine::CancelFaceGenRamp();
+					trace::Ack(id, true);
+				});
+				return;
+			}
+			engine::FaceGenRampParams p;
+			p.ref          = JStr(cmd, "ref", "speaker");
+			p.ms           = static_cast<float>(JNum(cmd, "ms", p.ms));
+			p.holdMs       = static_cast<float>(JNum(cmd, "holdMs", p.holdMs));
+			p.threshold    = static_cast<float>(JNum(cmd, "threshold", p.threshold));
+			p.waitMs       = static_cast<float>(JNum(cmd, "waitMs", p.waitMs));
+			p.speakingDone = JBool(cmd, "speakingDone", p.speakingDone);
+			p.cut          = JBool(cmd, "cut", p.cut);
+			p.live         = JBool(cmd, "live", p.live);
+			p.reassert     = JBool(cmd, "reassert", p.reassert);
+			EnqueueMain([id, p]() {
+				engine::StartFaceGenRamp(p);
+				trace::Ack(id, true);  // armed; the ramp self-triggers + logs its own series
+			});
+			return;
+		}
+
 		if (c == "exec") {
 			const std::string line = JStr(cmd, "line");
 			if (line.empty()) {

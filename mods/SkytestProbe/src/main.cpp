@@ -9,6 +9,7 @@
 
 #include "commands.h"
 #include "config.h"
+#include "engine.h"
 #include "hotkey.h"
 #include "probes.h"
 #include "trace.h"
@@ -45,6 +46,7 @@ namespace
 	{
 		trace::Init();
 		probes::RegisterEventSinks();
+		engine::InstallFaceGenHook();  // facegen-ramp's per-frame apply hook (idle until a ramp triggers)
 		hotkey::Register();
 		commands::Start();
 		SKSE::log::info("SkytestProbe: kDataLoaded setup complete");

@@ -394,3 +394,32 @@ modded save). Three things bite, learned 2026-06-18 chasing the DBVO dialogue mo
 
 `playtest` now refreshes SkytestProbe into `full` + resets the probe IO on launch (it didn't before —
 you'd get a stale DLL and stale `commands.jsonl`), so `facegen-*`/`dump`/`watch` work there now.
+
+## 20. A self-re-queuing SKSE task HARD-FREEZES the game — pace per-frame work from a thread
+
+Learned 2026-06-18 building SkytestProbe's `facegen-ramp` (cost two sessions). To drive a ~150 ms
+per-frame effect you need ~60 Hz, far faster than the 250 ms command-poll `MainTick`. The intuitive
+move — a task that re-enqueues itself via `SKSE::GetTaskInterface()->AddTask` — **freezes the game on
+the first run**: the SKSE runtime drains its task queue *to empty* within one frame, so a task that
+adds another task during that drain spins the frame forever. (DBVODialogueTweaks' own v5 comment notes
+the same trap.) The trace signature is dead-giveaway: the arm line writes, then nothing, then frozen.
+
+**Fix — the codebase's existing safe pattern:** an EXTERNAL pacer thread that `sleep`s, then enqueues
+exactly ONE one-shot `AddTask` step that does NOT re-enqueue (the command poll thread paces `MainTick`
+this way). SkytestProbe's ramp ticker sleeps 16 ms (active) / 150 ms (idle) and enqueues one step per
+wake. One-shot `AddTask` (e.g. `CutNpcReply`) is always fine — only *self-re-queue* spins.
+
+## 21. AddTask-scheduled writes LOSE the per-frame race to the lip pump — hook the apply instead
+
+Also 2026-06-18, same mouth-snap chase. The visible NPC mouth lives in `BSFaceGenAnimationData`'s
+`transitionTargetKeyFrame` (offset 0x18). To ease it shut you must out-write the engine's audio-driven
+lip pump, which rewrites that keyframe every frame. An `AddTask`-scheduled write **runs too early in the
+frame** — the pump overwrites it afterward (probe trace: our `maxAfter` decays, but next frame's
+`maxBefore` is pinned back at the pump's value). `SetSpeakingDone(true)` does NOT stop the pump while
+audio plays; the snap is the pump *releasing* the keyframe (0.5→0 in one frame) when the cut audio
+finally stops (~200 ms after `FadeOutAndRelease`). `Reset(0.0)` is a red herring — it doesn't touch
+`transitionTarget`. The only seam that wins is a **per-frame hook at the morph-APPLY point** (scale the
+keyframe after the pump writes, before the mesh reads). **Open:** a vtable hook on
+`BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) overrides the keyframe cleanly but still snaps —
+that's a *transform* pass, not the morph apply. Finding the real apply/write seam (Ghidra) is the
+open work — see `docs/plans/dbvo-mouth-snap-handoff.md`.
