@@ -44,6 +44,11 @@ namespace probes
 	void ArmWatch(const std::string& a_id, const std::string& a_ref,
 	              const std::string& a_av, bool a_on);
 
+	// `facegen-watch` command. Sample a_ref's facegen morphs at poll cadence (~4 Hz),
+	// logging EVERY tick while armed (a time series — the snap/decay dynamics need
+	// every sample, not change-gating). on=false removes it. Keyed by the ref string.
+	void ArmFaceWatch(const std::string& a_ref, bool a_on);
+
 	// Main-thread tick enqueued by the poll thread when HasMainTickWork(): samples
 	// active watches, re-attaches armed anim sinks (survives loads/3D reloads), and
 	// re-resolves armed event filters (teammates membership tracking).

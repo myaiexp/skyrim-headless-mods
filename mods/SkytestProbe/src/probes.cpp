@@ -285,6 +285,11 @@ namespace
 	};
 	std::unordered_map<std::string, Watch> g_watches;  // id -> watch. Main-thread only.
 	std::atomic<int>                       g_activeWatchCount{ 0 };
+
+	// ---- facegen watches --------------------------------------------------------
+	// Refs whose facegen morphs are dumped every MainTick while armed. Main-thread only.
+	std::unordered_set<std::string> g_faceWatches;
+	std::atomic<int>                g_activeFaceWatchCount{ 0 };
 }
 
 void probes::RegisterEventSinks()
@@ -380,6 +385,16 @@ void probes::ArmWatch(const std::string& a_id, const std::string& a_ref, const s
 	g_activeWatchCount.store(static_cast<int>(g_watches.size()), std::memory_order_relaxed);
 }
 
+void probes::ArmFaceWatch(const std::string& a_ref, bool a_on)
+{
+	if (a_on) {
+		g_faceWatches.insert(a_ref);
+	} else {
+		g_faceWatches.erase(a_ref);
+	}
+	g_activeFaceWatchCount.store(static_cast<int>(g_faceWatches.size()), std::memory_order_relaxed);
+}
+
 namespace
 {
 	void SampleWatches()
@@ -416,6 +431,21 @@ namespace
 				{ "ref", engine::HexID(actorID) },
 				{ "av", w.av },
 				{ "value", value } });
+		}
+	}
+
+	// Dump each armed face-watch's morphs every tick (no change-suppression: the snap
+	// and the eased decay ARE the per-sample dynamics we're measuring). The ref is
+	// re-resolved each tick so "speaker"/"crosshair" track the live target.
+	void SampleFaceWatches()
+	{
+		for (const auto& ref : g_faceWatches) {
+			auto* r     = engine::ResolveOne(ref);
+			auto* actor = r ? r->As<RE::Actor>() : nullptr;
+			if (!actor) {
+				continue;  // no speaker / unloaded yet — emit once it resolves
+			}
+			engine::DumpFaceGen(actor, "face");
 		}
 	}
 
@@ -464,6 +494,9 @@ void probes::MainTick()
 	if (g_activeWatchCount.load(std::memory_order_relaxed) > 0) {
 		SampleWatches();
 	}
+	if (g_activeFaceWatchCount.load(std::memory_order_relaxed) > 0) {
+		SampleFaceWatches();
+	}
 	if (g_armedAnimCount.load(std::memory_order_relaxed) > 0) {
 		ReconcileAnim();
 	}
@@ -475,6 +508,7 @@ void probes::MainTick()
 bool probes::HasMainTickWork()
 {
 	return g_activeWatchCount.load(std::memory_order_relaxed) > 0 ||
+	       g_activeFaceWatchCount.load(std::memory_order_relaxed) > 0 ||
 	       g_armedAnimCount.load(std::memory_order_relaxed) > 0 ||
 	       g_armedFilterCount.load(std::memory_order_relaxed) > 0;
 }
@@ -510,6 +544,12 @@ void probes::WriteStatus()
 		watches.push_back({ { "id", id }, { "ref", w.ref }, { "av", w.av } });
 	}
 	armed["watch"] = std::move(watches);
+
+	trace::json faceWatches = trace::json::array();
+	for (const auto& ref : g_faceWatches) {
+		faceWatches.push_back(ref);
+	}
+	armed["faceWatch"] = std::move(faceWatches);
 
 	trace::Write(trace::json{
 		{ "src", "status" },

@@ -201,6 +201,45 @@ namespace
 			return;
 		}
 
+		if (c == "facegen-watch") {
+			const bool        on  = JBool(cmd, "on", true);
+			const std::string ref = JStr(cmd, "ref", "speaker");
+			if (ref.empty()) {
+				trace::Ack(id, false, "facegen-watch: missing ref");
+				return;
+			}
+			EnqueueMain([id, on, ref]() {
+				probes::ArmFaceWatch(ref, on);
+				trace::Ack(id, true);
+			});
+			return;
+		}
+
+		if (c == "facegen-close") {
+			const std::string ref          = JStr(cmd, "ref", "speaker");
+			const float       timer        = static_cast<float>(JNum(cmd, "timer", 0.0));
+			const bool        lock         = JBool(cmd, "lock", true);
+			const bool        speakingDone = JBool(cmd, "speakingDone", true);
+			EnqueueMain([id, ref, timer, lock, speakingDone]() {
+				auto* r     = engine::ResolveOne(ref);
+				auto* actor = r ? r->As<RE::Actor>() : nullptr;
+				if (!actor) {
+					trace::Ack(id, false, "facegen-close: unresolvable actor " + ref);
+					return;
+				}
+				std::string err;
+				if (engine::CloseFaceGen(actor, timer, lock, speakingDone, err)) {
+					trace::Write(json{ { "src", "facegen-close" },
+						{ "ref", engine::HexID(actor->GetFormID()) },
+						{ "timer", timer }, { "lock", lock }, { "speakingDone", speakingDone } });
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "facegen-close: " + err);
+				}
+			});
+			return;
+		}
+
 		if (c == "exec") {
 			const std::string line = JStr(cmd, "line");
 			if (line.empty()) {
