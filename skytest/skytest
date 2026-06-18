@@ -814,8 +814,20 @@ cmd_normal() {
 }
 
 cmd_play() {
-  # Everyday fast launch of the FULL modded game over the direct SKSE path
-  # (skips Steam Play, which is the real cause of the slow startup).
+  # Everyday fast launch of the FULL modded game over the direct SKSE path (skips Steam Play,
+  # the real cause of the slow startup). Bare `play` is the blocking daily-driver path.
+  # `play agent` instead boots the SAME full profile under a detached, drivable gamescope
+  # session (probe injected, IO reset) so the agent can drive/shot/probe it — the ONLY reason
+  # that mode exists is headless observation; humans use bare `play`.
+  local agent="" backend="wayland"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      agent)      agent=1; shift ;;
+      --headless) backend="headless"; shift ;;
+      --sdl)      backend="sdl"; shift ;;
+      *)          usage_err "play: unknown arg: $1" "skytest play [agent] [--headless]" ;;
+    esac
+  done
   guard_no_live_session   # unparking Data -> full out from under a live test session = crash
   guard_no_running_game   # a 2nd instance can't launch anyway — say so cleanly
   if [ -L "$DATA" ]; then
@@ -823,6 +835,19 @@ cmd_play() {
     point_data full
   fi
   deisolate_saves   # never launch the full game with the save path still redirected (#13)
+  if [ -n "$agent" ]; then
+    # agent observation mode: detached, drivable gamescope session on `full`. Inject the probe
+    # + reset its IO so facegen-* / dump / drive / shot work. Boots to the MENU (drive e,e to a
+    # save). Tear down with `skytest stop`. (`ready`/`gs_wait_ready` unreliable on full.)
+    skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+    backup_plugins                 # so `stop`'s restore_plugins round-trips the live Plugins.txt
+    inject_skytestprobe "$FULL"    # refresh the probe in full with the current build
+    gs_reset_io                    # clear stale commands.jsonl/trace.jsonl
+    say "Data -> full. Launching drivable $backend session for the agent (probe live; drive/shot/stop)..."
+    gs_launch "$backend"
+    say "session live ($backend). Probe IO under …/SKSE/skytest/; boots to MENU (drive e,e). Tear down: skytest stop"
+    return 0
+  fi
   if [ -n "${SKYTEST_NO_LAUNCH:-}" ]; then say "would launch full modded game (NO_LAUNCH set)"; return 0; fi
   say "launching full modded game via the fast direct path..."
   skse_env_export                  # cd $SKYDIR + Steam-compat env (shared launch core)
@@ -924,6 +949,7 @@ Verbs:
   drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
   stop              tear down the test session + restore Data → full
   play              launch the full modded game (fast path, blocking, not drivable)
+  play agent        full modded profile under a DRIVABLE gamescope session for the agent  [--headless]
   normal            force Data → full (recover after a crash)
   uninstall         revert to the original real Data/ directory
 
@@ -1096,7 +1122,7 @@ case "${1:-}" in
   shot)         shift; cmd_shot "$@" ;;
   drive)        shift; cmd_drive "$@" ;;
   stop)         cmd_stop ;;
-  play)         cmd_play ;;
+  play)         shift; cmd_play "$@" ;;
   normal)       cmd_normal ;;
   uninstall)    cmd_uninstall ;;
   -*)           usage_err "unknown option: $1" "skytest help" ;;
