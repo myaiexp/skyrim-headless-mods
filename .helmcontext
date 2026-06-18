@@ -1,0 +1,11 @@
+---
+# Helm remote-native worktree asset-bridge: gitignored toolchain symlinked into
+# each per-session worktree so it's buildable (one shared copy on disk, no
+# GB-per-session duplication). tools/papyrus-compiler is dir-aware — its tracked
+# README.md is preserved; the ignored compiler binaries are symlinked alongside it.
+worktreeBridge:
+  - tools/papyrus-compiler
+  - tools/papyrus-sources/vanilla
+  - tools/papyrus-sources/skse
+  - skytest/eidriver/eidriver
+---
