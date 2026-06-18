@@ -41,7 +41,14 @@ FetchContent_MakeAvailable(CommonLibSSE)
 add_library(SkytestProbe SHARED
 	src/main.cpp
 	src/trace.cpp
-	src/engine.cpp
+	src/resolve.cpp
+	src/worldstate.cpp
+	src/console_exec.cpp
+	src/actor_setup.cpp
+	src/dump_actor.cpp
+	src/facegen.cpp
+	src/facegen_ramp.cpp
+	src/mcm.cpp
 	src/probes.cpp
 	src/hotkey.cpp
 	src/commands.cpp)
