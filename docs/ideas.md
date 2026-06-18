@@ -2,16 +2,6 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
-## 2026-06-18 — skytest `playtest` boot-into-save
-
-`playtest` (full modded profile, drivable) boots to the **main menu** — there's no StartOnSave in
-`full`, so reaching a specific modded save means menu-nav (E,E/Continue) + a ~10 s wait, and autosave
-can clobber the prepared save mid-test. **Idea:** a boot-into-save for `playtest` (inject po3
-StartOnSave into `full` pinned to a chosen save, like the `test` path does for `SkytestBase`, e.g.
-`skytest playtest --save <name>`), so debugging a full-load-order mod drops straight into a prepared
-scene. Would have saved most of the DBVO mouth-snap session. Watch the autosave-overwrite hazard
-(consider also disabling autosaves for the session). Related: `docs/plans/dbvo-mouth-snap-handoff.md`.
-
 ## 2026-06-17 — Ghidra RE tier + GhostAllies stream pass-through reopened
 
 Set up a **headless, reproducible Ghidra tier** (`docs/ghidra.md`, `tools/ghidra/ghidra.sh`) to
@@ -190,16 +180,14 @@ Still open:
   save (your _main modded_ save) and pops a "missing content" modal that blocks po3 StartOnSave from
   autoloading `SkytestBase` (which is itself clean — vanilla + Creation Club only). Fix direction:
   point Saves at an isolated dir for the test (only `SkytestBase` visible), or dismiss the modal once
-  precise menu `drive` works. **Note (2026-06-14):** `skytest playtest` (drivable _full_ profile)
-  sidesteps this for MCM / load-order-dependent tests — the full load order matches the real saves, so
-  `CONTINUE` loads with no modal. The isolation fix is still wanted for vanilla+1 `test` autoload.
+  precise menu `drive` works. The isolation fix is still wanted for vanilla+1 `test` autoload.
 - **~~`drive` keyboard didn't move the menu~~ — RESOLVED 2026-06-14 (keyboard).** In-world keyboard
-  driving is confirmed end-to-end via `playtest` (main-menu `CONTINUE` → confirm → save load →
-  in-world → journal, every `drive tap` registering); #13's failure was the no-content _modal_
-  swallowing keys, not keyboard in general. **Still open:** precise in-menu **mouse** clicks — the
-  #9b cursor desync still misses (couldn't click the Journal's SYSTEM tab to reach Mod Configuration),
-  so visual MCM screenshots need the cursor-sync fix. Also still pending: `shot`/`drive` under
-  `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #14.
+  driving was confirmed end-to-end in the former full-profile gamescope wrapper (main-menu
+  `CONTINUE` → confirm → save load → in-world → journal, every `drive tap` registering); #13's failure
+  was the no-content _modal_ swallowing keys, not keyboard in general. **Still open:** precise in-menu
+  **mouse** clicks — the #9b cursor desync still misses (couldn't click the Journal's SYSTEM tab to
+  reach Mod Configuration), so visual MCM screenshots need the cursor-sync fix. Also still pending:
+  `shot`/`drive` under `--backend wayland`. Detail: `skytest/docs/headless-findings.md` #14.
 - **SKSE ground-truth tie-in** (endgame): in-process plugin reports real state (`UI::IsMenuOpen`,
   player pos, menu stack) and activates menus via engine calls — gamescope = eyes, SKSE = deterministic
   hands. Removes pixel-reading and the OS-input problem entirely.
@@ -339,10 +327,6 @@ values), both headless via the Papyrus VM, targeting the full profile. Deferred:
   events (`SKICP_optionSelected`, `SKICP_pageSelected`, …). Built on the same open-menu GFx plumbing as
   `mcm-scrape`. This is what fully replaces the unreliable cursor-driving of MCMs (the AutoFireBow MCM
   test wall — `skytest/docs/headless-findings.md` #14).
-- **`skytest playtest --probe`.** Inject SkytestProbe into the otherwise-pristine full `playtest`
-  session so MCM reveal needs no manual install of the probe into the full profile. A skytest-side
-  convenience, not part of the probe feature.
-
 ## 2026-06-14 — skytest test mis-stages split-output mods (e.g. DBVODialogueTweaks)
 
 `skytest test <mod>` expects the mod arg to be a single artifact (`.dll`/`.esp`) **or a Data-shaped

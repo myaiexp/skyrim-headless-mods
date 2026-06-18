@@ -16,9 +16,9 @@ nlohmann/json (vendored), the probe's existing file protocol.
 **Design:** `docs/plans/skytest-probe-mcm-reveal-design.md`
 
 > **Verification note:** SKSE plugin — no unit-test framework. Tasks verify by (a) the DLL compiling
-> and (b) headless in-game assertions via `skytest playtest` against the full profile (SkyUI present)
-> + the already-installed AutoFireBow MCM. "Test Cases" are build assertions and scripted probe
-> commands + expected `trace.jsonl` records.
+> and (b) in-game assertions against the full profile (SkyUI present) + the already-installed
+> AutoFireBow MCM. "Test Cases" are build assertions and scripted probe commands + expected
+> `trace.jsonl` records.
 
 > **Concurrency:** another session may hold uncommitted `mods/DBVODialogueTweaks/` changes. Every task
 > here touches only `mods/SkytestProbe/**`. **Stage by filename**; never `git add -A`/`.`.
@@ -35,8 +35,8 @@ nlohmann/json (vendored), the probe's existing file protocol.
 | `mods/SkytestProbe/CMakeLists.txt` | — | No change — VM headers ship with the already-linked CommonLibSSE-NG. |
 
 The probe DLL must be **installed into the full profile** (SkyUI present) to exercise these; that's a
-manual `build.sh --install`-style copy for v1 (the `playtest --probe` convenience is deferred per the
-design). No code change gates on profile — `WriteMcmList` just returns 0 where SkyUI is absent.
+manual `build.sh --install`-style copy for v1. No code change gates on profile — `WriteMcmList` just
+returns 0 where SkyUI is absent.
 
 ---
 
@@ -190,7 +190,7 @@ Expected: builds clean.
 
 ---
 
-### Task 3: Headless verification via `playtest` [Mode: Direct]
+### Task 3: Full-profile verification [Mode: Direct]
 
 **Files:** none (verification). Update the probe's command reference in
 `docs/plans/skytest-probe-design.md` (add `mcm-list`/`mcm-get` to the verb list) if it enumerates
@@ -199,14 +199,14 @@ verbs.
 **Steps (Opus drives — a subagent can't run the game):**
 1. Build SkytestProbe; **install** `build/SkytestProbe.dll` + `SkytestProbe.ini` into the full
    profile's `…/Data/SKSE/Plugins/` (AutoFireBow already installed there).
-2. `skytest playtest --headless`; wait for the game to render; `drive tap enter` ×2 on CONTINUE to
-   load the save; confirm in-world (probe `status`, or the AutoFireBow loop-registered log line).
+2. `skytest play`; load the save; confirm in-world (probe `status`, or the AutoFireBow
+   loop-registered log line).
 3. Write `{cmd:"mcm-list"}` to `…/SKSE/skytest/commands.jsonl`; read the `mcm-list` record from
    `trace.jsonl` → assert it contains `{name:"AutoFireBow", pages:["Settings"]}` (and note `via`).
 4. Write `mcm-get` for `AutoFireBowMCM` with the four props → assert the values match the MCM
    defaults (`bEnabled:true, fDamageBonus:10, fMinShotDelay:0, iToggleKey:-1`).
 5. Negative: `mcm-get` bogus script → `ack ok:false`, no crash.
-6. `skytest stop` (restores `Data → full`). Confirm AutoFireBow.esp still active.
+6. Quit the game. Confirm AutoFireBow.esp still active.
 
 **Constraints:**
 - The probe must be in the **full** profile for SkyUI to be present (step 1). Don't expect MCM data in
@@ -225,4 +225,4 @@ verbs.
   (which enumeration path resolves at runtime) and benefits from focused implementation against the
   verified CommonLibSSE-NG signatures; dual-path + null-safety is real logic.
 - **Tasks 2, 3 — Direct:** `mcm-get` is mechanical once `FindBoundScript` exists; Task 3 is an
-  Opus-driven in-game verification (`playtest`).
+  Opus-driven in-game verification.

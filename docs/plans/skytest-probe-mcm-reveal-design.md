@@ -85,9 +85,7 @@ of which profile loaded the probe.
 
 The probe must be loaded where SkyUI is — the **full profile**. The probe DLL is profile-agnostic
 and passive until armed, so for v1 it's a **manual install** into the full profile's
-`SKSE/Plugins/` (alongside how AutoFireBow was installed). A `skytest playtest --probe` convenience
-(inject the probe into the otherwise-pristine full session) is **deferred** to skytest — out of scope
-for the probe feature itself. When SkyUI is absent (vanilla+1 `test` profile), `mcm-list` returns
+`SKSE/Plugins/` (alongside how AutoFireBow was installed). When SkyUI is absent (vanilla+1 `test` profile), `mcm-list` returns
 `count:0` and `mcm-get` acks `ok:false "mcm-get: no quest with script <name>"` (the same as any
 unresolvable script) — both clean, never a crash.
 
@@ -99,11 +97,10 @@ field, never a crash. SkyUI absent is a normal, expected `count:0`, not an error
 
 ## Testing
 
-Headless, via the `skytest playtest` verb (full profile + SkyUI; the drivable-full-modded-session
-verb added 2026-06-14 — `skytest/README.md` "Which mode"):
+Full profile + SkyUI:
 
 1. Build + install SkytestProbe into the full profile; AutoFireBow is already installed.
-2. `skytest playtest --headless`; drive the menu to load a save (`drive tap enter` on CONTINUE).
+2. `skytest play`; load a save.
 3. Write `{cmd:"mcm-list"}` to `commands.jsonl`; assert the `mcm-list` trace record contains
    `{name:"AutoFireBow", script:"AutoFireBowMCM", pages:["Settings"]}` (and the rest of the load
    order's MCMs).
@@ -112,8 +109,7 @@ verb added 2026-06-14 — `skytest/README.md` "Which mode"):
 5. `mcm-get` against a **bogus** script → `ok:false`, no crash; run `mcm-list` in the **vanilla+1**
    `test` profile (no SkyUI) → `count:0`, no crash.
 
-This also re-exercises `playtest` end-to-end and finally gives the AutoFireBow MCM a *value-level*
-verification we couldn't get by driving the UI.
+This finally gives the AutoFireBow MCM a *value-level* verification we couldn't get by driving the UI.
 
 ## Alternatives considered
 
@@ -146,5 +142,3 @@ verification we couldn't get by driving the UI.
 - **Drive** — open a config / select a page / set an option from C++, via `movie->Invoke` on SkyUI's
   flash methods or `SendModEvent` of the `SKICP_*` events (`SKICP_optionSelected`,
   `SKICP_pageSelected`, …). Built on the same open-menu GFx plumbing as `mcm-scrape`.
-- **`skytest playtest --probe`** — inject SkytestProbe into the pristine full `playtest` session so MCM
-  reveal needs no manual install. A skytest-side convenience.

@@ -71,8 +71,10 @@ track volume), so this probably fails — but it's cheap and would obviate every
 
 ## What is BUILT (SkytestProbe — committed this session)
 
-All in `mods/SkytestProbe/src/{engine,commands,probes,main}.{cpp,h}`. The DLL builds clean and is
-symlinked into the `full` profile by `playtest`.
+All in `mods/SkytestProbe/src/{engine,commands,probes,main}.{cpp,h}`. The DLL builds clean. In the
+original 2026-06-18 run it was symlinked into the `full` profile by the now-removed full-profile
+gamescope wrapper; current reproduction should install/symlink the probe into `full` explicitly and
+launch with `skytest play`.
 
 - **`facegen-ramp` command** — self-triggering owned ramp of `transitionTarget`. JSON params:
   `{"cmd":"facegen-ramp","ref":"speaker","cut":true,"ms":150,"holdMs":1500,"threshold":0.3,
@@ -93,17 +95,18 @@ symlinked into the `full` profile by `playtest`.
 
 ## How to run the harness (verified working this session)
 
-1. `bash skytest/skytest playtest` → boots `full` to the MAIN MENU. Probe loads ~60–75 s in (watch
-   `trace.jsonl` go non-empty).
-2. `bash skytest/skytest drive seq e e` (dismiss Anniversary notice + Continue). Newest save is now
-   **helmet-off Lydia** (Mase made it 2026-06-18 so `Continue` lands on a face you can see). Wait ~16 s;
-   poll `status` for `"inWorld":true`.
-3. IO dir (NOT redirected for playtest):
+Historical source: the verified run used the now-removed full-profile gamescope wrapper, then drove
+Continue with `skytest drive`. Current reproduction should use `skytest play` after installing the
+probe into `full`; the probe commands and IO paths below are the same once the full profile has loaded.
+
+1. Launch the full profile with `bash skytest/skytest play`. Newest save is now **helmet-off Lydia**
+   (Mase made it 2026-06-18 so Continue lands on a face you can see).
+2. IO dir:
    `…/steamapps/compatdata/489830/pfx/drive_c/users/steamuser/Documents/My Games/Skyrim Special Edition/SKSE/skytest/`
-   — append commands to `commands.jsonl`, read `trace.jsonl`. `playtest` resets both on launch.
-4. Arm `facegen-ramp` (cut:true), then talk to Lydia and let her speak — the probe auto-cuts + the hook
+   — append commands to `commands.jsonl`, read `trace.jsonl`.
+3. Arm `facegen-ramp` (cut:true), then talk to Lydia and let her speak — the probe auto-cuts + the hook
    scales. Read `"via":"hook"` lines: `maxAfter` = the value we hand the apply; visual = the verdict.
-5. Tear down: `bash skytest/skytest stop`.
+4. Quit the game normally.
 
 **Gotchas:** `ready`/`gs_wait_ready` unreliable on `full` (just wait); autosaves can clobber the test
 save (disable in Settings); `drive seq` inter-key gap is 120 ms — tight for menu→Continue (widening it

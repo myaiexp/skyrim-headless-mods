@@ -233,7 +233,7 @@ static std::atomic<bool> g_watchScheduled{ false };// exactly one re-arming watc
    compile; esp regenerates; DLL is PE32+).
 2. Install onto the **full live profile** (this manifests only on top of DBVO + a voice pack, so it is
    NOT a vanilla+1 `skytest test`): `./build.sh --install`, then **fully restart** Skyrim (Papyrus VM
-   caches `.pex` per session). Drive via `skytest play` / `skytest playtest` per `skytest/README.md`.
+   caches `.pex` per session). Drive via `skytest play` per `skytest/README.md`.
 3. Walk the Task-3 test cases against live DBVO + Karat. Record evidence (screenshots / observed timing)
    before declaring done — per the repo's "evidence before claims" rule.
 

@@ -245,21 +245,22 @@ close it first."_ That removes the whole class of "why is my test black?" confus
 (The `--backend wayland` `shot`/`drive` confirmation, and the `drive`-in-world retest, are still
 pending a clean run that reaches in-world.)
 
-## 14. RESOLVED (keyboard) — in-world driving works via `playtest`; tab-clicks still desync
+## 14. RESOLVED (keyboard) — in-world driving worked via former full-profile wrapper; tab-clicks still desync
 
 2026-06-14, while verifying AutoFireBow's SkyUI MCM. The earlier in-world blockers were both
-profile artifacts, not engine/libei faults — sidestepped by a new verb and a log-based check.
+profile artifacts, not engine/libei faults — sidestepped by a full-profile gamescope wrapper and a
+log-based check. That wrapper was later removed from the public CLI; keep this section as historical
+evidence about gamescope/libei behavior, not as current command guidance.
 
-**`playtest` — drivable FULL profile.** `gs_launch` wraps whatever `Data` points at, so a drivable
-full-modded session is just `cmd_test` minus the vanilla+1 swap and minus injection. Added as
-`skytest playtest [--headless]`: `full` stays pristine (no SkytestProbe, so `ready`/`exec` don't
-apply — drive by `shot` + the in-game console + SKSE/Papyrus logs). This is the **only** way to
-reach an MCM (needs SkyUI, absent from the vanilla+1 `test` profile) or any load-order-dependent
-menu. It also dodges #13's autoload modal entirely: the full profile's load order **matches** the
-real saves, so `CONTINUE` loads with no "missing content" prompt.
+**Former full-profile gamescope wrapper.** `gs_launch` wraps whatever `Data` points at, so a drivable
+full-modded session was `cmd_test` minus the vanilla+1 swap and minus injection. At the time it was
+exposed as `skytest playtest [--headless]`: `full` stayed pristine (no SkytestProbe, so `ready`/`exec`
+didn't apply — drive by `shot` + the in-game console + SKSE/Papyrus logs). It reached MCMs because
+SkyUI was present in the full profile. It also dodged #13's autoload modal entirely: the full profile's
+load order matched the real saves, so `CONTINUE` loaded with no "missing content" prompt.
 
 **Keyboard input is confirmed in-world (supersedes #13's OPEN keyboard item).** End-to-end, headless,
-all via `drive tap …`: main menu `CONTINUE` → `Continue from your last saved game?` confirm → save
+all via `drive tap ...`: main menu `CONTINUE` → `Continue from your last saved game?` confirm → save
 load → in-world (signalled by the mod's own `AutoFireBow.log` "loop registered on player") → `escape`
 opened the Journal. Every keyboard tap registered. #13's "keyboard didn't dismiss the modal" was the
 #13 _modal_ specifically (a no-content prompt that may swallow keys), not keyboard input in general.
@@ -268,11 +269,11 @@ opened the Journal. Every keyboard tap registered. #13's "keyboard didn't dismis
 Journal's QUESTS/GENERAL-STATS/SYSTEM tabs to reach Mod Configuration: `drive click x y` (clickat)
 landed ~80px right of target and bare `click` after manual `drive rel` homing missed too. Raw
 `drive rel` desyncs Skyrim's internal hit-test cursor from gamescope's compositor cursor; only the
-eidriver's chunked `clickat`/`moveto` (`rel_step`, ≤1000px) is supposed to stay synced, and even it
+eidriver's chunked `clickat`/`moveto` (`rel_step`, <=1000px) is supposed to stay synced, and even it
 overshot here. So **menu navigation that requires a precise click is not yet reliable**; keyboard is.
 (Journal category tabs may also be controller-bumper-only, with no keyboard binding — untested.)
 
-**The escape hatch: verify via the Papyrus log, not the UI.** Grep `…/Logs/Script/Papyrus.0.log`
+**The escape hatch: verify via the Papyrus log, not the UI.** Grep `.../Logs/Script/Papyrus.0.log`
 for `Registered <ModName> at MCM` (SkyUI logs every page it registers) and confirm **no**
 `<Native> is not a valid function` lines (a missing C++↔Papyrus native logs there on the
 `OnGameReload` push). For AutoFireBow this gave the full result without driving the menu: quest
@@ -377,23 +378,24 @@ fault-capture instrumentation stays in SkytestProbe as the permanent record. To 
 exec later: update CommonLibSSE-NG to a build that matches the runtime (or hardcode the correct
 1.6.1170 CompileAndRun offset in the probe), then re-run the headless `test` + `exec` repro.
 
-## 19. `playtest` (full profile) gotchas — readiness, autosave, boot-to-menu
+## 19. Former full-profile wrapper gotchas — readiness, autosave, boot-to-menu
 
-Debugging a mod that needs the full load order goes through `playtest` (vanilla+1 `test` can't load a
-modded save). Three things bite, learned 2026-06-18 chasing the DBVO dialogue mouth-snap:
+These were learned 2026-06-18 chasing the DBVO dialogue mouth-snap through the former full-profile
+gamescope wrapper. That wrapper has been removed from the public CLI; keep this as historical evidence
+for any future full-profile automation design.
 
-- **`ready`/`gs_wait_ready` is unreliable on `full`** — it polls SkytestProbe's `status`, but on the
-  full profile it never returns cleanly. Don't poll it; just **wait ~10 s** after the save loads, or
+- **`ready`/`gs_wait_ready` was unreliable on `full`** — it polled SkytestProbe's `status`, but on the
+  full profile it never returned cleanly. Don't poll it; just **wait ~10 s** after the save loads, or
   watch `trace.jsonl` for `"src":"face"`/event lines to confirm you're live.
-- **`full` boots to the MAIN MENU** (no StartOnSave there) — drive **E, E** (first E dismisses the
+- **`full` booted to the MAIN MENU** (no StartOnSave there) — drive **E, E** (first E dismisses the
   Anniversary notice, second = Continue → newest save). There's a ~200 ms double-press guard on
   Skyrim dialogue, so rapid E taps aren't truly instant.
 - **Autosave can clobber/teleport your test save.** An autosave fired mid-test, overwrote the prepared
   save, and the target NPC teleported. **Disable autosaves** (Settings → Gameplay) before driving, or
   reload + delete the bad autosave.
 
-`playtest` now refreshes SkytestProbe into `full` + resets the probe IO on launch (it didn't before —
-you'd get a stale DLL and stale `commands.jsonl`), so `facegen-*`/`dump`/`watch` work there now.
+The removed wrapper had started refreshing SkytestProbe into `full` + resetting probe IO on launch.
+If a full-profile automation path returns, keep that stale-DLL/stale-IO lesson.
 
 ## 20. A self-re-queuing SKSE task HARD-FREEZES the game — pace per-frame work from a thread
 

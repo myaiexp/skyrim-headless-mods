@@ -190,9 +190,10 @@ left as the bigger separate issue). Unit suite now **35 passed**.
   that spliced a bare `/tmp/…png` line into stdout between the `skytest:`/`replay:` messages. The
   `shot` step now captures it and reports `replay: shot -> <path>` on **stderr** with the rest.
   Verified headless: stdout carries no stray path; stderr shows the line.
-- **`skytest playtest --help`.** `playtest` was dispatchable and in `init`'s "next steps" but had no
-  `verb_help` case (fell through to generic help) and was absent from the main verb list. Added both.
-
+- **Historical: full-profile wrapper help was added.** The now-removed full-profile wrapper was
+  dispatchable and in `init`'s "next steps" but had no `verb_help` case (fell through to generic
+  help) and was absent from the main verb list. That was fixed at the time; the wrapper has since
+  been removed from the public CLI.
 ---
 
 ## Gotchas for the next session

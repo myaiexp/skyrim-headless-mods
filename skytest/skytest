@@ -358,14 +358,14 @@ inject_startonsave() {
   sed "s/@BASE_SAVE@/$BASE_SAVE_NAME/" "$SOS_INI_TEMPLATE" > "$TEST/SKSE/Plugins/po3_StartOnSave.ini"
 }
 
-# Inject SkytestProbe into a profile (default TEST; `playtest` passes FULL), unconditionally
-# (mirrors the StartOnSave symlink injection but with NO save-existence condition; the ini is
-# copied verbatim, no sed substitution). Gives the session the runtime probe toolkit — CC writes
-# probe specs to commands.jsonl, the running game writes traces to trace.jsonl (both under
-# the SKSE log dir's skytest/). Degrades to a warning (not a hard failure) if the DLL
-# hasn't been built yet, so skytest still works without it.
+# Inject SkytestProbe into the TEST profile, unconditionally (mirrors the StartOnSave
+# symlink injection but with NO save-existence condition; the ini is copied verbatim, no
+# sed substitution). Gives the session the runtime probe toolkit — CC writes probe specs
+# to commands.jsonl, the running game writes traces to trace.jsonl (both under the SKSE
+# log dir's skytest/). Degrades to a warning (not a hard failure) if the DLL hasn't been
+# built yet, so skytest still works without it.
 inject_skytestprobe() {
-  local prof="${1:-$TEST}"   # default the TEST profile; playtest passes $FULL
+  local prof="${1:-$TEST}"
   if [ ! -f "$PROBE_DLL" ]; then
     say "note: SkytestProbe DLL absent at $PROBE_DLL — skipping probe injection (build it in ~/Projects/skyrim-headless-mods/mods/SkytestProbe)."
     return 0
@@ -531,7 +531,6 @@ cmd_init() {
   echo
   echo "Next steps:"
   echo "  skytest play              launch the full modded game (fast path)"
-  echo "  skytest playtest          full modded profile under a DRIVABLE gamescope session"
   echo "  skytest setup-save        build the base test save for autoload"
   echo "  skytest uninstall         restore the byte-identical original Data/"
 }
@@ -831,41 +830,6 @@ cmd_play() {
   exec "$PROTON" run "$LOADER"     # blocking, no gamescope — the daily-driver fast path
 }
 
-# Like `play`, but under a DETACHED, drivable gamescope session instead of the blocking
-# direct path. Boots the FULL modded profile (real load order + SkyUI + every SKSE plugin),
-# so MCMs and load-order-dependent mods can be screenshot/driven — the vanilla+1 `test`
-# profile can't reach those. Refreshes SkytestProbe into `full` + resets its IO on launch, so
-# the probe commands (`facegen-*`, `dump`, `watch`, …) work here too. NOTE: `ready`/
-# `gs_wait_ready` is unreliable on full (just wait ~10s after the save loads); it boots to the
-# MENU (drive E,E / Continue to a save); and autosave can clobber a hand-made test save. Tear
-# down with `skytest stop`.
-cmd_playtest() {
-  local backend="wayland"
-  case "${1:-}" in
-    --headless) backend="headless" ;;
-    --sdl)      backend="sdl" ;;
-    "")         ;;
-    *)          usage_err "playtest: unknown option: $1" "skytest playtest [--headless]" ;;
-  esac
-  [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
-  guard_no_live_session   # a 2nd gamescope session would double-park Data
-  guard_no_running_game   # a 2nd instance can't launch anyway (Steam blocks the appid)
-  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
-
-  # Snapshot the live Plugins.txt so `stop`'s restore_plugins round-trips it (a stale .bak
-  # from an earlier `test` could otherwise be restored over it), then ensure Data -> full
-  # (recovering an interrupted test run, mirroring cmd_play).
-  backup_plugins
-  [ "$(readlink "$DATA")" = "$TEST" ] && { say "recovering an interrupted test run..."; restore_plugins; }
-  point_data full
-  inject_skytestprobe "$FULL"   # refresh the probe in full so playtest debugging gets the current build
-  gs_reset_io                   # clear stale commands.jsonl/trace.jsonl (the test path does this; play didn't)
-  say "Data -> full (real modded load order). Launching drivable $backend session..."
-  gs_launch "$backend"
-  say "session live ($backend). SkytestProbe active in 'full' -> probe via …/SKSE/skytest/commands.jsonl;"
-  say "boots to the MENU (drive E,E / Continue), then wait ~10s ('ready' is unreliable on full). Tear down: skytest stop"
-}
-
 cmd_status() {
   local json=""; [ "${1:-}" = "--json" ] && json=1
   # 3-state, not 2: an interrupted uninstall leaves Data ABSENT (neither symlink nor real
@@ -960,7 +924,6 @@ Verbs:
   drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
   stop              tear down the test session + restore Data → full
   play              launch the full modded game (fast path, blocking, not drivable)
-  playtest          full modded profile under a DRIVABLE gamescope session   [--headless]
   normal            force Data → full (recover after a crash)
   uninstall         revert to the original real Data/ directory
 
@@ -1084,19 +1047,6 @@ Examples:
   skytest play
 EOF
 ;;
-    playtest) cat <<'EOF'
-skytest playtest — launch the FULL modded profile under a DRIVABLE gamescope session
-(real load order + SkyUI + every SKSE plugin), so MCMs and load-order-dependent mods can be
-screenshot/driven — the vanilla+1 `test` profile can't reach those. No SkytestProbe in 'full',
-so ready/exec don't apply: use shot/drive and read the in-game console / SKSE logs. Boots to the
-menu; load a save via drive. Tear down with skytest stop.
-  --headless   no window (offscreen render); default is a window nested in Hyprland
-  --sdl        visible fallback if wayland misbehaves under Hyprland
-Examples:
-  skytest playtest
-  skytest playtest --headless
-EOF
-;;
     normal) cat <<'EOF'
 skytest normal — force Data → full (recover after an interrupted test or crash)
 Examples:
@@ -1120,7 +1070,7 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 
 # per-verb help: `skytest <verb> --help`
 case "${1:-}" in
-  status|init|setup-save|test|replay|ready|shot|drive|stop|play|playtest|normal|uninstall)
+  status|init|setup-save|test|replay|ready|shot|drive|stop|play|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
 esac
 
@@ -1130,7 +1080,7 @@ esac
 # `replay --dry-run` is a pure lint — so THEY acquire_lock internally at the mutation point,
 # not here.
 case "${1:-}" in
-  setup-save|test|stop|play|playtest|normal|uninstall) acquire_lock ;;
+  setup-save|test|stop|play|normal|uninstall) acquire_lock ;;
   ""|status|init|replay|ready|shot|drive) ;;  # read-only (init/replay self-lock at mutation)
   -*) ;;  # stray unknown option — usage_err in the next block, no lock needed
   *)  acquire_lock ;;  # bare positional = mod-path shortcut for `test` (mutating)
@@ -1147,7 +1097,6 @@ case "${1:-}" in
   drive)        shift; cmd_drive "$@" ;;
   stop)         cmd_stop ;;
   play)         cmd_play ;;
-  playtest)     shift; cmd_playtest "$@" ;;
   normal)       cmd_normal ;;
   uninstall)    cmd_uninstall ;;
   -*)           usage_err "unknown option: $1" "skytest help" ;;

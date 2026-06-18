@@ -28,7 +28,6 @@ skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [sca
 skytest drive <cmd> …          # inject input (tap|seq|key|click|abs|rel|raw)
 skytest stop                   # tear down the session + restore Data → full
 skytest play                   # launch the FULL modded game over the fast direct path (blocking)
-skytest playtest [--headless]  # FULL modded profile under a drivable gamescope session (no swap/inject)
 skytest status                 # show profile + live test session (also the no-arg default)
 skytest normal                 # force Data → full (recover after a crash)
 skytest uninstall              # revert Data to the original real directory
@@ -126,7 +125,7 @@ direction: isolate the Saves folder per test, or get `drive` working to dismiss 
 display/input layer are in [`docs/headless-findings.md`](docs/headless-findings.md). **Read it before
 changing the gamescope/libei approach.**
 
-## Which mode: `test`, `play`, or `playtest`?
+## Which mode: `test` or `play`?
 
 Use `skytest test <mod>` for a mod that works **standalone** (a new spell, a DLL, a self-contained
 esp): vanilla + that one mod, drivable.
@@ -134,15 +133,8 @@ esp): vanilla + that one mod, drivable.
 For a mod that only manifests **on top of the live load order** (patches, asset overrides of
 another mod, e.g. a DBVO `dialoguemenu.swf` edit needing DBVO + a voice pack, or **anything that
 depends on SkyUI**, an MCM), the vanilla+1 test profile can't reproduce it. Install into the full
-profile (the mod's own `build.sh --install`), then pick:
-
-- **`skytest play`**: the blocking, non-drivable daily-driver launch. Play/observe only.
-- **`skytest playtest [--headless]`**: the **full modded profile under a drivable gamescope
-  session**: the same `shot`/`drive`/`stop` machinery as `test`, but **no profile swap and no
-  injection** (`full` stays pristine, so there's no SkytestProbe: `ready`/`exec` don't apply). This
-  is the **only** way to screenshot/drive an MCM or any SkyUI-dependent menu. It boots to the menu;
-  `drive` your save in: keyboard nav works end-to-end (`drive tap enter` on CONTINUE → confirm →
-  load), then `stop` to restore `Data → full`.
+profile (the mod's own `build.sh --install`), then use **`skytest play`**: the blocking,
+non-drivable full-profile launch. Play/observe only.
 
 **Verifying an MCM without navigating to it.** Driving SkyUI's journal _tabs_ is unreliable (the
 mouse-cursor desync, findings #9b/#14), but you rarely need to: grep the Papyrus log
