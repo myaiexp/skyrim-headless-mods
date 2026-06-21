@@ -2,6 +2,37 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
+## 2026-06-21 — skytest probe-driving ergonomics (from the DBVO mouth-snap session)
+
+A long co-driven debug session (Mase drives the character, CC drives the probe — the standing pattern
+when a test needs an NPC talking, which CC can't do reliably) exposed that skytest is great at
+launch/drive but **reading/writing the probe IO is raw**: every command was a hand-built
+`echo >> "<long path>/commands.jsonl"`, every read a bespoke `jq` over `trace.jsonl`, and the IO dir had
+to be hunted with `find`. Thin CLI wrappers would remove most of that friction:
+
+- **`skytest cmd '<json>'`** — append a command to `commands.jsonl` AND block for its ack, printing the
+  result. (Today: manual echo to a long path + manual ack-grep, for every single command.)
+- **`skytest trace [--tail N] [--src X] [--since T] [--jq EXPR]`** — tail/filter `trace.jsonl` without
+  resolving the path or rebuilding jq pipelines each time.
+- **`skytest io`** — print the resolved probe IO dir (had to `find` it this session).
+- **`skytest wait-probe`** (or fix `ready` for the `full` profile) — block until the probe is live
+  (`trace.jsonl` non-empty / `src:"session"` line). Hand-rolled a 22×5 s poll loop on *every* restart.
+- **`skytest restart [agent]`** — stop + relaunch (same mode) in one verb; a native-DLL change forces a
+  full stop→play→wait→re-arm cycle, done ~4× in one session.
+- **`skytest status --json` / a reliable `inWorld` signal** — the human-readable status can't be polled
+  programmatically (an `inWorld` grep silently matched nothing this session).
+- Reinforce the **`drive seq` inter-key-gap TODO** — 120 ms is too tight for menu→Continue (the
+  double-`e` boot landed wrong; Mase took over the load-in).
+
+**SkytestProbe instrumentation (belongs in the probe, not the launcher):**
+
+- **Paused-vs-running guard** — tag each `facegen-watch` sample with a frame counter / "advancing" flag.
+  A paused game emits identical samples that *look* like live data; reading one as live is what sent the
+  mouth-snap investigation down a multi-session `transitionTarget` dead end (see the v4 handoff).
+- **Per-frame facegen observe mode** — the apply hook logs the target keyframe each frame *without*
+  modifying it, to characterize sub-100 ms transitions (the 4 Hz watch was too coarse for the 1-frame
+  snap and the residual tongue flick).
+
 ## 2026-06-17 — Ghidra RE tier + GhostAllies stream pass-through reopened
 
 Set up a **headless, reproducible Ghidra tier** (`docs/ghidra.md`, `tools/ghidra/ghidra.sh`) to
