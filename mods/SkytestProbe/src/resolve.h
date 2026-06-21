@@ -28,4 +28,13 @@ namespace engine
 
 	// Arbitrary AV name ("health","onehanded",…) -> enum; ActorValue::kNone if unknown.
 	RE::ActorValue ResolveActorValue(std::string_view a_name);
+
+	// Named aliases for spawned refs: `placeatme … as <name>` registers <name> -> FormID,
+	// then ResolveOne("<name>") resolves it just like player/crosshair. Lets a .steps script
+	// address an actor it spawned (whose runtime FormID it can't know in advance) by a stable
+	// name. Main-thread only (written from the placeatme task, read from other command tasks —
+	// all run on the main thread, so no lock). Reserved keywords win over an alias of the same
+	// name; an alias never shadows player/crosshair/speaker/teammates.
+	void SetAlias(const std::string& a_name, RE::FormID a_id);
+	void ClearAliases();
 }

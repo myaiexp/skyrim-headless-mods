@@ -2,6 +2,7 @@
 #include "resolve.h"
 
 #include <cstdio>
+#include <unordered_map>
 
 namespace
 {
@@ -10,6 +11,9 @@ namespace
 	{
 		return a_ref == "teammates";
 	}
+
+	// name -> spawned ref FormID (placeatme "as <name>"). Main-thread-only access.
+	std::unordered_map<std::string, RE::FormID> g_aliases;
 }
 
 std::string engine::HexID(RE::FormID a_id)
@@ -57,6 +61,15 @@ RE::TESObjectREFR* engine::ResolveOne(const std::string& a_ref)
 			}
 		}
 		return nullptr;
+	}
+
+	// A registered placeatme alias ("ally"/"enemy"/…) — checked AFTER the reserved keywords
+	// (so an alias can never shadow player/crosshair/speaker) but BEFORE hex parsing (alias
+	// names like "ally"/"enemy" aren't valid hex, but a name beginning with hex digits could
+	// be, and the explicit alias should always win).
+	if (auto it = g_aliases.find(a_ref); it != g_aliases.end()) {
+		auto* form = RE::TESForm::LookupByID(it->second);
+		return form ? form->As<RE::TESObjectREFR>() : nullptr;  // null if the ref was freed
 	}
 
 	// Otherwise parse as a hex runtime FormID ("0x14", "0X14", or bare "14").
@@ -147,4 +160,14 @@ RE::ActorValue engine::ResolveActorValue(std::string_view a_name)
 		return RE::ActorValue::kNone;
 	}
 	return avl->LookupActorValueByName(a_name);  // kNone if unknown (case-insensitive)
+}
+
+void engine::SetAlias(const std::string& a_name, RE::FormID a_id)
+{
+	g_aliases[a_name] = a_id;  // overwrites a prior spawn under the same name
+}
+
+void engine::ClearAliases()
+{
+	g_aliases.clear();
 }

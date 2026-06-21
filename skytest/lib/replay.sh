@@ -98,6 +98,18 @@ _replay_parse_stream() {
         read -r name _ <<<"$rest"                 # optional name (empty = default path)
         printf 'STEP shot name=%s\n' "$name"
         ;;
+      cmd)
+        # the ENTIRE rest of the line is a direct probe-command JSON object, verbatim (it
+        # contains spaces and quotes). Direct-call probe commands are the staging path —
+        # placeatme/make-teammate/cast/give-spell/set-av — since console `exec` (CompileAndRun)
+        # is mis-bound on 1.6.1170. The interpreter injects an id and blocks on the ack. A bare
+        # `cmd` is a parse error like exec, caught by --dry-run instead of silently sent.
+        if [ -z "$rest" ]; then
+          printf "replay: line %d: 'cmd' needs a probe-command JSON object\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP cmd json=%s\n' "$rest"
+        fi
+        ;;
       *)
         printf "replay: line %d: unknown step '%s'\n" "$lineno" "$verb" >&2
         rc=2
@@ -244,6 +256,24 @@ _replay_step_exec() {
   _replay_wait_ack "exec-$id"
 }
 
+# cmd <json>: send a DIRECT probe command (not console exec) and BLOCK on its ack — the
+# staging path for placeatme/make-teammate/cast/give-spell/set-av, since CompileAndRun is
+# mis-bound on 1.6.1170. Injects a unique id by string-splicing it into the JSON object (same
+# idiom as the gate sender) so the probe can ack it. Returns _replay_wait_ack's code (0 ok /
+# 1 ack-timeout / 2 ok:false|dead), with the probe's error text in $_replay_ack_err.
+_replay_step_cmd() {
+  local id="$1" json="$2"
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$json" | jq empty 2>/dev/null || { _replay_ack_err="invalid JSON: $json"; return 2; }
+  fi
+  case "$json" in
+    \{*) ;;  # must be a JSON object so the "id" can be spliced in after the opening brace
+    *) _replay_ack_err="cmd payload must be a JSON object: $json"; return 2 ;;
+  esac
+  _probe_send "{\"id\":\"cmd-$id\",${json#\{}"
+  _replay_wait_ack "cmd-$id"
+}
+
 # hold <target> <gate>: press, gate, release. The release ALWAYS runs — even when the
 # gate times out — so a failed gate never leaves a button/key stuck down. Returns the
 # gate's exit code (0 satisfied, non-zero -> caller aborts after the release).
@@ -277,11 +307,23 @@ _replay_step_hold() {
 # non-zero return — a wrong setup state must never bleed into the live mod test. Held
 # input is always released before an abort (see _replay_step_hold).
 replay_run() {
-  local script="${1:?replay_run: script required}" gate_timeout="${2:-180}"
+  local script="${1:?replay_run: script required}" gate_timeout="${2:-180}" shots="${3:-1}"
   local plan
   plan="$(replay_parse "$script")" || { printf 'replay: parse failed — not running %s\n' "$script" >&2; return 2; }
 
-  local stepno=0 execid=0 stepline body verb args rc reason
+  # Per-step auto-shots (default on; `replay --no-shots` passes shots=0). A replay leaves a
+  # step-indexed filmstrip so the result can be reviewed visually in ONE batch read afterward,
+  # instead of the slow live take-shot → read → act loop. Best-effort and isolated in a subshell
+  # so gs_shot's `die` (no gamescope under --headless) can never abort the replay.
+  local shotsdir=""
+  if [ "$shots" = 1 ]; then
+    shotsdir="$(_skytest_io_dir)/replay-shots"
+    rm -rf "$shotsdir" 2>/dev/null || true
+    mkdir -p "$shotsdir" 2>/dev/null || true
+    ( gs_shot "$shotsdir/00-start.png" ) >/dev/null 2>&1 || true
+  fi
+
+  local stepno=0 execid=0 cmdid=0 stepline body verb args rc reason
   while IFS= read -r stepline; do
     case "$stepline" in 'STEP '*) ;; *) continue ;; esac
     stepno=$((stepno + 1))
@@ -293,6 +335,10 @@ replay_run() {
       exec)
         execid=$((execid + 1))
         _replay_step_exec "$execid" "${args#line=}" || { rc=$?; reason="${_replay_ack_err:-exec failed}"; }
+        ;;
+      cmd)
+        cmdid=$((cmdid + 1))
+        _replay_step_cmd "$cmdid" "${args#json=}" || { rc=$?; reason="${_replay_ack_err:-cmd failed}"; }
         ;;
       tap)
         gs_drive tap "${args#key=}" || { rc=$?; reason="input failed"; }
@@ -327,10 +373,14 @@ replay_run() {
         ;;
     esac
     if [ "$rc" -ne 0 ]; then
+      # Capture the failure frame too — it's often the most diagnostic shot in the filmstrip.
+      [ -n "$shotsdir" ] && ( gs_shot "$shotsdir/$(printf '%02d-%s-FAILED.png' "$stepno" "$verb")" ) >/dev/null 2>&1 || true
       printf 'replay: step %d (%s) failed: %s\n' "$stepno" "$verb" "$reason" >&2
       return "$rc"
     fi
+    [ -n "$shotsdir" ] && ( gs_shot "$shotsdir/$(printf '%02d-%s.png' "$stepno" "$verb")" ) >/dev/null 2>&1 || true
     printf 'replay: step %d ok: %s\n' "$stepno" "$verb" >&2
   done <<<"$plan"
+  [ -n "$shotsdir" ] && printf 'replay: step filmstrip -> %s\n' "$shotsdir" >&2
   return 0
 }

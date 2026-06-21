@@ -410,6 +410,113 @@ namespace
 			return;
 		}
 
+		if (c == "placeatme") {
+			const std::string baseStr = JStr(cmd, "base");
+			const std::string alias   = JStr(cmd, "as");
+			const float       dist    = static_cast<float>(JNum(cmd, "d", 256.0));
+			const bool        freeze  = JBool(cmd, "freeze", true);  // pinned-by-default for tests
+			if (baseStr.empty()) {
+				trace::Ack(id, false, "placeatme: missing base formID (e.g. \"0x000A2C8E\")");
+				return;
+			}
+			RE::FormID baseID = 0;
+			try {
+				baseID = static_cast<RE::FormID>(std::stoul(baseStr, nullptr, 16));
+			} catch (const std::exception&) {
+				trace::Ack(id, false, "placeatme: bad base formID: " + baseStr);
+				return;
+			}
+			EnqueueMain([id, baseID, alias, dist, freeze]() {
+				RE::FormID  outID = 0;
+				std::string err;
+				if (engine::PlaceActorForward(baseID, dist, freeze, outID, err)) {
+					if (!alias.empty()) {
+						engine::SetAlias(alias, outID);  // address the spawn by name in later steps
+					}
+					trace::Write(json{ { "src", "placeatme" }, { "base", engine::HexID(baseID) },
+						{ "spawned", engine::HexID(outID) }, { "as", alias }, { "d", dist },
+						{ "frozen", freeze } });
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "placeatme: " + err);
+				}
+			});
+			return;
+		}
+
+		if (c == "make-teammate") {
+			const std::string ref = JStr(cmd, "ref");
+			const bool        on  = JBool(cmd, "on", true);
+			if (ref.empty()) {
+				trace::Ack(id, false, "make-teammate: missing ref");
+				return;
+			}
+			EnqueueMain([id, ref, on]() {
+				auto* r     = engine::ResolveOne(ref);
+				auto* actor = r ? r->As<RE::Actor>() : nullptr;
+				if (!actor) {
+					trace::Ack(id, false, "make-teammate: unresolvable actor " + ref);
+					return;
+				}
+				engine::SetTeammate(actor, on);
+				trace::Write(json{ { "src", "make-teammate" },
+					{ "ref", engine::HexID(actor->GetFormID()) }, { "on", on } });
+				trace::Ack(id, true);
+			});
+			return;
+		}
+
+		if (c == "cast") {
+			const std::string ref    = JStr(cmd, "ref", "player");
+			const std::string sp     = JStr(cmd, "spell");
+			const std::string target = JStr(cmd, "target");  // optional: free cast if empty
+			const std::string hand   = JStr(cmd, "hand", "right");
+			if (sp.empty()) {
+				trace::Ack(id, false, "cast: missing spell formID (e.g. \"0x0001C789\")");
+				return;
+			}
+			RE::FormID fid = 0;
+			try {
+				fid = static_cast<RE::FormID>(std::stoul(sp, nullptr, 16));
+			} catch (const std::exception&) {
+				trace::Ack(id, false, "cast: bad spell formID: " + sp);
+				return;
+			}
+			engine::Hand h = engine::Hand::kRight;
+			if (hand == "left") {
+				h = engine::Hand::kLeft;
+			} else if (hand != "right") {
+				trace::Ack(id, false, "cast: hand must be right|left");
+				return;
+			}
+			EnqueueMain([id, ref, fid, target, h]() {
+				auto* r      = engine::ResolveOne(ref);
+				auto* caster = r ? r->As<RE::Actor>() : nullptr;
+				if (!caster) {
+					trace::Ack(id, false, "cast: unresolvable caster " + ref);
+					return;
+				}
+				RE::TESObjectREFR* tgt = nullptr;
+				if (!target.empty()) {
+					tgt = engine::ResolveOne(target);
+					if (!tgt) {
+						trace::Ack(id, false, "cast: unresolvable target " + target);
+						return;
+					}
+				}
+				std::string err;
+				if (engine::CastAt(caster, fid, tgt, h, err)) {
+					trace::Write(json{ { "src", "cast" },
+						{ "caster", engine::HexID(caster->GetFormID()) },
+						{ "spell", engine::HexID(fid) }, { "target", target } });
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "cast: " + err);
+				}
+			});
+			return;
+		}
+
 		if (c == "status") {
 			EnqueueMain([id]() {
 				probes::WriteStatus();

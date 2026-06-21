@@ -2,6 +2,46 @@
 
 Future work, deferred features, and things worth revisiting. Each entry is WHAT, not HOW.
 
+## 2026-06-21 — GhostAllies autonomous pass-through test (attempt: harness shipped, verdict deferred)
+
+Tried to build a hands-off, CC-driven headless regression for GhostAllies' **projectile
+pass-through** (the shipped v2 behavior: the player's aimed shots phase through allies and continue
+to the enemy behind). **Shipped and verified — reusable harness:**
+
+- **SkytestProbe staging commands** (direct engine calls, the `give-spell`/`set-av` pattern):
+  `placeatme` (spawn an actor base `d` units along the player's forward vector, auto-**freeze** its
+  AI via `EnableAI(false)` so the geometry holds, register a **named alias** `as ally`/`enemy`),
+  `make-teammate` (set the `kPlayerTeammate` bit → enrolls a spawn as a GhostAllies "ghost ally"
+  with no real follow relationship), and `cast` (`MagicCaster::CastSpellImmediate` — fires a **real**
+  player projectile, no input). Plus a `spawned`-alias resolver in the probe.
+- **`replay` `cmd <json>` step** — sends a direct-call probe command and blocks on its ack: the
+  `.steps` **staging path** (replaces the faulting `exec`). `mods/GhostAllies/passthrough.steps`
+  stages the scene with it.
+- **Per-step auto-shot filmstrip** — `replay` snaps `<probe-io>/replay-shots/NN-verb.png` after every
+  step (default on, `--no-shots` to disable), so a run is reviewed as one batch of frames instead of
+  the slow live take-shot loop. **Confirmed working headless** (real composited frames; the cast
+  frame even caught the explosion). This was the genuinely valuable outcome of the session.
+
+**Why the autonomous _verdict_ is deferred (the rear-witness HP sensor is a dead end):** the
+mechanism fires perfectly (control: a non-teammate ally blocks the shot, takes damage; test: the ally
+enrolls → `systemGroup` → `0xFEED`, projectile stamped, `AddTarget` refuses, ally unharmed). But
+proving the projectile _continued to a witness behind the ally_ via the witness's HP is blocked by
+engine reality: probe-driven `CastSpellImmediate` has no crosshair, so it aims at the target's origin
+(feet/floor) — precise bolts hit the floor, only AoE spells land, and AoE damages the front ally too
+(and won't reach a far witness; projectiles also drop). Full detail: `skytest/docs/headless-findings.md`
+#22–24.
+
+- **Deferred robust sensor — a projectile-flight probe.** Hook `Projectile::UpdateImpl` (the seam
+  GhostAllies itself uses) in SkytestProbe and record the player projectile's **max distance reached
+  before it dies** (control: dies at the ally ~250u; pass-through: travels past). Immune to AoE / aim
+  / drop / spell choice, and it's the same instrument that would verify the parked **runes / wall /
+  cone** pass-through work — the natural next GhostAllies test once this lands. This is the "watch the
+  projectile, not a witness" pivot.
+- Smaller follow-ups surfaced: a probe `set-angle`/`face` (set player pitch/yaw — needed for level
+  free-casts and to point the camera at spawned actors for the filmstrip); `placeatme` could grow a
+  `move`/reposition sibling (no reposition command exists, so re-staging means fresh spawns + corpse
+  accumulation along the firing axis across iterations).
+
 ## 2026-06-21 — skytest probe-driving ergonomics (from the DBVO mouth-snap session)
 
 > **SHIPPED 2026-06-21 — every item below landed, verified in-engine.** Two commits: the shell

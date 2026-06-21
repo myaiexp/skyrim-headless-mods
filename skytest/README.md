@@ -165,17 +165,26 @@ but doesn't tear down: inspect, then `skytest stop`).
 Scripts live next to the mod: `mods/<Name>/<name>.steps`. A bare `<script>` resolves there; a
 path with `/` (or `-` for stdin) is taken as-is. `--headless`/`--with` work as for `test`;
 `--dry-run` prints the normalized step plan and exits (a lint: no boot, no profile change).
+`--no-shots` disables the per-step filmstrip (see below).
 
 `.steps` is line-based (`#` comments, blank lines ignored):
 
-| Step                                     | Meaning                                                                                                                                                                                 |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Not the staging path**: programmatic `exec` faults in the test session; stage via direct-call probe commands instead (caveat below). |
-| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                  |
-| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                     |
-| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                   |
-| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                     |
-| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                    |
+| Step                                     | Meaning                                                                                                                                                                                                                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cmd <json>`                             | **The staging path.** Send a direct-call probe command (the whole rest of the line, a JSON object) and block on its ack before the next step: `cmd {"cmd":"placeatme","base":"0x..","as":"ally","d":250}`, `make-teammate`, `cast`, `give-spell`, `set-av`. Use this, not `exec`. |
+| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Not the staging path**: programmatic `exec` faults in the test session; use `cmd` instead (caveat below).                                                                                                                      |
+| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                                                                                                            |
+| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                                                                                                               |
+| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                                                                                                             |
+| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                                                                                                               |
+| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                                                                                                              |
+
+**Per-step filmstrip (default on).** `replay` captures a screenshot after **every** step into
+`<probe-io>/replay-shots/NN-verb.png` (plus `00-start.png`), so a run leaves a step-indexed
+filmstrip you review in **one batch** instead of the slow take-shot → read → act loop. Best-effort
+(a failed capture never aborts the run) and it also snaps the **failing** step (`NN-verb-FAILED.png`)
+— often the most diagnostic frame. Verified working under `--headless` (real composited frames, not
+black — see `docs/headless-findings.md`). Disable with `--no-shots`.
 
 Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on session death:
 

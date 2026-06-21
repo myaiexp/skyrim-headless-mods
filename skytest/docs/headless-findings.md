@@ -433,3 +433,53 @@ keyframe after the pump writes, before the mesh reads). **Open:** a vtable hook 
 `BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) overrides the keyframe cleanly but still snaps —
 that's a _transform_ pass, not the morph apply. Finding the real apply/write seam (Ghidra) is the
 open work — see `docs/plans/dbvo-mouth-snap-handoff.md`.
+
+## 22. CONFIRMED: per-step screenshots work under `--headless` (real composited frames)
+
+2026-06-21. Closes the long-uncertain "do headless shots actually composite" question from #13 (which
+only corrected the _misdiagnosis_). A real `skytest replay <mod> <s>.steps --headless` run produced a
+full per-step filmstrip: every in-world frame was a ~3 MB AVIF→PNG at mean-brightness **~0.16** (a real
+frame; the empty/black frame from #13 is ~1.2 KB, mean ~3e-6). The one black frame is `00-start.png`,
+snapped during boot _before_ the `until:inworld` gate — expected. The cast step's frame even spiked to
+mean **0.65** (the Fireball lighting the room). So the per-step auto-shot filmstrip (`replay`, default
+on, `<probe-io>/replay-shots/NN-verb.png`, `--no-shots` to disable) is fully headless-capable — no need
+for the visible backend to get visual evidence.
+
+## 23. A FOCUSED visible gamescope session forwards your REAL seat mouse — it corrupts probe-driven aim
+
+2026-06-21, calibrating a GhostAllies cast test on the **visible** backend. libei _input_ is isolated to
+the session, but the gamescope **window**, while focused, still forwards the host pointer to the game —
+so moving your mouse (e.g. dragging the window to another workspace) rotates the player camera mid-test.
+That silently wrecked two casts (the projectile follows the player's look direction): one cast went wide,
+another "hit the floor", and the runs looked like nondeterministic engine behavior until the mouse was
+ruled out. **Lesson:** for any aim/camera-sensitive driven test, run `--headless` (no window to grab the
+pointer) — it's deterministic _and_ off your screen. If you must run visible, don't touch the window.
+
+## 24. Probe-driven `CastSpellImmediate` has no crosshair — it aims at the target's ORIGIN (feet/floor)
+
+2026-06-21, building the SkytestProbe `cast` command (`MagicCaster::CastSpellImmediate`). With no real
+crosshair, `cast … target:<ref>` aims at the target ref's **origin**, which sits at the actor's feet ≈
+floor level. Consequences, all observed live:
+
+- **Precise bolts hit the floor and do nothing.** Ice Spike (real FormID `0x0002B96C`) cast point-blank
+  at an actor → 0 damage; the thin bolt lands at the feet/floor and misses the capsule. A free cast (no
+  target, along facing) missed too.
+- **Only AoE spells reliably "land"** — Fireball's explosion catches the actor even when the projectile
+  itself lands near it. But AoE is its own problem (next point).
+- **Projectiles drop over distance** (aimed slightly down at feet) → a target much past ~250–300 units is
+  never reached; the shot detonates on the floor mid-flight.
+
+**Implication for a GhostAllies pass-through test:** the rear-witness-HP idea is a dead end. The mechanism
+fires perfectly (ally enrolls → `systemGroup` flips to `0xFEED`, projectile stamped, `AddTarget` refuses —
+ally takes no damage), but you can't prove the projectile _continued to a witness behind the ally_ via the
+witness's HP: a precise bolt won't reach it, and an AoE blast damages the front ally too (and won't bridge
+to a far one). The robust sensor is a **projectile-flight probe** — hook `Projectile::UpdateImpl` (the seam
+GhostAllies uses) and record the player projectile's **max distance reached before it dies** (control: dies
+at the ally ~250; pass-through: travels past). Deferred — see `docs/ideas.md`. `cast` is still correct for
+_firing_ a real player projectile (it exercises the stamp); it's just not a precise-hit instrument.
+
+**FormID footgun (don't guess them):** read names from the engine (`give-spell` then `dump` the equip) —
+this session's "knowns" were all wrong: `0x0001C789` = **Fireball** (big AoE, not Firebolt), `0x0002B96B`
+= **Frostbite** (a stream, not Ice Spike), `0x0002B96C` = **Ice Spike**. Player-clone bases (`0x00000007`,
+a handy always-present collidable humanoid) also carry **50% Resist Frost**, another reason frost is a poor
+test bolt.

@@ -1,0 +1,33 @@
+# GhostAllies pass-through — scene-staging recipe (NOT a self-asserting regression).
+#
+# Stages the canonical pass-through scenario with the new direct-call probe commands and
+# leaves the session live + a per-step filmstrip (<io>/replay-shots/NN-verb.png) to inspect:
+#   - a frozen ALLY 250u in front of the player (made a teammate -> a "ghost ally")
+#   - a frozen ENEMY 900u in front (on the same forward ray, behind the ally)
+#   - the player casts an aimed spell down that ray
+#
+# Run: skytest replay GhostAllies passthrough.steps --headless
+#
+# What it PROVES (read the dumps + GhostAllies.log after): the mechanism fires — on the cast
+# the ally enrolls into the ghost group (its systemGroup flips to 0xFEED), the projectile is
+# stamped, and MagicTarget::AddTarget refuses the player's hostile effect on the ally, so the
+# ally takes no damage. That is the pass-through + damage-refusal path end to end.
+#
+# What it does NOT prove: that the projectile physically continued to the ENEMY behind. A
+# rear-witness HP sensor is unreliable here — probe-driven CastSpellImmediate has no crosshair,
+# so it aims at the target's origin (feet/floor): precise bolts hit the floor and only AoE spells
+# land, and an AoE explosion damages the front ally too (and drops before reaching a far enemy).
+# The robust verdict is a projectile-flight probe (max distance reached before the projectile
+# dies) — deferred; see docs/ideas.md. Until then this recipe stages + films; the human/CC reads
+# the result. (FormID note: 0x0001C789 is Fireball, not Firebolt — see ideas.md.)
+
+wait until:inworld
+cmd {"cmd":"set-av","ref":"player","av":"magicka","value":2000}
+cmd {"cmd":"placeatme","base":"0x00000007","as":"ally","d":250}
+cmd {"cmd":"placeatme","base":"0x00000007","as":"enemy","d":900}
+cmd {"cmd":"make-teammate","ref":"ally"}
+cmd {"cmd":"dump","ref":"ally","avs":["health"]}
+cmd {"cmd":"cast","ref":"player","spell":"0x0001C789","target":"enemy"}
+wait 1500ms
+cmd {"cmd":"dump","ref":"ally","avs":["health"]}
+cmd {"cmd":"dump","ref":"enemy","avs":["health"]}

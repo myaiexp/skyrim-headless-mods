@@ -685,13 +685,14 @@ _replay_resolve_script() {
 }
 
 cmd_replay() {
-  local mod="" script="" deps="" backend="wayland" dryrun=""
-  local usage="skytest replay <mod> <script.steps> [--with a,b] [--headless] [--dry-run]"
+  local mod="" script="" deps="" backend="wayland" dryrun="" shots=1
+  local usage="skytest replay <mod> <script.steps> [--with a,b] [--headless] [--no-shots] [--dry-run]"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --headless) backend="headless"; shift ;;
       --sdl)      backend="sdl"; shift ;;
       --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --no-shots) shots=0; shift ;;   # skip the per-step filmstrip (default: capture it)
       --dry-run)  dryrun=1; shift ;;
       -*)         [ "$1" = "-" ] || usage_err "replay: unknown option: $1" "$usage" ;&  # lone '-' = stdin script
       *)          if [ -z "$mod" ]; then mod="$1"
@@ -732,7 +733,7 @@ cmd_replay() {
   fi
 
   say "booted — replaying: $script"
-  if replay_run "$script"; then
+  if replay_run "$script" 180 "$shots"; then
     say "replayed to target state; session live — probe it (skytest shot/drive/exec) or tear down with skytest stop"
   else
     say "replay aborted (see the step error above); session left live — inspect (skytest shot/drive), then skytest stop"
@@ -1096,14 +1097,19 @@ and live for probing. The session stays up on success AND on a step failure (the
   <script>     bare name -> mods/<mod-dir>/<name>.steps; a path (has '/') as-is; '-' = stdin
   --with a,b   extra framework DLLs (prefix match), like `test`
   --headless   no window (offscreen render); default is a window nested in Hyprland
+  --no-shots   skip the per-step filmstrip (default: capture one PNG per step)
   --dry-run    print the normalized step plan and exit (a lint; no boot, no profile change)
-.steps verbs: exec <console> | tap <key> | key <k…> | hold <LMB|RMB|key> <dur|until:C> |
+.steps verbs: cmd <json> | exec <console> | tap <key> | key <k…> | hold <LMB|RMB|key> <dur|until:C> |
               wait <dur|until:C> | shot [name].   Gates: until:inworld, until:menu:<Name>.
+  cmd <json>   a DIRECT probe command, acked before the next step — the STAGING path:
+               {"cmd":"placeatme","base":"0x..","as":"ally","d":300}, make-teammate, cast,
+               give-spell, set-av. Use this, NOT exec, to spawn/equip/cast.
+Per-step auto-shots land in <io>/replay-shots/NN-verb.png (a filmstrip to review in one pass).
 NOTE: console `exec` faults on game 1.6.1170 — this CommonLib build mis-binds CompileAndRun
 (stale Address Library id, older than the runtime; would fault windowed too). Stage via
-direct-call probe commands instead. Pinned in skytest/docs/headless-findings.md #18.
+`cmd` direct-call probe commands instead. Pinned in skytest/docs/headless-findings.md #18.
 Examples:
-  skytest replay mods/GhostAllies/build/GhostAllies.dll smoke.steps --headless
+  skytest replay mods/GhostAllies/build/GhostAllies.dll passthrough.steps
   skytest replay --dry-run skytest/examples/format-demo.steps
 EOF
 ;;
