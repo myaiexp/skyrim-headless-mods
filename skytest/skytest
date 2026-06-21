@@ -72,6 +72,10 @@ SAVES_TEST_DIR="$MYGAMES/Saves_skytest"
 SKYRIM_INI="$MYGAMES/Skyrim.ini"
 INI_BAK="$PROFILES/Skyrim.ini.skytest-bak"
 SAVES_ISO_FLAG="$PROFILES/.saves-isolated"
+# Last launched session spec (verb + args, one per line so space-bearing Steam paths
+# survive). Written on a successful `test`/`play agent` launch; replayed by `skytest
+# restart`. In /tmp alongside the gamescope pidfile — ephemeral per-boot session state.
+SESSION_SPEC="${SKYTEST_SESSION_SPEC:-/tmp/skytest-session.spec}"
 
 # The gamescope test-session backend (sourced, never executed). Provides gs_launch /
 # gs_wait_ready / gs_shot / gs_drive / gs_stop / gs_session_alive — all operating on one
@@ -653,6 +657,10 @@ cmd_test() {
   # `|| brc=$?` so a non-zero boot status (1 timed-out, 10 NO_LAUNCH) doesn't trip set -e.
   local brc=0; _boot_test_session "$mod" "$deps" "$backend" || brc=$?
   [ "$brc" = 10 ] && return 0
+  # Session is live (rc 0 in-world, or 1 timed-out-but-live) — record how to relaunch it.
+  local -a spec=(test "$mod"); [ -n "$deps" ] && spec+=(--with "$deps")
+  case "$backend" in headless) spec+=(--headless) ;; sdl) spec+=(--sdl) ;; esac
+  record_session_spec "${spec[@]}"
   [ "$brc" = 1 ]  && say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready"
   say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
   say "when done:  skytest stop   (tears down + restores Data -> full)"
@@ -745,6 +753,65 @@ cmd_drive() {
   gs_session_alive || die "no live test session to drive" "skytest test <mod>"
   gs_drive "$@"
 }
+# --- probe IO ergonomics (thin wrappers over the lib/gamescope.sh probe helpers) ---------
+cmd_io()   { printf '%s\n' "$(_skytest_io_dir)"; }       # print the resolved probe IO dir
+cmd_cmd()  { gs_cmd "$@"; }                               # append a probe command, block for its ack
+cmd_trace(){ gs_trace "$@"; }                             # filtered view of trace.jsonl
+cmd_wait_probe() {
+  gs_session_alive || die "no live session to wait on" "skytest test <mod>  |  skytest play agent"
+  gs_wait_probe "$@"
+}
+
+# Persist the spec needed to relaunch this exact session (each arg on its own line, so a
+# Steam path with spaces round-trips). Called on a successful launch; read by cmd_restart.
+record_session_spec() { printf '%s\n' "$@" > "$SESSION_SPEC" 2>/dev/null || true; }
+
+# Fresh-ping the probe and echo its `.world` object (inWorld/is3DLoaded/mainMenu/loadingMenu)
+# — or `null` if the probe doesn't answer within the (short) timeout. Lets `status --json`
+# carry a POLLABLE inWorld (the human-readable status can't be grepped). Quiet by design: it
+# must not write anything but the JSON value to stdout (cmd_status splices it).
+_probe_world_json() {
+  command -v jq >/dev/null 2>&1 || { echo null; return; }
+  local timeout="${1:-3}" dir cmds trace start id line=""
+  dir="$(_skytest_io_dir)"; cmds="$dir/commands.jsonl"; trace="$dir/trace.jsonl"
+  [ -d "$dir" ] || { echo null; return; }
+  start=0; [ -f "$trace" ] && start="$(wc -l < "$trace" 2>/dev/null || echo 0)"
+  id="status-json-$$-$RANDOM"
+  printf '{"id":"%s","cmd":"status"}\n' "$id" >> "$cmds" 2>/dev/null || { echo null; return; }
+  local deadline=$((SECONDS + timeout))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -f "$trace" ]; then
+      line="$(tail -n "+$((start + 1))" "$trace" 2>/dev/null | grep -F '"src":"status"' | tail -1 || true)"
+      [ -n "$line" ] && break
+    fi
+    sleep 0.2
+  done
+  if [ -n "$line" ]; then printf '%s' "$line" | jq -c '.world' 2>/dev/null || echo null
+  else echo null; fi
+}
+
+cmd_restart() {
+  # restart = stop the live session (if any) + relaunch the SAME mode in one verb (a
+  # native-DLL fix forces a full stop→relaunch cycle). With explicit args, restart <those>
+  # instead of the saved spec. Mutating → dispatch took the lock; call the cmds directly.
+  local -a a=()
+  if [ "$#" -gt 0 ]; then
+    a=("$@")
+  elif [ -f "$SESSION_SPEC" ]; then
+    mapfile -t a < "$SESSION_SPEC"
+  else
+    die "no saved session to restart" "run a session first: skytest test <mod>"
+  fi
+  [ "${#a[@]}" -gt 0 ] || die "saved session spec is empty" "skytest test <mod>"
+  if gs_session_alive; then say "restart: stopping the live session…"; cmd_stop; fi
+  say "restart: relaunching → skytest ${a[*]}"
+  case "${a[0]}" in
+    test) cmd_test "${a[@]:1}" ;;
+    play) cmd_play "${a[@]:1}" ;;
+    *)    cmd_test "${a[@]}" ;;   # bare mod-path spec
+  esac
+}
+
 cmd_stop() {
   gs_session_alive || die "no live test session to stop" "skytest status"
   # Capture gs_stop's rc: it returns non-zero when a process from the test session
@@ -845,6 +912,8 @@ cmd_play() {
     gs_reset_io                    # clear stale commands.jsonl/trace.jsonl
     say "Data -> full. Launching drivable $backend session for the agent (probe live; drive/shot/stop)..."
     gs_launch "$backend"
+    local -a spec=(play agent); case "$backend" in headless) spec+=(--headless) ;; sdl) spec+=(--sdl) ;; esac
+    record_session_spec "${spec[@]}"
     say "session live ($backend). Probe IO under …/SKSE/skytest/; boots to MENU (drive e,e). Tear down: skytest stop"
     return 0
   fi
@@ -873,9 +942,13 @@ cmd_status() {
   gs_session_alive  && sess_pid="$(gs_session_pid)"   # live detached gamescope test session?
 
   if [ -n "$json" ]; then
-    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"session":{"alive":%s,"pid":"%s"}}\n' \
+    # When a session is live, fresh-ping the probe for a POLLABLE world block (else null) —
+    # so `skytest status --json | jq '.world.inWorld'` works (the old grep matched nothing).
+    local world=null
+    [ -n "$sess_pid" ] && world="$(_probe_world_json 3)"
+    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"session":{"alive":%s,"pid":"%s"},"world":%s}\n' \
       "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")" \
-      "$([ -n "$sess_pid" ] && echo true || echo false)" "$sess_pid"
+      "$([ -n "$sess_pid" ] && echo true || echo false)" "$sess_pid" "$world"
     return 0
   fi
 
@@ -945,13 +1018,20 @@ Verbs:
   test <mod>        start a drivable gamescope test session      [--with a.dll,b.dll] [--headless]
   replay <mod> <s>  boot, then run a .steps script to a target state   [--headless] [--dry-run]
   ready [secs]      block until the test session is in-world (probe poll)
+  wait-probe [secs] block until the probe is answering (in-world NOT required; for play agent)
   shot [out.png]    screenshot the test session       [cropWxH+X+Y] [scaleWxH]
-  drive <cmd> …     inject input (tap|seq|key|click|abs|rel|raw)
+  drive <cmd> …     inject input (tap|seq [--gap MS]|key|btn|click|abs|rel|raw)
+  restart [args…]   stop the live session + relaunch the same mode (or the given args)
   stop              tear down the test session + restore Data → full
   play              launch the full modded game (fast path, blocking, not drivable)
   play agent        full modded profile under a DRIVABLE gamescope session for the agent  [--headless]
   normal            force Data → full (recover after a crash)
   uninstall         revert to the original real Data/ directory
+
+Probe IO (talk to the live session's SkytestProbe):
+  io                print the resolved probe IO dir (…/SKSE/skytest)
+  cmd '<json>'      send a probe command, block for its ack, print the result   [timeout=15s]
+  trace […]         filtered view of trace.jsonl   [--tail N --src X --since T --jq EXPR -f]
 
   test = a detached, drivable gamescope session (visible by default; --headless for no
   window). It does NOT block: run shot/drive/ready as follow-up commands, then `stop` to
@@ -1047,8 +1127,9 @@ EOF
     drive) cat <<'EOF'
 skytest drive <cmd> … — inject input into the test session via libei (isolated to it).
   tap <key>            press+release one key            (e.g. drive tap enter)
-  seq <key> …          tap several keys in order        (e.g. drive seq down down enter)
+  seq [--gap MS] <key> … tap several keys in order (gap default 300ms; SKYTEST_SEQ_GAP_MS)
   key <key> <0|1>      hold(1)/release(0) one key
+  btn <272|273> <0|1>  hold(1)/release(0) a mouse button (272=L 273=R)
   click [<x> <y>]      click at (x,y), or at current cursor if omitted
   abs <x> <y>          move cursor to pixel (x,y)
   rel <dx> <dy>        relative pointer move (1 unit = 1 px)
@@ -1058,6 +1139,55 @@ Keys: esc enter tab space backspace up down left right pageup pagedown home end
 Examples:
   skytest drive seq down down enter
   skytest drive click 1195 556
+EOF
+;;
+    "wait-probe") cat <<'EOF'
+skytest wait-probe [timeout] — block until SkytestProbe is LOADED and answering (a status
+line appears), independent of in-world. Use after `play agent` or a native-DLL restart, where
+`ready` never returns (full boots to the menu). Default timeout 120s.
+Exit: 0 = probe answering, 1 = timed out, 2 = session died.
+Examples:
+  skytest wait-probe
+  skytest wait-probe 60
+EOF
+;;
+    io) cat <<'EOF'
+skytest io — print the resolved probe IO dir (…/SKSE/skytest), where commands.jsonl and
+trace.jsonl live. No session required.
+Examples:
+  skytest io
+  cat "$(skytest io)/trace.jsonl"
+EOF
+;;
+    cmd) cat <<'EOF'
+skytest cmd '<json>' [timeout] — append a probe command to commands.jsonl AND block for its
+ack, then print every trace line it produced (its src: output + the ack). Injects an "id" if
+absent. Default timeout 15s. Exit: 0 = ack ok, 1 = ack failed, 2 = bad JSON, 3 = no ack.
+Examples:
+  skytest cmd '{"cmd":"status"}'
+  skytest cmd '{"cmd":"dump","ref":"crosshair"}'
+  skytest cmd '{"cmd":"facegen-watch","ref":"speaker","on":true}'
+EOF
+;;
+    trace) cat <<'EOF'
+skytest trace [--tail N] [--src X] [--since T] [--jq EXPR] [-f] — filtered view of trace.jsonl
+(no path-hunting or hand-built jq). --src greps "src":"X"; --since keeps .t ≥ T (epoch-ms, or
+relative 30s/500ms); --jq pipes each line through `jq -c EXPR`; --tail = last N (default 40);
+-f follows. Combine freely.
+Examples:
+  skytest trace --tail 20
+  skytest trace --src ramp --since 10s
+  skytest trace --src face --jq '{t,paused,gt}'
+  skytest trace -f --src watch
+EOF
+;;
+    restart) cat <<'EOF'
+skytest restart [args…] — stop the live session (if any) + relaunch it in one verb. With no
+args, replays the last `test`/`play agent` launch (saved on launch); with args, runs
+`skytest <args>` instead. For the native-DLL stop→relaunch cycle.
+Examples:
+  skytest restart
+  skytest restart test mods/GhostAllies --headless
 EOF
 ;;
     stop) cat <<'EOF'
@@ -1096,7 +1226,7 @@ case "${1:-}" in help|--help|-h) cmd_help; exit 0 ;; esac
 
 # per-verb help: `skytest <verb> --help`
 case "${1:-}" in
-  status|init|setup-save|test|replay|ready|shot|drive|stop|play|normal|uninstall)
+  status|init|setup-save|test|replay|ready|wait-probe|shot|drive|io|cmd|trace|restart|stop|play|normal|uninstall)
     case "${2:-}" in --help|-h) verb_help "$1"; exit 0 ;; esac ;;
 esac
 
@@ -1106,8 +1236,8 @@ esac
 # `replay --dry-run` is a pure lint — so THEY acquire_lock internally at the mutation point,
 # not here.
 case "${1:-}" in
-  setup-save|test|stop|play|normal|uninstall) acquire_lock ;;
-  ""|status|init|replay|ready|shot|drive) ;;  # read-only (init/replay self-lock at mutation)
+  setup-save|test|stop|play|normal|uninstall|restart) acquire_lock ;;
+  ""|status|init|replay|ready|shot|drive|io|cmd|trace|wait-probe) ;;  # read-only (init/replay self-lock; restart relaunches under the lock)
   -*) ;;  # stray unknown option — usage_err in the next block, no lock needed
   *)  acquire_lock ;;  # bare positional = mod-path shortcut for `test` (mutating)
 esac
@@ -1119,8 +1249,13 @@ case "${1:-}" in
   test)         shift; cmd_test "$@" ;;
   replay)       shift; cmd_replay "$@" ;;
   ready)        shift; cmd_ready "$@" ;;
+  wait-probe)   shift; cmd_wait_probe "$@" ;;
   shot)         shift; cmd_shot "$@" ;;
   drive)        shift; cmd_drive "$@" ;;
+  io)           cmd_io ;;
+  cmd)          shift; cmd_cmd "$@" ;;
+  trace)        shift; cmd_trace "$@" ;;
+  restart)      shift; cmd_restart "$@" ;;
   stop)         cmd_stop ;;
   play)         shift; cmd_play "$@" ;;
   normal)       cmd_normal ;;

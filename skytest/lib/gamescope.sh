@@ -147,6 +147,123 @@ gs_reset_io() {
   : > "$dir/trace.jsonl"    2>/dev/null || true
 }
 
+# Epoch milliseconds — the same clock SkytestProbe stamps every trace line's "t" with
+# (trace::NowMs = system_clock epoch-ms). Used by gs_trace --since to threshold on .t.
+_now_ms() { date +%s%3N; }
+
+# gs_cmd '<json>' [timeout=15] — the one-liner that replaces the hand-built
+# `echo '<json>' >> <long path>/commands.jsonl` + manual ack-grep cycle. Appends a probe
+# command and BLOCKS for its ack, then prints every trace line emitted since the send (the
+# command's own src: output AND its {"ack":…} line). Injects a unique "id" if the JSON lacks
+# one (the probe acks by id). Exit: 0 = ack ok:true, 1 = ack ok:false, 2 = bad JSON,
+# 3 = no ack within the timeout. Needs jq (to read/inject id and the ack's ok field).
+gs_cmd() {
+  command -v jq >/dev/null 2>&1 || die "gs_cmd: jq required"
+  local json="${1:-}" timeout="${2:-15}"
+  [ -n "$json" ] || usage_err "cmd: missing JSON" "skytest cmd '{\"cmd\":\"status\"}'"
+  # Validate the JSON parses FIRST (jq empty), then read .id separately — `.id // empty`
+  # under `jq -e` exits 1 for valid JSON that simply lacks an id, which is NOT an error.
+  printf '%s' "$json" | jq empty 2>/dev/null \
+    || usage_err "cmd: invalid JSON: $json" "skytest cmd '{\"cmd\":\"status\"}'"
+  local id; id="$(printf '%s' "$json" | jq -r '.id // empty' 2>/dev/null)"
+  if [ -z "$id" ]; then
+    id="cli-$$-${EPOCHSECONDS:-0}-$RANDOM"
+    json="$(printf '%s' "$json" | jq -c --arg id "$id" '. + {id:$id}')"
+  fi
+  local dir cmds trace start
+  dir="$(_skytest_io_dir)"; cmds="$dir/commands.jsonl"; trace="$dir/trace.jsonl"
+  mkdir -p "$dir" 2>/dev/null || true
+  # Record the current trace length so we print ONLY lines this command produces. A rare race
+  # (the probe appends between this count and our send) shows one extra unrelated line — harmless.
+  start=0; [ -f "$trace" ] && start="$(wc -l < "$trace" 2>/dev/null || echo 0)"
+  printf '%s\n' "$json" >> "$cmds" 2>/dev/null || die "cmd: cannot append to $cmds"
+  local deadline=$((SECONDS + timeout)) ack=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -f "$trace" ]; then
+      ack="$(tail -n "+$((start + 1))" "$trace" 2>/dev/null | grep -F "\"ack\":\"$id\"" | tail -1 || true)"
+      [ -n "$ack" ] && break
+    fi
+    sleep 0.2
+  done
+  [ -f "$trace" ] && tail -n "+$((start + 1))" "$trace" 2>/dev/null   # the delta: src output + ack
+  if [ -z "$ack" ]; then
+    echo "skytest: cmd: no ack for '$id' within ${timeout}s — is the probe live? (skytest wait-probe)" >&2
+    return 3
+  fi
+  [ "$(printf '%s' "$ack" | jq -r '.ok // false' 2>/dev/null)" = true ]
+}
+
+# gs_trace [--tail N] [--src X] [--since T] [--jq EXPR] [-f] — filtered view of trace.jsonl,
+# so a read no longer means re-resolving the path and rebuilding a jq pipeline by hand.
+#   --src X     keep only lines tagged "src":"X" (cheap grep, no jq)
+#   --since T   keep lines with .t >= T; T is epoch-ms, or relative (30s / 500ms ago)
+#   --jq EXPR   pipe each surviving line through `jq -c EXPR`
+#   --tail N    last N lines AFTER filtering (default 40); ignored under -f
+#   -f          follow (tail -f) and apply the filters to new lines live
+gs_trace() {
+  local tail_n=40 src="" since="" jqexpr="" follow=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --tail)      tail_n="${2:-40}"; shift 2 ;;
+      --src)       src="${2:-}"; shift 2 ;;
+      --since)     since="${2:-}"; shift 2 ;;
+      --jq)        jqexpr="${2:-}"; shift 2 ;;
+      -f|--follow) follow=1; shift ;;
+      *) usage_err "trace: unknown arg: $1" "skytest trace --tail 20 --src ramp" ;;
+    esac
+  done
+  local trace; trace="$(_skytest_io_dir)/trace.jsonl"
+  [ -f "$trace" ] || die "no trace.jsonl yet at $trace" "skytest test <mod>"
+  if { [ -n "$since" ] || [ -n "$jqexpr" ]; } && ! command -v jq >/dev/null 2>&1; then
+    die "trace: --since/--jq need jq"
+  fi
+  local since_ms=""
+  if [ -n "$since" ]; then
+    case "$since" in
+      *ms) since_ms=$(( $(_now_ms) - ${since%ms} )) ;;
+      *s)  since_ms=$(( $(_now_ms) - ${since%s} * 1000 )) ;;
+      *)   since_ms="$since" ;;   # bare number = absolute epoch-ms
+    esac
+  fi
+  # Apply src/since/jq to stdin, each stage a no-op `cat` when its flag is unset. Dynamic
+  # scoping: this nested function sees gs_trace's locals (src/since_ms/jqexpr).
+  _trace_apply() {
+    { if [ -n "$src" ]; then grep -F "\"src\":\"$src\""; else cat; fi; } \
+    | { if [ -n "$since_ms" ]; then jq -c --argjson s "$since_ms" 'select((.t // 0) >= $s)'; else cat; fi; } \
+    | { if [ -n "$jqexpr" ]; then jq -c "$jqexpr"; else cat; fi; }
+  }
+  if [ -n "$follow" ]; then
+    tail -n "$tail_n" -f "$trace" | _trace_apply
+  else
+    _trace_apply < "$trace" | tail -n "$tail_n"
+  fi
+}
+
+# gs_wait_probe [timeout=120] — block until the probe is LOADED and answering (a src:"status"
+# line appears in response to a ping), independent of in-world. gs_wait_ready waits for
+# inWorld:true and so never returns on the menu-booting full / `play agent` path; this only
+# needs the probe alive — the right gate after `play agent` or a native-DLL restart. Best run
+# right after a launch (which gs_reset_io'd the trace, so any status line is fresh, not stale).
+gs_wait_probe() {
+  local timeout="${1:-120}"
+  local dir cmds trace; dir="$(_skytest_io_dir)"; cmds="$dir/commands.jsonl"; trace="$dir/trace.jsonl"
+  mkdir -p "$dir" 2>/dev/null || true
+  echo "waiting for the probe to answer (timeout ${timeout}s)…" >&2
+  local i=0 deadline=$((SECONDS + timeout))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if gs_session_dead; then echo "session died (gamescope pid not alive)." >&2; return 2; fi
+    i=$((i + 1))
+    printf '{"id":"waitprobe-%d","cmd":"status"}\n' "$i" >> "$cmds" 2>/dev/null || true
+    if [ -f "$trace" ] && grep -qF '"src":"status"' "$trace" 2>/dev/null; then
+      echo "probe live (answering status)." >&2
+      return 0
+    fi
+    sleep 1
+  done
+  echo "timed out after ${timeout}s — probe never answered." >&2
+  return 1
+}
+
 # --- readiness ---------------------------------------------------------------
 
 # gs_wait_ready [timeout=180] — block until the probe reports inWorld:true.
@@ -257,7 +374,12 @@ gs_drive() {
   local kc
   case "$cmd" in
     tap)   kc="$(gs_keycode "$1")" || return 2; "$EIDRIVER" "$GS_EIS_SOCK" tap "$kc" ;;
-    seq)   local args=() k; for k in "$@"; do kc="$(gs_keycode "$k")" || return 2; args+=(tap "$kc" sleep 120); done
+    seq)   # Inter-key gap: default 300 ms (120 ms was too tight for menu→Continue — the boot
+           # double-`e` landed wrong). Override per call with `seq --gap MS …` or globally via
+           # SKYTEST_SEQ_GAP_MS. No replay timings depend on the old default.
+           local gap="${SKYTEST_SEQ_GAP_MS:-300}"
+           [ "${1:-}" = "--gap" ] && { gap="${2:-300}"; shift 2; }
+           local args=() k; for k in "$@"; do kc="$(gs_keycode "$k")" || return 2; args+=(tap "$kc" sleep "$gap"); done
            "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
     key)   kc="$(gs_keycode "$1")" || return 2; "$EIDRIVER" "$GS_EIS_SOCK" key "$kc" "$2" ;;
     btn)   "$EIDRIVER" "$GS_EIS_SOCK" btn "$1" "$2" ;;   # mouse button hold/release (272=L 273=R), $2: 1=down 0=up
@@ -266,7 +388,7 @@ gs_drive() {
     rel)   "$EIDRIVER" "$GS_EIS_SOCK" rel "$1" "$2" ;;
     abs|moveto|mv) "$EIDRIVER" "$GS_EIS_SOCK" moveto "$1" "$2" ;;
     raw)   "$EIDRIVER" "$GS_EIS_SOCK" "$@" ;;
-    *) usage_err "drive: usage: skytest drive {tap|seq|key|btn|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
+    *) usage_err "drive: usage: skytest drive {tap|seq [--gap MS]|key|btn|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
   esac
 }
 
