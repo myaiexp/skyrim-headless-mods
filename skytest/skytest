@@ -718,9 +718,19 @@ cmd_replay() {
   # replay_run reads the script, so a relative path would dangle. ('-' = stdin, left alone.)
   [ "$script" = "-" ] || script="$(realpath "$script")"
 
-  # --dry-run: print the normalized plan and exit. No boot, no profile mutation (the
-  # parser is a pure lint), so the live Data symlink is never touched — NO lock taken.
-  if [ -n "$dryrun" ]; then replay_parse "$script"; return $?; fi
+  # --dry-run: print the normalized plan, then SEMANTICALLY lint it (every key resolves, every
+  # gate is known, every duration is well-formed, every `cmd` payload is valid JSON) and exit.
+  # No boot, no profile mutation, so the live Data symlink is never touched — NO lock taken. The
+  # lint is what makes --dry-run a real pre-flight: a typo'd key or unknown gate is caught HERE,
+  # not as a failed step after a full boot.
+  if [ -n "$dryrun" ]; then
+    local plan="" prc=0 lrc=0
+    plan="$(replay_parse "$script")" || prc=$?     # structural errors (line N) go to stderr
+    [ -n "$plan" ] && printf '%s\n' "$plan"
+    [ "$prc" -ne 0 ] && return "$prc"              # a broken parse isn't worth semantic-linting
+    replay_lint <<<"$plan" || lrc=$?               # semantic checks -> step N (verb): problem
+    return "$lrc"
+  fi
 
   [ -n "$mod" ] || usage_err "replay: missing <mod>" "$usage"
 
@@ -1098,7 +1108,9 @@ and live for probing. The session stays up on success AND on a step failure (the
   --with a,b   extra framework DLLs (prefix match), like `test`
   --headless   no window (offscreen render); default is a window nested in Hyprland
   --no-shots   skip the per-step filmstrip (default: capture one PNG per step)
-  --dry-run    print the normalized step plan and exit (a lint; no boot, no profile change)
+  --dry-run    print the normalized step plan AND semantically lint it, then exit (no boot,
+               no profile change). Catches a typo'd key, an unknown gate, a bad duration, or
+               malformed `cmd` JSON up front — `step N (verb): <problem>` — not after a boot.
 .steps verbs: cmd <json> | exec <console> | tap <key> | key <k…> | hold <LMB|RMB|key> <dur|until:C> |
               wait <dur|until:C> | shot [name].   Gates: until:inworld, until:menu:<Name>.
   cmd <json>   a DIRECT probe command, acked before the next step — the STAGING path:

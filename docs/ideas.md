@@ -139,8 +139,17 @@ skytest-replay-handoff.md`. Deferred:
   18`), the press silently no-op'd, and the unchecked press rc hid it. Now `hold` passes the key
   *name* through and checks the press rc (handoff RESOLVED 4). **Parse-time presence checks: DONE
   (2026-06-16) —** a `tap`/`key`/`hold`/`wait` missing its required argument is now a `--dry-run`
-  lint error (`line N`). Still deferred: validating key *names* at parse time (the original
-  "stronger option"), which would couple the pure parser to `gs_keycode`.
+  lint error (`line N`). **Semantic pre-flight lint: DONE (2026-06-21).** The deferred "validate
+  key *names*" item shipped — but **without** coupling the pure parser to `gs_keycode` (the reason
+  it was parked). Instead a separate `replay_lint` layer (`lib/replay.sh`) reads the normalized
+  plan and checks each step against the real vocabulary; `replay --dry-run` runs it after the pure
+  parse. Scope grew past just keys to everything the parser structurally can't see: key names
+  (`gs_keycode`), `until:` gates (`resolve_gate`), durations (`_replay_dur_secs`, extracted so the
+  `*s` arm now validates numerically too), and `cmd` JSON (`jq`). Reports `step N (verb): <problem>`
+  exhaustively (not first-fail); verified end-to-end + 20 new `replay.test.sh` checks. The two
+  in-repo `.steps` lint clean (no false positives). **Follow-up:** wire the same lint into the
+  *real* (non-dry-run) replay path before `_boot_test_session`, so a bad key fails fast instead of
+  after a boot — kept dry-run-scoped here to match this item's original framing.
 - **`charged` / `actorcount` gates** (from the design) — not built; add per the first script that
   needs them, each as one `resolve_gate` row + one direct-call probe handler (the `is-menu-open`
   commit is the template).

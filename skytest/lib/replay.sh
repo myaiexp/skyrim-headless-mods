@@ -119,6 +119,80 @@ _replay_parse_stream() {
   return "$rc"
 }
 
+# --- lint (the --dry-run semantic pre-flight) ---------------------------------
+
+# replay_parse is pure text: it can tell `tap` from `frobnicate` and spot a missing argument,
+# but it can NOT know whether `tap jouurnal` names a real key, whether `until:inwrld` is a gate
+# anyone answers, or whether `cmd {bad}` is valid JSON — those need gs_keycode / resolve_gate /
+# jq, which the parser is deliberately kept free of (its unit tests source replay.sh alone).
+# replay_lint is that missing semantic layer: it reads a normalized plan (replay_parse output)
+# and checks each step against the real input/gate/JSON vocabulary. `replay --dry-run` runs it
+# after the parse, so a typo'd key or unknown gate is caught BEFORE a boot — not as a failed
+# step after one (the whole point of a dry run). Reports `replay: step N (<verb>): <problem>`
+# (step numbers match the interpreter's runtime errors); returns 0 clean, 2 if any step is bad.
+replay_lint() {
+  local stepno=0 stepline body verb args rc=0 k keys f1 f2 t g j
+  while IFS= read -r stepline; do
+    case "$stepline" in 'STEP '*) ;; *) continue ;; esac
+    stepno=$((stepno + 1))
+    body="${stepline#STEP }"
+    verb="${body%%[[:space:]]*}"
+    args="${body#"$verb"}"; args="${args#"${args%%[![:space:]]*}"}"
+    case "$verb" in
+      tap)
+        k="${args#key=}"
+        _lint_key "$k" || { _lint_bad "$stepno" tap "unknown key '$k'"; rc=2; }
+        ;;
+      key)
+        keys="${args#keys=}"
+        # shellcheck disable=SC2086  # intentional split: validate each key in the sequence
+        for k in ${keys//,/ }; do
+          _lint_key "$k" || { _lint_bad "$stepno" key "unknown key '$k'"; rc=2; }
+        done
+        ;;
+      hold)
+        read -r f1 f2 _ <<<"$args"
+        t="${f1#target=}"; g="${f2#gate=}"
+        case "$t" in
+          LMB|RMB) ;;  # mouse buttons, not key names — gs_drive maps them directly
+          *) _lint_key "$t" || { _lint_bad "$stepno" hold "unknown hold key '$t'"; rc=2; } ;;
+        esac
+        _lint_gate "$g" || { _lint_bad "$stepno" hold "bad gate '$g' (need until:<COND> or Nms/Ns)"; rc=2; }
+        ;;
+      wait)
+        g="${args#gate=}"
+        _lint_gate "$g" || { _lint_bad "$stepno" wait "bad gate '$g' (need until:<COND> or Nms/Ns)"; rc=2; }
+        ;;
+      cmd)
+        j="${args#json=}"
+        _lint_json "$j" || { _lint_bad "$stepno" cmd "payload is not a valid JSON object"; rc=2; }
+        ;;
+      exec|shot) ;;  # arbitrary console text / a path — nothing semantic the parser didn't cover
+    esac
+  done
+  return "$rc"
+}
+
+# emit one lint problem to stderr, mirroring replay_run's `step N (verb)` runtime format.
+_lint_bad() { printf 'replay: step %d (%s): %s\n' "$1" "$2" "$3" >&2; }
+
+# Semantic validators — pure (no session, no IO), so they are safe in --dry-run. Each returns
+# 0 iff the token is valid. They are the one place the lint reaches into the input/gate
+# vocabulary; keep that coupling here, never in replay_parse.
+_lint_key()  { gs_keycode "$1" >/dev/null 2>&1; }                    # a key name -> a keycode
+_lint_gate() {                                                       # until:<COND> known, OR a duration
+  case "$1" in
+    until:*) local c="${1#until:}" _a _b _d
+             [ -n "$c" ] && resolve_gate "$c" _a _b _d >/dev/null 2>&1 ;;
+    *)       _replay_dur_secs "$1" >/dev/null 2>&1 ;;
+  esac
+}
+_lint_json() {                                                       # a JSON object (validated with jq if present)
+  case "$1" in \{*) ;; *) return 1 ;; esac
+  command -v jq >/dev/null 2>&1 || return 0
+  printf '%s' "$1" | jq empty 2>/dev/null
+}
+
 # --- gates --------------------------------------------------------------------
 
 # The gate table, data-driven: each `until:<COND>` maps to a probe query + the trace
@@ -202,19 +276,26 @@ replay_wait_gate() {
 # commands rarely carry either, but the line goes into a JSON object the probe parses.
 _json_escape() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s' "$s"; }
 
-# Sleep a `<N>ms` / `<N>s` duration (the only non-gate wait the design permits). awk does
-# the ms→s divide since bash has no float math; sleep takes the fractional seconds.
-_replay_sleep_dur() {
-  local d="$1" secs
-  case "$d" in
-    # Pass the ms count as awk DATA (-v), never spliced into the program text: a malformed
-    # token can't inject code, and the BEGIN guard rejects a non-numeric `ms` with a clean
-    # non-zero return instead of an awk syntax error.
-    *ms) secs="$(awk -v ms="${d%ms}" 'BEGIN{if(ms+0!=ms)exit 1; printf "%.3f", ms/1000}')" \
-           || { printf "replay: bad duration '%s' (use Nms or Ns)\n" "$d" >&2; return 2; } ;;
-    *s)  secs="${d%s}" ;;
-    *)   printf "replay: bad duration '%s' (use Nms or Ns)\n" "$d" >&2; return 2 ;;
+# _replay_dur_secs <dur> — validate a `<N>ms`/`<N>s` duration and echo it in fractional
+# SECONDS. Pure (no sleep, no IO): the count is passed to awk as DATA (-v), never spliced into
+# the program text, so a malformed token can't inject code — the BEGIN guard just rejects a
+# non-numeric value with a clean non-zero return instead of an awk syntax error. The single
+# source of truth for the duration grammar: _replay_sleep_dur sleeps on its output, and the
+# --dry-run lint checks a token with it (so a bad `wait 500` / `hold LMB 5x` is caught before a
+# boot, not as a runtime sleep error).
+_replay_dur_secs() {
+  case "$1" in
+    *ms) awk -v ms="${1%ms}" 'BEGIN{if(ms+0!=ms)exit 1; printf "%.3f", ms/1000}' || return 2 ;;
+    *s)  awk -v s="${1%s}"   'BEGIN{if(s+0!=s) exit 1; printf "%s",   s}'         || return 2 ;;
+    *)   return 2 ;;
   esac
+}
+
+# Sleep a `<N>ms` / `<N>s` duration (the only non-gate wait the design permits).
+_replay_sleep_dur() {
+  local secs
+  secs="$(_replay_dur_secs "$1")" \
+    || { printf "replay: bad duration '%s' (use Nms or Ns)\n" "$1" >&2; return 2; }
   sleep "$secs"
 }
 

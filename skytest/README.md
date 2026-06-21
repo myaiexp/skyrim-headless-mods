@@ -164,7 +164,11 @@ but doesn't tear down: inspect, then `skytest stop`).
 
 Scripts live next to the mod: `mods/<Name>/<name>.steps`. A bare `<script>` resolves there; a
 path with `/` (or `-` for stdin) is taken as-is. `--headless`/`--with` work as for `test`;
-`--dry-run` prints the normalized step plan and exits (a lint: no boot, no profile change).
+`--dry-run` prints the normalized step plan **and semantically lints it**, then exits (no boot,
+no profile change): beyond the structural parse (unknown verbs, missing args) it verifies every
+key name resolves, every `until:` gate is known, every duration is well-formed, and every `cmd`
+payload is valid JSON — so a typo'd key or gate is caught up front (`step N (verb): <problem>`)
+instead of failing a step after a full boot.
 `--no-shots` disables the per-step filmstrip (see below).
 
 `.steps` is line-based (`#` comments, blank lines ignored):

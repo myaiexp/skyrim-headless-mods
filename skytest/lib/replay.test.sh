@@ -181,5 +181,75 @@ check_rc "hold press failure -> non-zero"   2 "$rc"
 check    "hold press failure skips the gate" 'drive key e 1' "$(emitted_str)"
 gs_drive() { EMITTED+=("drive $*"); }                             # restore the passing stub
 
+# =============================================================================
+# Task 4 — replay_lint (the --dry-run SEMANTIC pre-flight: keys / gates / durations / JSON)
+# replay_lint reaches into gs_keycode, which lives in lib/gamescope.sh (not sourced here, since
+# it needs the parent skytest's $SCRIPT_DIR etc.). Stub it with the REAL function's contract: a
+# known key name -> a code (rc 0), an unknown name -> rc 2. resolve_gate / _replay_dur_secs are
+# the genuine ones from replay.sh. The real gs_keycode wiring is covered by the end-to-end
+# `skytest replay --dry-run` check in the commit's manual verification.
+# =============================================================================
+gs_keycode() { case "$1" in e|q|w|a|s|d|up|down|enter|tilde|escape|space) echo 1 ;; *) return 2 ;; esac; }
+
+# a clean script lints clean: every key/gate/duration is valid (JSON checked only if jq present)
+clean='tap e
+key w a s d
+wait until:inworld
+wait until:menu:Console
+hold LMB 200ms
+hold e until:inworld
+wait 1s'
+command -v jq >/dev/null 2>&1 && clean+=$'\ncmd {"cmd":"status"}'
+lint_out="$(printf '%s\n' "$clean" | replay_parse - | replay_lint 2>&1)"; rc=$?
+check_rc "lint clean -> 0"          0  "$rc"
+check    "lint clean -> no output"  "" "$lint_out"
+
+# a typo'd key in `tap` is caught with the step number + verb (the deferred ideas item)
+e="$(replay_parse - <<<'tap jouurnal' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad tap key -> 2"  2 "$rc"
+contains "lint bad tap key msg"   "step 1 (tap): unknown key 'jouurnal'" "$e"
+
+# a typo'd key INSIDE a `key` sequence is caught per-key (not just the first)
+e="$(replay_parse - <<<'key w foo d' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad key-seq -> 2"  2 "$rc"
+contains "lint bad key-seq msg"   "step 1 (key): unknown key 'foo'" "$e"
+
+# an unknown until: gate (resolve_gate says no) is caught — distinct from an unknown verb
+e="$(replay_parse - <<<'wait until:inwrld' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad gate -> 2"     2 "$rc"
+contains "lint bad gate msg"      "step 1 (wait): bad gate 'until:inwrld'" "$e"
+
+# a malformed duration is caught (the *s arm now validates the number too, via _replay_dur_secs)
+e="$(replay_parse - <<<'wait 500' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad duration -> 2" 2 "$rc"
+contains "lint bad duration msg"  "step 1 (wait): bad gate '500'" "$e"
+
+# a hold with a bad key target is caught (LMB/RMB exempt; a key name must resolve)
+e="$(replay_parse - <<<'hold zzz until:inworld' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad hold key -> 2" 2 "$rc"
+contains "lint bad hold key msg"  "step 1 (hold): unknown hold key 'zzz'" "$e"
+
+# a hold with a valid key but a bad gate is caught (the gate half of the step)
+e="$(replay_parse - <<<'hold e 5x' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad hold gate -> 2" 2 "$rc"
+contains "lint bad hold gate msg"  "step 1 (hold): bad gate '5x'" "$e"
+
+# multiple bad steps all report, and the overall rc is still 2 (lint is exhaustive, not first-fail)
+e="$(printf 'tap nope\nwait until:bogus\n' | replay_parse - | replay_lint 2>&1)"; rc=$?
+check_rc "lint multi-bad -> 2"    2 "$rc"
+contains "lint multi-bad step1"   "step 1 (tap): unknown key 'nope'" "$e"
+contains "lint multi-bad step2"   "step 2 (wait): bad gate 'until:bogus'" "$e"
+
+# exec + shot carry no semantic obligation the parser didn't already meet -> clean
+e="$(printf 'exec coc WhiterunOrigin\nshot /tmp/x.png\n' | replay_parse - | replay_lint 2>&1)"; rc=$?
+check_rc "lint exec/shot -> 0" 0 "$rc"
+
+# malformed cmd JSON is caught up front (jq-gated, like the interpreter's own runtime check)
+if command -v jq >/dev/null 2>&1; then
+  e="$(replay_parse - <<<'cmd {not json}' | replay_lint 2>&1)"; rc=$?
+  check_rc "lint bad cmd json -> 2" 2 "$rc"
+  contains "lint bad cmd json msg"  "step 1 (cmd): payload is not a valid JSON object" "$e"
+fi
+
 printf '\nreplay.test.sh: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
