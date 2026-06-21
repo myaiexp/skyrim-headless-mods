@@ -251,6 +251,7 @@ namespace
 			}
 			engine::FaceGenRampParams p;
 			p.ref          = JStr(cmd, "ref", "speaker");
+			p.kf           = JStr(cmd, "kf", p.kf);
 			p.ms           = static_cast<float>(JNum(cmd, "ms", p.ms));
 			p.holdMs       = static_cast<float>(JNum(cmd, "holdMs", p.holdMs));
 			p.threshold    = static_cast<float>(JNum(cmd, "threshold", p.threshold));
@@ -259,9 +260,26 @@ namespace
 			p.cut          = JBool(cmd, "cut", p.cut);
 			p.live         = JBool(cmd, "live", p.live);
 			p.reassert     = JBool(cmd, "reassert", p.reassert);
+			p.snapshot     = JBool(cmd, "snapshot", p.snapshot);
 			EnqueueMain([id, p]() {
 				engine::StartFaceGenRamp(p);
 				trace::Ack(id, true);  // armed; the ramp self-triggers + logs its own series
+			});
+			return;
+		}
+
+		if (c == "facegen-skip-ease") {
+			// Arm/disarm easing the mouth shut on the player's REAL NPC-reply skip (CutNpcDBVOReply),
+			// instead of the test-only speech-onset auto-cut. on:false disarms + cancels any in-flight ease.
+			engine::SkipEaseParams p;
+			const bool on = JBool(cmd, "on", true);
+			p.kf       = JStr(cmd, "kf", p.kf);
+			p.ms       = static_cast<float>(JNum(cmd, "ms", p.ms));
+			p.holdMs   = static_cast<float>(JNum(cmd, "holdMs", p.holdMs));
+			p.snapshot = JBool(cmd, "snapshot", p.snapshot);
+			EnqueueMain([id, on, p]() {
+				engine::ArmSkipEase(on, p);
+				trace::Ack(id, true);
 			});
 			return;
 		}

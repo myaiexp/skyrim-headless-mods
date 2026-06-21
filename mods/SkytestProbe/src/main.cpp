@@ -47,6 +47,7 @@ namespace
 		trace::Init();
 		probes::RegisterEventSinks();
 		engine::InstallFaceGenHook();  // facegen-ramp's per-frame apply hook (idle until a ramp triggers)
+		engine::InstallSkipEaseSink();  // react to DBVO's real CutNpcDBVOReply skip with an eased close
 		hotkey::Register();
 		commands::Start();
 		SKSE::log::info("SkytestProbe: kDataLoaded setup complete");
