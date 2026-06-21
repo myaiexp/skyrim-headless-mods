@@ -21,16 +21,16 @@ Spec: `docs/plans/skytest-replay-design.md`.
 
 ## File structure
 
-| File | Create/Modify | Responsibility |
-| --- | --- | --- |
-| `skytest/lib/replay.sh` | **Create** | Parse `.steps`, interpret steps, probe-gated `wait`. One concern: replay. Sourced by `skytest` like `lib/gamescope.sh`. |
-| `skytest/skytest` | Modify | Source `replay.sh`; `cmd_replay`; dispatch `replay)`; `verb_help replay`; extract `_boot_test_session`; discoverability line in `cmd_test`. |
-| `skytest/lib/gamescope.sh` | Modify | Add `btn` case to `gs_drive` (button hold) + any keycodes scripts need (e.g. `q`=16). |
-| `mods/SkytestProbe/src/commands.cpp` | Modify | Add `is-menu-open` command handler (the first accreted gate query). |
-| `mods/SkytestProbe/src/engine.{h,cpp}` | Modify | Add `bool IsMenuOpen(const std::string&)`. |
-| `skytest/examples/format-demo.steps` | **Create** | A runnable format example + the live-verification fixture (console + inworld + input + menu gate + shot). |
-| `skytest/README.md` | Modify | `replay` verb reference + first-vs-subsequent-test guidance. |
-| `CLAUDE.md` | Modify | "Testing a mod you built" steer (drive once → author `.steps` → `replay` after). |
+| File                                   | Create/Modify | Responsibility                                                                                                                                                             |
+| -------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skytest/lib/replay.sh`                | **Create**    | Parse `.steps`, interpret steps, probe-gated `wait`. One concern: replay. Sourced by `skytest` like `lib/gamescope.sh`.                                                    |
+| `skytest/skytest`                      | Modify        | Source `replay.sh`; `cmd_replay`; dispatch `replay)`; `verb_help replay`; extract `_boot_test_session`; discoverability line in `cmd_test`.                                |
+| `skytest/lib/gamescope.sh`             | Modify        | Add `btn` case to `gs_drive` (button hold) + any keycodes scripts need (e.g. `q`=16).                                                                                      |
+| `mods/SkytestProbe/src/commands.cpp`   | Modify        | Add `is-menu-open` command handler (the first accreted gate query).                                                                                                        |
+| `mods/SkytestProbe/src/engine.{h,cpp}` | Modify        | Add `bool IsMenuOpen(const std::string&)`. _(Post-split: `engine.cpp` was split into 8 units — see `worldstate.cpp`/`probes.cpp`/`resolve.cpp`/etc.; `engine.h` remains.)_ |
+| `skytest/examples/format-demo.steps`   | **Create**    | A runnable format example + the live-verification fixture (console + inworld + input + menu gate + shot).                                                                  |
+| `skytest/README.md`                    | Modify        | `replay` verb reference + first-vs-subsequent-test guidance.                                                                                                               |
+| `CLAUDE.md`                            | Modify        | "Testing a mod you built" steer (drive once → author `.steps` → `replay` after).                                                                                           |
 
 **Scope note (YAGNI, per design):** this plan ships the format + interpreter + `inworld` + `menu`
 gates. `charged` and `actorcount` are NOT built here — they're added (each as one probe query + one
@@ -41,9 +41,11 @@ gate-table row) when the GhostAllies summons script first needs them. Task 5 is 
 ### Task 1: `.steps` parser + `--dry-run` [Mode: Direct]
 
 **Files:**
+
 - Create: `skytest/lib/replay.sh` (parser portion)
 
 **Contracts:**
+
 - `replay_parse <file>`: reads a `.steps` file (or `-` for stdin), emits one normalized line per
   step to stdout: `STEP <verb> <k=v>…`. Skips blank lines and `#` comments. Unknown verb → non-zero
   exit + `replay: line N: unknown step '<verb>'` on stderr.
@@ -95,9 +97,11 @@ normalized plan; the five cases above pass.
 ### Task 2: Probe-gated `wait` mechanism + `inworld` gate [Mode: Direct]
 
 **Files:**
+
 - Modify: `skytest/lib/replay.sh` (gate portion)
 
 **Contracts:**
+
 - A data-driven gate table. Adding a gate = one probe-query handler (Task 5) + one row here:
   | cond | probe cmd (commands.jsonl) | trace `src` | predicate (jq, true = satisfied) |
   | --- | --- | --- | --- |
@@ -112,6 +116,7 @@ normalized plan; the five cases above pass.
 - Durations (`<N>ms`/`<N>s`) are handled by the caller (Task 3) as a plain `sleep`, not a gate.
 
 **Test Cases:**
+
 ```
 # unknown gate condition is a clear error, not a silent hang
 replay_wait_gate "bogus" → non-zero, stderr "replay: unknown gate condition 'bogus'"
@@ -119,6 +124,7 @@ replay_wait_gate "bogus" → non-zero, stderr "replay: unknown gate condition 'b
 # gate-table resolution maps cond → (cmd,src,predicate) — assert via a resolver unit fn
 resolve_gate "menu:FavoritesMenu" → cmd='{"cmd":"is-menu-open","menu":"FavoritesMenu"}' src=menu
 ```
+
 (The live poll behavior is covered by the Task 6 functional run; unit-test only the resolver + the
 unknown-cond path, which need no game.)
 
@@ -135,10 +141,12 @@ default; do not invent a new timeout convention.
 ### Task 3: Step interpreter + input wiring [Mode: Direct]
 
 **Files:**
+
 - Modify: `skytest/lib/replay.sh` (interpreter portion)
 - Modify: `skytest/lib/gamescope.sh` (add `btn` case to `gs_drive`; add keycodes as needed)
 
 **Contracts:**
+
 - `replay_run <script_file> [timeout]`: parse via `replay_parse`, then execute each `STEP` in order;
   on any step failure, **abort** with `replay: step N (<verb>) failed: <reason>` and return non-zero
   (never proceed past a failed gate — a wrong state yields a bogus test).
@@ -162,6 +170,7 @@ default; do not invent a new timeout convention.
 
 **Test Cases** (dry-run + a stubbed `gs_drive`/`_probe_send` to assert the emitted command stream,
 no game):
+
 ```
 # hold LMB until:charged emits press, a charged-gate poll, then release — in that order
 steps: 'hold LMB until:charged'
@@ -189,9 +198,11 @@ live session (manual one-liner check).
 ### Task 4: `replay` verb + boot reuse + arg resolution [Mode: Direct]
 
 **Files:**
+
 - Modify: `skytest/skytest` (`_boot_test_session` extraction, `cmd_replay`, dispatch, source line)
 
 **Contracts:**
+
 - Extract the boot body of `cmd_test` (lines ~542–567: `build_test_profile` → `inject_skytestprobe`
   → `backup_plugins` → StartOnSave/isolate_saves → `write_test_plugins` → `point_data test` →
   `gs_launch` → `gs_wait_ready`) into `_boot_test_session <mod> <deps> <backend>`. `cmd_test` calls
@@ -202,13 +213,14 @@ live session (manual one-liner check).
   - else: resolve `<mod>` exactly as `cmd_test` (realpath, `-e` check); resolve `<script>` — a bare
     name (no `/`) → `mods/<basename-of-mod-dir>/<script>`; a path with `/` → as-is; `-e` check with a
     clear error. Then `_boot_test_session "$mod" "$deps" "$backend"`; on ready, `replay_run
-    "$script"`; on replay failure, leave the session up and tell the user (`skytest stop` to tear
+"$script"`; on replay failure, leave the session up and tell the user (`skytest stop` to tear
     down) — do NOT auto-stop (mirrors the detached model). On success, print "replayed to target
     state; session live — probe it (skytest shot/drive/exec) or skytest stop".
 - Dispatch: add `replay) shift; cmd_replay "$@" ;;`. Source `replay.sh` near the `gamescope.sh`
   source line.
 
 **Test Cases:**
+
 ```
 # bare script name resolves under the mod dir
 replay mods/GhostAllies/build/GhostAllies.dll smoke.steps
@@ -235,12 +247,14 @@ resolution cases behave as specified.
 ### Task 5: First accreted probe gate — `is-menu-open` [Mode: Delegated]
 
 **Files:**
+
 - Modify: `mods/SkytestProbe/src/engine.h` (declare `bool IsMenuOpen(const std::string&);`)
 - Modify: `mods/SkytestProbe/src/engine.cpp` (define it — `RE::UI::GetSingleton()->IsMenuOpen(name)`,
   null-safe, mirroring the existing `GetWorldState` UI usage at `engine.cpp:245`)
 - Modify: `mods/SkytestProbe/src/commands.cpp` (add `if (c == "is-menu-open")` handler)
 
 **Contracts:**
+
 - Command request: `{"id":…,"cmd":"is-menu-open","menu":"<MenuName>"}`. Missing `menu` →
   `trace::Ack(id,false,"is-menu-open: missing menu")`.
 - Handler: `EnqueueMain` (UI access is main-thread), write a trace record
@@ -252,8 +266,9 @@ resolution cases behave as specified.
   staging copy — see `docs/ideas.md` 2026-06-12).
 
 **Test Cases:**
+
 - Live (functional, in Task 6's run): with the Favorites menu open, `is-menu-open
-  menu=FavoritesMenu` traces `open:true`; closed → `open:false`. (No unit harness for SKSE; verified
+menu=FavoritesMenu` traces `open:true`; closed → `open:false`. (No unit harness for SKSE; verified
   in-engine.)
 - Build: `mods/SkytestProbe/build.sh` produces `SkytestProbe.dll` with no new warnings/errors.
 
@@ -270,12 +285,14 @@ Task 6 live run.
 ### Task 6: Discoverability + format example + live verification [Mode: Direct]
 
 **Files:**
+
 - Create: `skytest/examples/format-demo.steps`
 - Modify: `skytest/skytest` (`cmd_test` trailing output; `verb_help replay`)
 - Modify: `skytest/README.md` (replay verb reference + first-vs-subsequent guidance)
 - Modify: `CLAUDE.md` ("Testing a mod you built" section)
 
 **Contracts:**
+
 - `format-demo.steps`: a small standalone-runnable script exercising every wired step on a vanilla+1
   profile — `exec coc <openCell>` → `wait until:inworld` → `exec player.placeatme <vanillaRef> 1` →
   `tap <key-to-open-a-menu>` → `wait until:menu:<MenuName>` → `shot /tmp/replay-demo.png`. Uses only
@@ -283,13 +300,13 @@ Task 6 live run.
   confirm the chosen `tap`-key actually opens the chosen menu from the `SkytestBase`/`qasmoke` save
   (an empty Favorites still opens, so the `menu` gate satisfies either way — but verify the keybind
   reaches it in that context before committing the fixture).
-- `cmd_test` trailing message gains one line: *drove this by hand? save it as
-  `mods/<mod>/<name>.steps` and re-run with `skytest replay <mod> <name>.steps`.*
+- `cmd_test` trailing message gains one line: _drove this by hand? save it as
+  `mods/<mod>/<name>.steps` and re-run with `skytest replay <mod> <name>.steps`._
 - `verb_help replay`: heredoc block mirroring the other verbs (synopsis, `--headless`/`--dry-run`,
   two examples).
 - `skytest/README.md`: a `replay` subsection — the verb, the `.steps` step table, the gate list
   (`inworld`, `menu:<NAME>`; note `charged`/`actorcount` arrive when a script needs them), and the
-  norm "*first* test = drive live + author `.steps`; *after* = `skytest replay`".
+  norm "_first_ test = drive live + author `.steps`; _after_ = `skytest replay`".
 - `CLAUDE.md` "Testing a mod you built": add the same first-vs-subsequent steer pointing at the verb.
 
 **Verification (functional — the whole feature, end to end):**
@@ -305,7 +322,9 @@ rebuild) + shot + verb + teardown in one run.
 ---
 
 ## Execution
+
 **Skill:** superpowers:subagent-driven-development
+
 - Mode A (Direct) tasks: Opus implements directly — 1, 2, 3, 4, 6.
 - Mode B (Delegated) task: 5 (SkytestProbe C++ / cross-compile) dispatched to a subagent.
 - TDD per task; commit after each passes; functional verification (Task 6) is the gate for "done".

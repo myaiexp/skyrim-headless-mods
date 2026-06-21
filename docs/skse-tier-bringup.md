@@ -163,8 +163,8 @@ heldLeft` did **not** reflect hold reliably; first attempt, abandoned.)
   injection existed) and the hook only touches the fired projectile, so this is a vanilla Skyrim
   bow-input quirk, not mod-introduced. Left as-is.
 - `power`/`weaponDamage` are forced to exactly full; scaling `>1.0` would over-draw if ever wanted.
-- The plugin still carries verbose probe logging + `AnimProbeSink` naming from development, worth
-  trimming/renaming.
+- **Resolved.** The verbose probe logging + `AnimProbeSink` naming were trimmed out of the shipped
+  `src/main.cpp`; the development build is preserved as `src/main.cpp.probe-logging.bak`.
 
 ## References
 

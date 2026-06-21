@@ -1,5 +1,10 @@
 # AutoFireBow MCM — design (2026-06-14)
 
+> **OUTCOME (2026-06-14): shipped** (AutoFireBow v2.1.0). The SkyUI MCM landed as designed:
+> `AutoFireBowMCM extends SKI_ConfigBase` + an EspGen-built quest + a one-way Papyrus→DLL native
+> bridge (`SetEnabled` / `SetDamageBonus` / `SetMinShotDelay`) — master toggle, toggle hotkey, and
+> damage + cadence sliders. See `mods/AutoFireBow/README.md` for as-built.
+
 Add an in-game **SkyUI MCM** to AutoFireBow so its behavior is configurable instead of
 hardcoded-always-on. Built **without MCM Helper** — a classic `SKI_ConfigBase` Papyrus menu plus a
 C++↔Papyrus native bridge, exactly the shape DBVODialogueTweaks v3 already ships.

@@ -1,6 +1,6 @@
 # GhostAllies
 
-> **Status: working, verified in-game (v0.9.0).** Player projectiles stop harming your
+> **Status: working, verified in-game (v0.10.0).** Player projectiles stop harming your
 > followers, and discrete shots physically **pass through** them.
 
 Fire a bow or an aimed spell past a companion who's standing in your line of fire and the shot
@@ -14,10 +14,13 @@ arrow never collides with your ally at all, instead of stopping on them with the
   intervening teammate and continues to whatever's behind them.
 - **Aimed spells pass through too:** bolt-type projectiles (Firebolt, Ice Spike, Fireball and the
   like) phase through the party exactly like arrows.
+- **Your own summons phase too.** Conjured atronachs and familiars, plus reanimated thralls, are
+  part of the phase-through set — anything you command. Shots sweep past them just like teammates.
 - **No friendly fire from continuous streams.** Flames, Sparks, and other concentration streams
   deal **no damage** to your teammates. (They don't *pass through*, though; see Limitations.)
-- **Everyone else is untouched.** Only player-fired projectiles aimed at a teammate phase. Enemies,
-  neutral NPCs, and your own summons are hit completely normally; enemy spells are unaffected.
+- **Everyone else is untouched.** Only player-fired projectiles phase. Enemies, neutral NPCs, and an
+  **enemy** conjurer's summons (a different commanding actor) are hit completely normally; enemy
+  spells are unaffected.
 
 ## Requirements
 
@@ -49,8 +52,9 @@ Two complementary mechanisms, both verified in-game:
 
 **1. systemGroup stamp → true pass-through (discrete projectiles).** Skyrim already makes every
 arrow ignore its own shooter via Havok's *system-group* rule: bodies sharing a non-zero systemGroup
-don't collide. GhostAllies reuses that. It reserves one "ghost group" constant, stamps it onto each
-current teammate's character-controller, and stamps the same group onto a player-fired projectile's
+don't collide. GhostAllies reuses that. It reserves one "ghost group" constant and stamps it onto
+the character-controller of every party member — teammates **plus** the player's own summons
+(conjured/reanimated actors you command), one predicate `IsGhostAlly` — then stamps the same group onto a player-fired projectile's
 collision phantom at launch. The projectile's per-frame collision cast then treats every ghost-group
 teammate the way it treats the player: it never reports a contact, so the shot sweeps through and
 keeps flying, still hitting everyone else (different group → normal collision). One unified hook on

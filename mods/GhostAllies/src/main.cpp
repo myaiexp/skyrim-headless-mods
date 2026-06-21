@@ -374,7 +374,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SetupLog();
 	SKSE::Init(a_skse);
-	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 9, 0 }.string());
+	SKSE::log::info("GhostAllies {} loaded", REL::Version{ 0, 10, 0 }.string());
 
 	InstallHooks();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);

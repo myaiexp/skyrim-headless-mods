@@ -1,5 +1,12 @@
 # AutoFireBow — real charge (drop the clamps) — design
 
+> **OUTCOME (2026-06-14): shipped** (AutoFireBow v2.1.0). The spike resolved: auto arrows now loose
+> at **genuine full draw** via a synthetic input-release fed through the engine's own attack pipeline
+> (the physical button stays held, so the engine does a real charged draw; only the release event is
+> faked). The `ArrowProjectile::GetPowerSpeedMult` **power clamp was removed** — the hook now only
+> applies the auto-only **+10% DPS bump**. **Still open:** whether that +10% damage bump is warranted
+> at all (per `mods/AutoFireBow/README.md`) — not yet resolved.
+
 **Goal:** make AutoFireBow public-worthy by removing the two power/damage clamps and producing
 **genuinely engine-charged** auto-fired arrows instead. Today the auto-fire loop fakes a full shot
 by rewriting the projectile; a Nexus release should loose real, honestly-charged arrows.

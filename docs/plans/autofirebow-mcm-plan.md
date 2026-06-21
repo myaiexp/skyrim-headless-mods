@@ -1,5 +1,9 @@
 # AutoFireBow MCM Implementation Plan
 
+> **OUTCOME (2026-06-14): shipped** (AutoFireBow v2.1.0). The SkyUI MCM (no MCM Helper) shipped as
+> planned — `SKI_ConfigBase` script + one-way Papyrus→DLL native bridge over an ESL-flagged esp.
+> See `mods/AutoFireBow/README.md` for as-built.
+
 **Goal:** Give AutoFireBow a classic SkyUI MCM (no MCM Helper) so Enabled / toggle-hotkey /
 damage-bonus / min-shot-delay are configurable in-game instead of hardcoded.
 

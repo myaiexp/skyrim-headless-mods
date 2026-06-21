@@ -1,6 +1,6 @@
 # Design — merge `headless/` + `skytest/` into one launcher
 
-**Status:** designed 2026-06-12, not yet built.
+**Status:** shipped 2026-06-12 (headless/ retired into skytest/).
 **Scope:** the merge only. Input **recording/playback** is a deliberate follow-up pass (see
 `docs/ideas.md`), not part of this design — but `drive` is shaped to be replay-friendly so that
 layer slots in without rework.

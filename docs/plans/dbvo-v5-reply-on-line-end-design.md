@@ -1,6 +1,6 @@
 # DBVODialogueTweaks v5 — NPC replies when your line actually ends (design)
 
-**Status:** designed 2026-06-14, not yet built. **Tier:** SKSE C++ + swf + MCM (no new Papyrus
+**Status:** shipped & verified in-game 2026-06-14. **Tier:** SKSE C++ + swf + MCM (no new Papyrus
 natives). **Builds on:** v2 (the gap slider + per-open `UI.SetFloat` push), v3 (the
 `Actor::SpeakSoundFunction` hook + the mod's DLL), v4 (the retained `g_playerLine` handle + the
 swf↔SKSE mod-event bridge).

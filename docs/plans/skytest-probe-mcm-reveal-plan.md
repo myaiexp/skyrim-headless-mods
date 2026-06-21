@@ -27,12 +27,12 @@ nlohmann/json (vendored), the probe's existing file protocol.
 
 ## File Structure
 
-| File | Change | Responsibility |
-| --- | --- | --- |
-| `mods/SkytestProbe/src/engine.h` | Modify | Declare `WriteMcmList()` + `WriteMcmGet(script, props)` (main-thread, null-safe, each writes its own trace record — the `DumpActor` contract). |
-| `mods/SkytestProbe/src/engine.cpp` | Modify | Implement both + an internal `FindBoundScript(className)` VM locate helper. New includes: `RE/B/BSScript*`, `RE/V/VirtualMachine` etc. (via `RE/Skyrim.h`, already included). |
-| `mods/SkytestProbe/src/commands.cpp` | Modify | Two dispatch arms (`mcm-list`, `mcm-get`) beside `dump`/`status`. |
-| `mods/SkytestProbe/CMakeLists.txt` | — | No change — VM headers ship with the already-linked CommonLibSSE-NG. |
+| File                                 | Change | Responsibility                                                                                                                                                                                                                                                                                |
+| ------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mods/SkytestProbe/src/engine.h`     | Modify | Declare `WriteMcmList()` + `WriteMcmGet(script, props)` (main-thread, null-safe, each writes its own trace record — the `DumpActor` contract).                                                                                                                                                |
+| `mods/SkytestProbe/src/engine.cpp`   | Modify | Implement both + an internal `FindBoundScript(className)` VM locate helper. New includes: `RE/B/BSScript*`, `RE/V/VirtualMachine` etc. (via `RE/Skyrim.h`, already included). _(Post-split: `engine.cpp` → 8 units — see `worldstate.cpp`/`mcm.cpp`/`resolve.cpp`/etc.; `engine.h` remains.)_ |
+| `mods/SkytestProbe/src/commands.cpp` | Modify | Two dispatch arms (`mcm-list`, `mcm-get`) beside `dump`/`status`.                                                                                                                                                                                                                             |
+| `mods/SkytestProbe/CMakeLists.txt`   | —      | No change — VM headers ship with the already-linked CommonLibSSE-NG.                                                                                                                                                                                                                          |
 
 The probe DLL must be **installed into the full profile** (SkyUI present) to exercise these; that's a
 manual `build.sh --install`-style copy for v1. No code change gates on profile — `WriteMcmList` just
@@ -43,12 +43,14 @@ returns 0 where SkyUI is absent.
 ### Task 1: VM foundation + `mcm-list` [Mode: Delegated]
 
 **Files:**
+
 - Modify: `mods/SkytestProbe/src/engine.h`, `mods/SkytestProbe/src/engine.cpp`
 - Modify: `mods/SkytestProbe/src/commands.cpp`
 
 **Contracts:**
 
 `engine.h` (additions):
+
 ```cpp
 // MCM reveal (read-only). Main-thread only, null-safe — degrade to an empty result +
 // honest trace, never a crash. Each WRITES its own trace record (mirrors DumpActor).
@@ -62,6 +64,7 @@ int WriteMcmList();
 ```
 
 `commands.cpp` dispatch arm:
+
 ```cpp
 if (c == "mcm-list") {
     EnqueueMain([id]() {
@@ -75,6 +78,7 @@ if (c == "mcm-list") {
 **Mechanism (engine.cpp):**
 
 Internal locate helper, reused by Task 2:
+
 ```cpp
 // Find the quest whose bound Papyrus script class == a_className; return its script object
 // (nullptr if none / no VM / no data handler). Main thread only.
@@ -96,7 +100,7 @@ fired via the `"via"` field (the design's "validate at runtime" — one build ha
    `GetProperty("ModName")` and `GetProperty("Pages")` (array of strings).
 2. **`via:"scan"` (fallback, when `_modConfigs`/`_modNames` don't resolve — `GetVariable` null or not
    an array):** an **inline** loop over `GetFormArray<RE::TESQuest>()`, calling `FindBoundObject(handle,
-   "SKI_ConfigBase", out)` (base-class match) per quest. This is NOT a `FindBoundScript` call —
+"SKI_ConfigBase", out)` (base-class match) per quest. This is NOT a `FindBoundScript` call —
    that helper is exact single-class match (used by the `manager` primary path and by `mcm-get`);
    the scan needs the base-class `SKI_ConfigBase` match across all quests, so it iterates here
    directly. For every quest that binds a `SKI_ConfigBase`-derived script, read its `ModName`/`Pages`.
@@ -108,6 +112,7 @@ a tester feeds to `mcm-get`, so it is not optional. Variable reads use the verif
 `GetObject()` for configs; `GetProperty` returns `Variable*` (null when absent).
 
 **Constraints:**
+
 - Main-thread only (lives in `engine.cpp`, called solely via `EnqueueMain`). No locks.
 - Every pointer null-checked: no VM, no data handler, no `SKI_ConfigManager`, a null/non-array
   variable, a config with no `ModName` → skip/empty, never deref-crash.
@@ -115,6 +120,7 @@ a tester feeds to `mcm-get`, so it is not optional. Variable reads use the verif
 - No hardcoded FormIDs — locate by bound-script class only.
 
 **Test Cases:**
+
 - Build: `cd mods/SkytestProbe && ./build.sh` compiles to `build/SkytestProbe.dll` (PE32+).
 - `grep -c "mcm-list" src/commands.cpp` ≥ 1; `grep -c "WriteMcmList" src/engine.cpp` ≥ 1.
 - (in-game, Task 3) `{cmd:"mcm-list"}` → a `{"src":"mcm-list",…}` record with `count≥1` and an entry
@@ -132,12 +138,14 @@ mods/SkytestProbe/src/commands.cpp`).
 ### Task 2: `mcm-get <ConfigScript> <prop…>` [Mode: Direct]
 
 **Files:**
+
 - Modify: `mods/SkytestProbe/src/engine.h`, `mods/SkytestProbe/src/engine.cpp`
 - Modify: `mods/SkytestProbe/src/commands.cpp`
 
 **Contracts:**
 
 `engine.h`:
+
 ```cpp
 // Read named properties off a config script class -> writes:
 //   {"src":"mcm-get","script":<class>,"values":{<prop>:<bool|int|double|string>},"missing":[...]}
@@ -146,6 +154,7 @@ bool WriteMcmGet(const std::string& a_script, const std::vector<std::string>& a_
 ```
 
 `commands.cpp` dispatch arm:
+
 ```cpp
 if (c == "mcm-get") {
     const std::string script = JStr(cmd, "script");
@@ -162,20 +171,23 @@ if (c == "mcm-get") {
 
 **Mechanism (engine.cpp):** `FindBoundScript(a_script.c_str())` (Task 1's helper). If null → return
 false (no record). Else, for each requested prop: `obj->GetProperty(prop)`:
+
 - null → append to `missing[]`.
 - scalar → coerce by the `Variable`'s type and store into `values`: `GetBool()`→bool,
   `GetSInt()`→int, `GetFloat()`→double, `GetString()`→string. (Determine the type via the
   `Variable`'s type tag; `IsArray()` and object/array types are **not** scalar.)
 - array/object/unsupported → append to `missing[]` (v1 reads scalars only).
-Write the record, return true.
+  Write the record, return true.
 
 **Constraints:**
+
 - Main-thread, null-safe (same rules as Task 1).
 - Partial success is success: unknown/non-scalar props go in `missing[]`, the rest still report,
-  `ack ok:true`. `ack ok:false` only when the *script* isn't found.
+  `ack ok:true`. `ack ok:false` only when the _script_ isn't found.
 - Reuse `FindBoundScript` — do not duplicate the VM-locate logic.
 
 **Test Cases:**
+
 - Build compiles (as Task 1).
 - (in-game, Task 3) `{cmd:"mcm-get",script:"AutoFireBowMCM",props:["bEnabled","fDamageBonus","fMinShotDelay","iToggleKey"]}`
   → `{"src":"mcm-get","script":"AutoFireBowMCM","values":{"bEnabled":true,"fDamageBonus":10.0,"fMinShotDelay":0.0,"iToggleKey":-1},"missing":[]}`.
@@ -197,6 +209,7 @@ Expected: builds clean.
 verbs.
 
 **Steps (Opus drives — a subagent can't run the game):**
+
 1. Build SkytestProbe; **install** `build/SkytestProbe.dll` + `SkytestProbe.ini` into the full
    profile's `…/Data/SKSE/Plugins/` (AutoFireBow already installed there).
 2. `skytest play`; load the save; confirm in-world (probe `status`, or the AutoFireBow
@@ -209,6 +222,7 @@ verbs.
 6. Quit the game. Confirm AutoFireBow.esp still active.
 
 **Constraints:**
+
 - The probe must be in the **full** profile for SkyUI to be present (step 1). Don't expect MCM data in
   the vanilla+1 `test` profile (there `mcm-list` correctly returns `count:0`).
 - Acceptance gate for the feature — both `mcm-list` and `mcm-get` must return the expected records.
@@ -220,7 +234,9 @@ verbs.
 ---
 
 ## Execution
+
 **Skill:** superpowers:subagent-driven-development
+
 - **Task 1 — Delegated:** the VM-introspection foundation has genuine API-behavior uncertainty
   (which enumeration path resolves at runtime) and benefits from focused implementation against the
   verified CommonLibSSE-NG signatures; dual-path + null-safety is real logic.

@@ -238,19 +238,24 @@ close it first."_ That removes the whole class of "why is my test black?" confus
   across every profile**, so a vanilla+1 test game's main menu auto-checks the _newest_ save (the main
   one) for the "Continue" button and pops that modal — which appears to block po3 StartOnSave from
   cleanly autoloading SkytestBase. Pre-existing skytest-v2 behavior, not the merge; the README already
-  flags the shared-Saves-folder hazard for the "latest save" case. **Fix direction:** isolate the
-  Saves folder per test (so the menu has only SkytestBase to reference), or get `drive` working to
-  dismiss the modal. Until then the autoload can stall whenever a newer modded save exists.
+  flags the shared-Saves-folder hazard for the "latest save" case. **RESOLVED:** per-test Saves
+  isolation now ships — `isolate_saves` (`skytest:402`, called unconditionally on the test-boot path
+  at `:607`) redirects `SLocalSavePath` to a `Saves_skytest` dir holding only SkytestBase, so the
+  test menu has nothing else to auto-check and the "missing content" modal never fires. Torn down by
+  `deisolate_saves` on stop/normal/play/uninstall; shown in `skytest status`.
 
-(The `--backend wayland` `shot`/`drive` confirmation, and the `drive`-in-world retest, are still
-pending a clean run that reaches in-world.)
+(The `--backend wayland` `shot`/`drive` confirmation, and the in-world `drive` retest, were
+superseded by finding #14 — keyboard `drive` is confirmed in-world — and the Saves isolation above
+removed the autoload blocker that was gating a clean in-world run.)
 
 ## 14. RESOLVED (keyboard) — in-world driving worked via former full-profile wrapper; tab-clicks still desync
 
 2026-06-14, while verifying AutoFireBow's SkyUI MCM. The earlier in-world blockers were both
 profile artifacts, not engine/libei faults — sidestepped by a full-profile gamescope wrapper and a
 log-based check. That wrapper was later removed from the public CLI; keep this section as historical
-evidence about gamescope/libei behavior, not as current command guidance.
+evidence about gamescope/libei behavior, not as current command guidance. (The drivable full-profile
+capability was since reintroduced as **`skytest play agent [--headless]`** — `cmd_play`, `skytest:838`
+— now _with_ SkytestProbe injected + IO reset, so `ready`/`drive`/`shot` apply.)
 
 **Former full-profile gamescope wrapper.** `gs_launch` wraps whatever `Data` points at, so a drivable
 full-modded session was `cmd_test` minus the vanilla+1 swap and minus injection. At the time it was
@@ -284,14 +289,14 @@ Driving a precise in-menu click is the remaining open item for true visual MCM s
 
 2026-06-14, building AutoCastSpell's auto-recast loop. **The single most important headless-testing
 caveat learned this session.** `drive raw btn 272 1 sleep N btn 272 0` holds the control via one
-libei button-down for N ms. For *presence/held gates* (is the attack control down?) this matches a
+libei button-down for N ms. For _presence/held gates_ (is the attack control down?) this matches a
 real hold fine. For anything keyed off the engine's **input state machine while held** — charge-
 while-held, auto-repeat, post-action re-trigger — it does **NOT** match real hardware.
 
 Concretely: after a fire-and-forget spell fires, a **real** held cast button makes the engine start
 the next charge **on its own** (the same way a held bow re-draws); a **libei** continuous hold does
 **not** auto-recharge. So the loop needed a synthetic re-press to cycle under libei, but cycled
-*without* it (off the engine's own re-charge) on Mase's real hardware — and a build tuned until the
+_without_ it (off the engine's own re-charge) on Mase's real hardware — and a build tuned until the
 libei test looped fired an unpredictable **2–7 times** for him. Removing unrelated debug logging
 also shifted the (timing-sensitive) recharge — see the mod's `main.cpp` note and `../docs/ideas.md`.
 
@@ -300,8 +305,8 @@ attack/cast handler's edge-vs-held bookkeeping treat that differently from a rea
 stream, and the synthetic `ButtonEvent`s the mod injects interact differently with each.
 
 **Takeaway:** libei is trustworthy for menu nav, single taps, and presence/held gates. For mechanics
-driven by the charge/draw/cast state machine while held, the headless rig can confirm *the mechanism
-exists* but **not that it's reliable — validate timing/reliability on real hardware.** And drive such
+driven by the charge/draw/cast state machine while held, the headless rig can confirm _the mechanism
+exists_ but **not that it's reliable — validate timing/reliability on real hardware.** And drive such
 loops off an engine **state** read (e.g. `RE::MagicCaster::state`), not off input timing.
 
 ## 16. `ready`/`inWorld` fires before the save is actually loaded — wait for a player-loaded signal
@@ -331,9 +336,9 @@ actually resolves the player actor (the probe logs `actor 3D not loaded yet` unt
   `1-0-7-0 loaded`) makes "is the new build up?" unambiguous.
 - **Launch `skytest` from the repo root.** `cd mods/X && ./build.sh && skytest test mods/X/build/X.dll`
   fails — the `cd` left cwd in the mod dir so the relative mod path no longer resolves (and a relative
-  path that *does* resolve gets symlinked verbatim into the profile, where it dangles — now realpath'd,
+  path that _does_ resolve gets symlinked verbatim into the profile, where it dangles — now realpath'd,
   but launch from root regardless). Build, then `cd` back to root to launch.
-- **A button *hold* is one `drive raw` call.** `drive raw btn <code> 1 sleep <ms> btn <code> 0`
+- **A button _hold_ is one `drive raw` call.** `drive raw btn <code> 1 sleep <ms> btn <code> 0`
   (272 = LMB = right-hand cast, 273 = RMB = left-hand). Press, `sleep`, and release must be in the
   **same** invocation — the button-down state does not persist across eidriver process lifetimes.
 
@@ -353,10 +358,11 @@ programmatic path" reasoning is invalid — typing a command dispatches through 
 table**, while `Script::CompileAndRun` invokes the **script compiler**; different engine code.
 
 **Root cause — a dependency version skew:**
+
 - This CommonLibSSE-NG (`CharmedBaryon/CommonLibSSE-NG`, **v3.7.0-129, committed 2024-09-03**) is
   **older than the installed runtime, 1.6.1170**.
 - It binds `Script::CompileAndRun` to Address Library **AE id 21890** (`Offset::Script::CompileAndRun
-  = RELOCATION_ID(21416, 21890)`).
+= RELOCATION_ID(21416, 21890)`).
 - **AE id 21890 is absent from `versionlib-1-6-1170-0.bin`.** Verified by parsing the versionlib with
   a decoder ported from CommonLib's own `REL/ID.h`: of the 711 AE ids CommonLib binds, 705 (99.16%)
   are present; 21890 is in the absent set of 6 (also absent: `Console::SelectedRef` id 405935,
@@ -381,8 +387,10 @@ exec later: update CommonLibSSE-NG to a build that matches the runtime (or hardc
 ## 19. Former full-profile wrapper gotchas — readiness, autosave, boot-to-menu
 
 These were learned 2026-06-18 chasing the DBVO dialogue mouth-snap through the former full-profile
-gamescope wrapper. That wrapper has been removed from the public CLI; keep this as historical evidence
-for any future full-profile automation design.
+gamescope wrapper. That wrapper has since been reintroduced as **`skytest play agent [--headless]`**
+(`cmd_play`, `skytest:838`, now with SkytestProbe injected + IO reset); the gotchas below still
+apply to it (the readiness one is even encoded — `play agent` does not poll `ready` on `full`). Keep
+this as historical evidence for any future full-profile automation design.
 
 - **`ready`/`gs_wait_ready` was unreliable on `full`** — it polled SkytestProbe's `status`, but on the
   full profile it never returned cleanly. Don't poll it; just **wait ~10 s** after the save loads, or
@@ -402,14 +410,14 @@ If a full-profile automation path returns, keep that stale-DLL/stale-IO lesson.
 Learned 2026-06-18 building SkytestProbe's `facegen-ramp` (cost two sessions). To drive a ~150 ms
 per-frame effect you need ~60 Hz, far faster than the 250 ms command-poll `MainTick`. The intuitive
 move — a task that re-enqueues itself via `SKSE::GetTaskInterface()->AddTask` — **freezes the game on
-the first run**: the SKSE runtime drains its task queue *to empty* within one frame, so a task that
+the first run**: the SKSE runtime drains its task queue _to empty_ within one frame, so a task that
 adds another task during that drain spins the frame forever. (DBVODialogueTweaks' own v5 comment notes
 the same trap.) The trace signature is dead-giveaway: the arm line writes, then nothing, then frozen.
 
 **Fix — the codebase's existing safe pattern:** an EXTERNAL pacer thread that `sleep`s, then enqueues
 exactly ONE one-shot `AddTask` step that does NOT re-enqueue (the command poll thread paces `MainTick`
 this way). SkytestProbe's ramp ticker sleeps 16 ms (active) / 150 ms (idle) and enqueues one step per
-wake. One-shot `AddTask` (e.g. `CutNpcReply`) is always fine — only *self-re-queue* spins.
+wake. One-shot `AddTask` (e.g. `CutNpcReply`) is always fine — only _self-re-queue_ spins.
 
 ## 21. AddTask-scheduled writes LOSE the per-frame race to the lip pump — hook the apply instead
 
@@ -418,10 +426,10 @@ Also 2026-06-18, same mouth-snap chase. The visible NPC mouth lives in `BSFaceGe
 lip pump, which rewrites that keyframe every frame. An `AddTask`-scheduled write **runs too early in the
 frame** — the pump overwrites it afterward (probe trace: our `maxAfter` decays, but next frame's
 `maxBefore` is pinned back at the pump's value). `SetSpeakingDone(true)` does NOT stop the pump while
-audio plays; the snap is the pump *releasing* the keyframe (0.5→0 in one frame) when the cut audio
+audio plays; the snap is the pump _releasing_ the keyframe (0.5→0 in one frame) when the cut audio
 finally stops (~200 ms after `FadeOutAndRelease`). `Reset(0.0)` is a red herring — it doesn't touch
 `transitionTarget`. The only seam that wins is a **per-frame hook at the morph-APPLY point** (scale the
 keyframe after the pump writes, before the mesh reads). **Open:** a vtable hook on
 `BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) overrides the keyframe cleanly but still snaps —
-that's a *transform* pass, not the morph apply. Finding the real apply/write seam (Ghidra) is the
+that's a _transform_ pass, not the morph apply. Finding the real apply/write seam (Ghidra) is the
 open work — see `docs/plans/dbvo-mouth-snap-handoff.md`.

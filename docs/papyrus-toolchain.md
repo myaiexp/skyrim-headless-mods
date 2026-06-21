@@ -14,8 +14,12 @@ everything itself (`Game.GetPlayer()` etc.).
 Bethesda plugins. `EspGen` builds the record in ~10 lines and writes a guaranteed-valid file:
 
 ```bash
-dotnet run --project tools/EspGen -- <out.esp> <QuestEditorID> <ScriptName> [FullName]
+dotnet run --project tools/EspGen -- <out.esp> <QuestEditorID> <ScriptName> [FullName] [--player-alias <AliasScriptName>] [--esl]
 ```
+
+- `--player-alias <AliasScriptName>` — add a quest alias bound to the player with the named script
+  attached (used to host an MCM's per-save state on the player).
+- `--esl` — set the ESL light-master flag so the plugin doesn't consume a regular load-order slot.
 
 This is the headless replacement for SSEEdit's "New → add a Quest → attach script → save".
 The output is a tiny (~200 byte) plugin. Mutagen is the same engine the Synthesis patcher
@@ -52,9 +56,10 @@ locally from your own game + SKSE install, see `tools/papyrus-sources/README.md`
 - `TESV_Papyrus_Flags.flg`: the user-flags file the compiler requires. *(Bethesda IP, git-ignored.)*
 - `skyui/`: SkyUI MCM base classes. *(Open-source, committed.)*
 
-**Import order matters** and is set in `compile-papyrus.sh`: `mod-src ; skse ; vanilla`. The
-mod's own source wins first; SKSE versions override vanilla for the scripts SKSE extends (so
-SKSE-only functions resolve); vanilla fills everything else.
+**Import order matters** and is set in `compile-papyrus.sh`: `mod-src ; skyui ; skse ; vanilla`. The
+mod's own source wins first; `skyui` supplies the MCM base classes (`SKI_ConfigBase`, etc. —
+compile-time only; the runtime `.pex` comes from the user's installed SkyUI); SKSE versions override
+vanilla for the scripts SKSE extends (so SKSE-only functions resolve); vanilla fills everything else.
 
 ## 3. Extracting game assets: Mutagen (`tools/BsaExtract`)
 

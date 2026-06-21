@@ -1,5 +1,9 @@
 # AutoFireBow Real Charge — Implementation Plan
 
+> **OUTCOME (2026-06-14): shipped** (AutoFireBow v2.1.0). Synthetic input-release lands real
+> full-draw auto arrows; the power clamp was removed (hook now only applies the auto-only +10% DPS
+> bump). See `mods/AutoFireBow/README.md` for as-built.
+
 **Goal:** Remove the `power`/`weaponDamage` clamps and make auto-fired arrows genuinely
 engine-charged by driving the real input-release path, so the mod is honest and public-worthy.
 

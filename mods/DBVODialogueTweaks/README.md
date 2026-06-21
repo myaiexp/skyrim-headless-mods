@@ -18,8 +18,8 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   vanilla-dialogue style.
 - **Clean cut on skip & interrupt**: skipping fades your in-flight line out cleanly (no click);
   picking a new topic while an NPC is mid-reply cuts that reply too.
-- **Player-voice volume**: attenuate or boost _just_ your own DBVO line, 0–100%, without touching any
-  other audio.
+- **Player-voice volume**: attenuate _just_ your own DBVO line, 0–100% (100% = unchanged), without
+  touching any other audio. Attenuation only — it cannot amplify above the source volume.
 - **Configurable gap**: the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
 - **Native SkyUI MCM**: a single screen, no MCM Helper dependency.
 

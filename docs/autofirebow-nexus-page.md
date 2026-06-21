@@ -10,8 +10,8 @@ mod torn apart in the comments.
 > Hold attack with a bow and it fires continuously: every arrow at full power, full damage,
 > instantly, no matter how briefly you tapped. **Nock, draw, release, loop.**
 
-Single-purpose and always-on by design. "You don't have to think about it" is the feature, not a
-gap. (Config is planned: master toggle, feature split, hotkey; see `docs/ideas.md`.)
+Single-purpose: "you don't have to think about it" is the feature, not a gap. A SkyUI MCM gives you
+the controls when you want them — master toggle, toggle hotkey, damage + cadence sliders.
 
 ## What's genuinely new (state it plainly, don't trash other mods)
 
@@ -29,25 +29,30 @@ Frame as "here's what it does and it hasn't been done," **not** as a competitor 
 
 ## How it works (short, for the curious)
 
-- Pure **SKSE C++** engine hook, **script-free**. No Nemesis, MCO, DAR, SkyUI, or `.esp`.
+- Core is a **SKSE C++** engine hook. No Nemesis, MCO, or DAR. Ships a SkyUI MCM, so an `.esp` +
+  `.pex` scripts + **SkyUI** come along for configuration.
 - Auto-loose keys off the engine's own **`BowDrawn`** event, so it's agnostic to bow speed, perks,
   and enchantments: no draw-time guessing.
-- Full power via hooking `ArrowProjectile::GetPowerSpeedMult` and clamping the arrow's draw power
-  to 1.0 (then letting the engine recompute full speed + damage). Player-only; NPCs unaffected.
+- Full power without faking it: auto shots loose at **genuine full draw** via a synthetic
+  input-release fed through the engine's own attack pipeline (the button stays held, so the engine
+  does a real charged draw — only the release event is synthesized). The old power clamp is gone; the
+  hook now only applies a small auto-only damage bump. Player-only; NPCs unaffected.
 
 ## Requirements
 
 - **SKSE64** and **Address Library for SKSE Plugins**. (Do **not** bundle Address Library; require it.)
+- **SkyUI** — hard requirement (the in-game MCM is a `SKI_ConfigBase` menu).
 - **Runtime:** AE / 1.6.x **tested in-game**. SE (1.5.97) and VR are **built but untested**: the
   DLL resolves the correct vtable slot per runtime, but I have no SE/VR install to verify on.
   Label this clearly so SE/VR users know it's unverified, not unsupported.
 
 ## Known limitations (say these up front)
 
-- **Always-on, no toggle yet.** Every bow tap becomes a full-power auto shot. Config is planned.
-- **Damage clamp is lightly tested** against other damage-altering mods: flag as early/beta.
-- **Crossbows:** the power clamp is a no-op (they already fire at full draw); the auto-fire loop is
-  bow-only. So crossbows behave normally: worth a one-liner so nobody expects auto-crossbow.
+- **Configurable via the SkyUI MCM** — master toggle + toggle hotkey, plus damage and cadence
+  sliders. (When enabled, every bow tap becomes a full-draw auto shot.)
+- **Damage bump is lightly tested** against other damage-altering mods: flag as early/beta.
+- **Crossbows:** unaffected — they already fire at full draw, and the auto-fire loop is bow-only. So
+  crossbows behave normally: worth a one-liner so nobody expects auto-crossbow.
 
 ## Compatibility
 

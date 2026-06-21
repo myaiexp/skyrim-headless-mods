@@ -11,7 +11,7 @@ beneath it**, which are kept as the original design record.
 
 ## Mechanism update (2026-06-14) — scope cut + MinHook entry detour (supersedes the sections below)
 
-Two things changed after the in-game probing recorded in `oneclick-travel-handoff.md`:
+Two things changed after the in-game probing (its notes are inlined in this section):
 
 **Scope collapsed to a single branch.** In the live game only two map-click outcomes actually
 occur: a **discovered/travelable** click (wants instant travel) and **everything else**, which

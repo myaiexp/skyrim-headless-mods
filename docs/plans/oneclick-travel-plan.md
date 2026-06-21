@@ -1,7 +1,7 @@
 # OneClickTravel Implementation Plan
 
 > **SUPERSEDED 2026-06-14.** This plan describes the original three-way dispatch hooking the
-> MapMenu click handler. In-game probing (`oneclick-travel-handoff.md`) collapsed the scope to a
+> MapMenu click handler. In-game probing (inlined in the design doc) collapsed the scope to a
 > single branch (discovered click → instant travel; everything else is already vanilla-correct)
 > and moved the hook to `MessageBoxData::QueueMessage` via **MinHook**. See the design doc's
 > "Mechanism update (2026-06-14)" section. The Tasks below are kept only as the original record.

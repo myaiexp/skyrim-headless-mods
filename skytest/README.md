@@ -28,6 +28,7 @@ skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [sca
 skytest drive <cmd> …          # inject input (tap|seq|key|click|abs|rel|raw)
 skytest stop                   # tear down the session + restore Data → full
 skytest play                   # launch the FULL modded game over the fast direct path (blocking)
+skytest play agent [--headless]# FULL modded profile under a DRIVABLE gamescope session (for the agent)
 skytest status                 # show profile + live test session (also the no-arg default)
 skytest normal                 # force Data → full (recover after a crash)
 skytest uninstall              # revert Data to the original real directory
@@ -74,9 +75,11 @@ shoulder" is the _same machinery_ as a headless test. You just see it.
 A test session is **detached**: `test` returns once the game is in-world, so you issue `shot` /
 `drive` / `ready` as separate follow-up commands against the live session, then `stop` to end it.
 Because the running game holds `Data` open the whole time, the `Data → full` restore happens on
-**`stop`**, not on launch-return. (`play`/`normal` keep the old blocking, restore-on-exit path:
-they are the daily-driver fast launch, not under gamescope, not drivable; there is no reason to
-drive your own playthrough.)
+**`stop`**, not on launch-return. (Bare `play`/`normal` keep the old blocking, restore-on-exit
+path: they are the daily-driver fast launch, not under gamescope, not drivable — there is no
+reason for a human to drive their own playthrough. When the **agent** needs to drive the full
+profile, `skytest play agent [--headless]` boots that same profile under a detached, drivable
+gamescope session instead — see below.)
 
 ### How the eyes + hands work (folded from the old `headless/` driver)
 
@@ -114,16 +117,16 @@ with _"Skyrim is already running (pid N), close it first"_, so this shouldn't bi
 close the game (or kill a stray `SkyrimSE.exe`) and re-run.
 
 Verified clean (2026-06-12, no game running): `shot` **works headless** (it captured a clear main
-menu) and `ready` polls honestly. Two things are still **open** (see `docs/headless-findings.md`
-#13): (1) `drive` keyboard didn't move the main-menu modal in that run (`Unhandled libei event`;
-worked historically for menu nav in finding #9), needs an in-world retest; (2) the autoload stuck at
-the menu because the **Saves folder is shared across profiles**: a test game's "Continue" auto-checks
-the newest save (your _main modded_ save) and pops a "missing content" modal that blocks po3
-StartOnSave from loading `SkytestBase` (which is itself clean: vanilla + Creation Club only). Fix
-direction: isolate the Saves folder per test, or get `drive` working to dismiss the modal. The
-`--backend wayland` `shot`/`drive` confirmation is likewise pending. The dead-ends behind the whole
-display/input layer are in [`docs/headless-findings.md`](docs/headless-findings.md). **Read it before
-changing the gamescope/libei approach.**
+menu) and `ready` polls honestly. **Per-test Saves isolation is now shipped**, closing the
+autoload-stall (see `docs/headless-findings.md` #13): `isolate_saves` redirects `SLocalSavePath` to
+a `Saves_skytest` dir holding **only** the base save, so the test menu's "Continue" can't auto-check
+your _main modded_ save and pop the "missing content" modal that blocked po3 StartOnSave from
+loading `SkytestBase`. It's applied unconditionally on the test-boot path when a base save exists,
+torn down automatically on `stop`/`normal`/`play`/`uninstall`, and surfaced in `skytest status`.
+The one genuinely-still-open item: a precise **in-menu mouse click** to dismiss a modal via `drive`
+(keyboard `drive` is confirmed in-world, finding #14). The dead-ends behind the whole display/input
+layer are in [`docs/headless-findings.md`](docs/headless-findings.md). **Read it before changing the
+gamescope/libei approach.**
 
 ## Which mode: `test` or `play`?
 
@@ -133,8 +136,16 @@ esp): vanilla + that one mod, drivable.
 For a mod that only manifests **on top of the live load order** (patches, asset overrides of
 another mod, e.g. a DBVO `dialoguemenu.swf` edit needing DBVO + a voice pack, or **anything that
 depends on SkyUI**, an MCM), the vanilla+1 test profile can't reproduce it. Install into the full
-profile (the mod's own `build.sh --install`), then use **`skytest play`**: the blocking,
-non-drivable full-profile launch. Play/observe only.
+profile (the mod's own `build.sh --install`), then launch it one of two ways:
+
+- **`skytest play`** — the blocking, non-drivable full-profile launch. Play/observe only (the human
+  daily-driver path).
+- **`skytest play agent [--headless]`** — the **drivable** full-profile counterpart, for when the
+  agent needs to drive/shot/probe the modded game. It boots the same `full` profile under a
+  detached gamescope session with **SkytestProbe injected and its IO reset**, then returns so you
+  issue `drive`/`shot`/probe as follow-ups (it boots to the MENU — `drive e,e` to a save); tear it
+  down with `skytest stop`. This is the reintroduced replacement for the old `playtest` verb.
+  (`ready`/`gs_wait_ready` is unreliable on `full`; watch `trace.jsonl` instead — finding #19.)
 
 **Verifying an MCM without navigating to it.** Driving SkyUI's journal _tabs_ is unreliable (the
 mouse-cursor desync, findings #9b/#14), but you rarely need to: grep the Papyrus log
@@ -157,14 +168,14 @@ path with `/` (or `-` for stdin) is taken as-is. `--headless`/`--with` work as f
 
 `.steps` is line-based (`#` comments, blank lines ignored):
 
-| Step                                     | Meaning                                                                                                                                                                                  |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step                                     | Meaning                                                                                                                                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `exec <console>`                         | Run the rest of the line as a console command. **⚠ Not the staging path**: programmatic `exec` faults in the test session; stage via direct-call probe commands instead (caveat below). |
-| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                   |
-| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                      |
-| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                    |
-| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                      |
-| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                     |
+| `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                  |
+| `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                     |
+| `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                   |
+| `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                     |
+| `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                    |
 
 Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on session death:
 
@@ -228,7 +239,8 @@ from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that 
   runs the same `proton run skse64_loader.exe` itself. That script stays as the desktop-entry target.)
 - The base save must depend on **vanilla + base SKSE only**: a modded save crashes in the
   vanilla+1 profile. (That is also why autoload is pinned to `SkytestBase`, not "latest save",
-  which would grab a modded autosave from the shared prefix Saves folder.)
+  which would grab a modded autosave from the shared prefix Saves folder — though per-test Saves
+  isolation now also removes that shared-folder hazard for test sessions; see #13 above.)
 - Per-mod fixtures beyond a generic baked ally (a tiny test `.esp`, or a console batch run at
   load) are deferred; bake what most tests share into `SkytestBase`. (See `../docs/ideas.md`.)
 - Startup is ~2 DLLs instead of the full ~51 (+1 for Start On Save), and it launches via the
@@ -244,13 +256,13 @@ from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that 
 
 ## Layout
 
-| Path                        | Holds                                                                                                                                                                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `skytest`                   | The launcher: dispatch + profile/lifecycle + verb impls (self-documenting via `skytest help`). On `PATH` via `~/.local/bin/skytest`.                                                                                                                               |
+| Path                        | Holds                                                                                                                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skytest`                   | The launcher: dispatch + profile/lifecycle + verb impls (self-documenting via `skytest help`). On `PATH` via `~/.local/bin/skytest`.                                                                                                                              |
 | `lib/gamescope.sh`          | Sourced gamescope backend: `gs_launch` / `gs_wait_ready` / `gs_shot` / `gs_drive` / `gs_stop` / `gs_session_alive`: launch-under-gamescope, ready-poll, screenshot, libei input, session teardown. Absorbed the old `headless/{launch,ready,shot,drive,stop}.sh`. |
-| `eidriver/`                 | The libei input client (`eidriver.c` + `build.sh`, `gcc` + `pkg-config libei-1.0`, no sudo). Compiled binary is gitignored; build it once with `eidriver/build.sh`.                                                                                                |
+| `eidriver/`                 | The libei input client (`eidriver.c` + `build.sh`, `gcc` + `pkg-config libei-1.0`, no sudo). Compiled binary is gitignored; build it once with `eidriver/build.sh`.                                                                                               |
 | `base-skse/`                | The third-party SKSE plugin skytest injects into every test profile: `po3_StartOnSave.{dll,ini.template}` (vendored, no in-repo source). SkytestProbe is _not_ here; skytest reads it straight from `../mods/SkytestProbe/build/`.                                |
-| `docs/headless-findings.md` | Every gamescope/libei dead-end and why it's a wall. **Read before changing the display/input approach.**                                                                                                                                                           |
+| `docs/headless-findings.md` | Every gamescope/libei dead-end and why it's a wall. **Read before changing the display/input approach.**                                                                                                                                                          |
 
 ## Requirements (all already present on this machine, no root)
 
