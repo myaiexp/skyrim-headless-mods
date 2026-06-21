@@ -4,6 +4,15 @@ Future work, deferred features, and things worth revisiting. Each entry is WHAT,
 
 ## 2026-06-21 — skytest probe-driving ergonomics (from the DBVO mouth-snap session)
 
+> **SHIPPED 2026-06-21 — every item below landed, verified in-engine.** Two commits: the shell
+> wrappers (`skytest io`/`cmd`/`trace`/`wait-probe`/`restart` + a pollable `status --json` `world`
+> block + `drive seq` gap default 120→300 ms, overridable via `seq --gap MS`/`SKYTEST_SEQ_GAP_MS`)
+> and the SkytestProbe instrumentation (`paused`/`gt` guard on every facegen line + the per-frame
+> read-only `facegen-observe` command). Verified live in a headless GhostAllies session: `paused`
+> flips and `gt` drops to 0 when the console pauses the sim; `facegen-observe` emits per-render-frame
+> `face-frame` lines (3 mouth channels, ~60 Hz) vs the 4 Hz `facegen-watch`. Manuals updated
+> (`skytest/README.md`, `mods/SkytestProbe/README.md`). Original capture below.
+
 A long co-driven debug session (Mase drives the character, CC drives the probe — the standing pattern
 when a test needs an NPC talking, which CC can't do reliably) exposed that skytest is great at
 launch/drive but **reading/writing the probe IO is raw**: every command was a hand-built

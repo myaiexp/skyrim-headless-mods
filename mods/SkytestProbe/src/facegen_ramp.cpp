@@ -12,6 +12,7 @@
 
 #include "resolve.h"
 #include "trace.h"
+#include "worldstate.h"
 
 // ---- owned per-frame transition-target ramp (the candidate mouth-close fix) --------
 //
@@ -69,6 +70,16 @@ namespace
 	std::atomic<bool> g_rampActive{ false };
 	std::atomic<int>  g_rampPhase{ 0 };
 	std::atomic<bool> g_tickerStarted{ false };
+
+	// ---- per-frame observe state (read-only characterization; main-thread, like g_ramp) -------
+	// The hook logs the target fg's mouth keyframe(s) every frame while active, never modifying
+	// them. g_observeFg is PINNED at arm: the hook matches only this fg, so a stale pointer after a
+	// 3D reload simply stops matching (never dereferenced) — safe, just needs a re-arm. g_observeKf
+	// empty => all kMouthChans, else one keyframe. g_observeLastTime dedups a second pass per frame.
+	std::atomic<bool>           g_observeActive{ false };
+	RE::BSFaceGenAnimationData* g_observeFg = nullptr;
+	std::string                 g_observeKf;
+	float                       g_observeLastTime = -1.0F;
 
 	// Map a keyframe tag (as printed by DumpFaceGen, e.g. "unk140", "transitionTarget") to the
 	// matching keyframe on this facegen. transitionTarget is a POINTER member (0x18, may be null);
@@ -295,6 +306,44 @@ namespace
 			{ "maxAfter", maxAfter }, { "maxAfterIdx", maIdx } });
 	}
 
+	// Per-frame OBSERVE (read-only): while armed for THIS node's facegen, log the target mouth
+	// keyframe(s)' max every frame WITHOUT touching them — the per-frame seam the 4 Hz facegen-watch
+	// can't reach. Runs in the same hook (same main thread), so it sees the pump's value at the same
+	// apply point the ramp scales at. Never SetValue — purely characterization.
+	void ObserveFrame(RE::BSFaceGenNiNode* a_node, float a_time)
+	{
+		if (!g_observeActive.load(std::memory_order_relaxed) || !a_node) {
+			return;
+		}
+		auto* fg = a_node->GetRuntimeData().animationData.get();
+		if (!fg || fg != g_observeFg) {
+			return;  // a different actor's head (or our pinned fg went stale on a 3D reload)
+		}
+		if (a_time == g_observeLastTime) {
+			return;  // already logged this frame (a second downward pass)
+		}
+		g_observeLastTime = a_time;
+		const engine::SimClock clk = engine::GetSimClock();
+		RE::BSSpinLockGuard    locker(fg->lock);
+		auto logKf = [&](const char* a_tag) {
+			auto* kf = SelectKeyframe(fg, a_tag);
+			if (!kf) {
+				return;
+			}
+			std::uint32_t idx = 0;
+			const float   mx  = TtMax(kf, idx);
+			trace::Write(trace::json{ { "src", "face-frame" }, { "kf", a_tag }, { "max", mx },
+				{ "maxIdx", idx }, { "time", a_time }, { "gt", clk.gt }, { "paused", clk.paused } });
+		};
+		if (g_observeKf.empty()) {
+			for (const char* tag : kMouthChans) {
+				logKf(tag);
+			}
+		} else {
+			logKf(g_observeKf.c_str());
+		}
+	}
+
 	// The hook itself — a vtable detour on BSFaceGenNiNode::UpdateDownwardPass (idx 0x2C). Scale
 	// pre-apply, then run the original so the engine applies our eased transitionTarget.
 	struct FaceGenUpdateHook
@@ -302,6 +351,7 @@ namespace
 		static void thunk(RE::BSFaceGenNiNode* a_this, RE::NiUpdateData& a_data, std::uint32_t a_arg2)
 		{
 			ApplyRampScale(a_this, a_data.time);
+			ObserveFrame(a_this, a_data.time);  // read-only per-frame characterization (idle unless armed)
 			func(a_this, a_data, a_arg2);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -512,6 +562,40 @@ void engine::CancelFaceGenRamp()
 	g_ramp.triggered = false;
 	g_ramp.done      = true;
 	trace::Write(trace::json{ { "src", "ramp-cancel" } });
+}
+
+bool engine::ArmFaceGenObserve(const std::string& a_ref, const std::string& a_kf, bool a_on, std::string& a_err)
+{
+	if (!a_on) {
+		g_observeActive.store(false, std::memory_order_relaxed);
+		g_observeFg       = nullptr;
+		g_observeKf.clear();
+		g_observeLastTime = -1.0F;
+		trace::Write(trace::json{ { "src", "face-observe" }, { "on", false } });
+		return true;
+	}
+	auto* r     = engine::ResolveOne(a_ref);
+	auto* actor = r ? r->As<RE::Actor>() : nullptr;
+	if (!actor) {
+		a_err = "unresolvable actor " + a_ref;
+		return false;
+	}
+	auto* fg = actor->GetFaceGenAnimationData();
+	if (!fg) {
+		a_err = "no facegen data (actor 3D unloaded?)";
+		return false;
+	}
+	if (!a_kf.empty() && !SelectKeyframe(fg, a_kf)) {
+		a_err = "unknown keyframe tag '" + a_kf + "'";
+		return false;
+	}
+	g_observeFg       = fg;
+	g_observeKf       = a_kf;
+	g_observeLastTime = -1.0F;
+	g_observeActive.store(true, std::memory_order_relaxed);
+	trace::Write(trace::json{ { "src", "face-observe" }, { "on", true },
+		{ "ref", engine::HexID(actor->GetFormID()) }, { "kf", a_kf.empty() ? "<mouth>" : a_kf } });
+	return true;
 }
 
 void engine::InstallFaceGenHook()

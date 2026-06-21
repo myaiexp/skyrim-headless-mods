@@ -20,6 +20,16 @@ bool engine::IsInWorld()
 	return GetWorldState().inWorld;
 }
 
+engine::SimClock engine::GetSimClock()
+{
+	SimClock c;
+	auto* ui   = RE::UI::GetSingleton();
+	auto* main = RE::Main::GetSingleton();
+	c.paused = (ui && ui->GameIsPaused()) || (main && main->freezeTime);
+	c.gt     = RE::Main::QFrameAnimTime();  // game frame-anim clock; holds while the sim is frozen
+	return c;
+}
+
 bool engine::IsMenuOpen(const std::string& a_menu)
 {
 	auto* ui = RE::UI::GetSingleton();

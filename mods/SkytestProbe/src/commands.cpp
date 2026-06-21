@@ -284,6 +284,33 @@ namespace
 			return;
 		}
 
+		if (c == "facegen-observe") {
+			// Per-frame read-only characterization: log the speaker's mouth keyframe(s) EVERY frame
+			// without modifying them (sub-100 ms transitions the 4 Hz facegen-watch misses). kf empty
+			// => all mouth channels; on:false disarms. Pins to the actor resolved at arm (re-arm if
+			// the speaker changes).
+			const bool on = JBool(cmd, "on", true);
+			if (!on) {
+				EnqueueMain([id]() {
+					std::string err;
+					engine::ArmFaceGenObserve("", "", false, err);
+					trace::Ack(id, true);
+				});
+				return;
+			}
+			const std::string ref = JStr(cmd, "ref", "speaker");
+			const std::string kf  = JStr(cmd, "kf", "");  // empty => all mouth channels
+			EnqueueMain([id, ref, kf]() {
+				std::string err;
+				if (engine::ArmFaceGenObserve(ref, kf, true, err)) {
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "facegen-observe: " + err);
+				}
+			});
+			return;
+		}
+
 		if (c == "exec") {
 			const std::string line = JStr(cmd, "line");
 			if (line.empty()) {

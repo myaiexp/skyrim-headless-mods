@@ -67,6 +67,19 @@ namespace engine
 	// Bump the generation so the active ramp's next frame self-stops (facegen-ramp on:false).
 	void CancelFaceGenRamp();
 
+	// ---- per-frame facegen OBSERVE (read-only) --------------------------------------------------
+	// Arm the per-frame apply hook to LOG the target actor's mouth keyframe(s) EVERY frame WITHOUT
+	// modifying them — the sub-100 ms characterization the 4 Hz facegen-watch is too coarse for (the
+	// 1-frame mouth snap, the residual tongue flick). a_kf empty => all mouth channels
+	// (unk0C0/unk140/unk180); else just that one keyframe (same tags as the dump). Resolves a_ref to
+	// its facegen at arm time and PINS to it (re-arm if the speaker changes / 3D reloads). a_on=false
+	// disarms. Each armed frame emits {src:"face-frame", kf, max, maxIdx, time, gt, paused} — `time`
+	// is the engine frame clock (per-frame dedup), `gt`/`paused` the sim-advance guard (GetSimClock).
+	// Returns false + a_err if a_ref or its facegen won't resolve, or a_kf is unknown. Main-thread
+	// only (call via the command's EnqueueMain), like the ramp — the hook reads this state on the
+	// same thread, so no lock is needed.
+	bool ArmFaceGenObserve(const std::string& a_ref, const std::string& a_kf, bool a_on, std::string& a_err);
+
 	// ---- react to the REAL skip (the product trigger) -------------------------------------------
 	// The mouth-snap fix's real home: instead of the test-only speech-onset auto-cut, ease the mouth
 	// shut when the player actually skips an NPC reply. DBVO's DialogueMenu.swf fires the

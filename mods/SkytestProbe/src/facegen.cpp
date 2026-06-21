@@ -5,10 +5,17 @@
 
 #include "resolve.h"
 #include "trace.h"
+#include "worldstate.h"
 
 void engine::DumpFaceGen(RE::Actor* a_actor, const char* a_src)
 {
 	trace::json line{ { "src", a_src } };
+	// Paused-vs-running guard on EVERY facegen line: a frozen sim emits identical samples
+	// (see GetSimClock). `paused:true` => don't read this as live mouth dynamics; `gt:0` =>
+	// the sim advanced no game time this frame (frozen), `gt>0` => it's actively stepping.
+	const SimClock clk = GetSimClock();
+	line["paused"] = clk.paused;
+	line["gt"]     = clk.gt;
 	if (!a_actor) {
 		line["error"] = "null actor";
 		trace::Write(std::move(line));

@@ -195,6 +195,25 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
 > `exec` stays in the probe (SEH-guarded, harmless) but `replay` does input + gates + shot, not
 > console staging. Background: `../docs/plans/skytest-replay-handoff.md`. Example: `examples/format-demo.steps`.
 
+## Driving the probe from the CLI (`io` / `cmd` / `trace` / `wait-probe` / `restart`)
+
+Talking to SkytestProbe used to be raw: every command a hand-built `echo '<json>' >> "<long
+path>/commands.jsonl"`, every read a bespoke `jq` over `trace.jsonl`, the IO dir hunted with
+`find`, and each restart a hand-rolled poll loop. These thin wrappers remove that friction:
+
+| Verb                             | Does                                                                                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skytest io`                     | Print the resolved probe IO dir (`…/SKSE/skytest`). No session needed.                                                                                                                                                    |
+| `skytest cmd '<json>' [timeout]` | Append a probe command **and block for its ack**, then print every trace line it produced (its `src:` output + the ack). Injects an `id` if absent. Exit `0` ok, `1` ack failed, `2` bad JSON, `3` no ack (default 15 s). |
+| `skytest trace [filters]`        | Filtered view of `trace.jsonl`: `--tail N` (default 40), `--src X` (grep `"src":"X"`), `--since T` (epoch-ms or relative `30s`/`500ms`), `--jq EXPR`, `-f` follow.                                                        |
+| `skytest wait-probe [secs]`      | Block until the probe is **answering** (in-world _not_ required). The gate `ready` can't serve on the menu-booting `full` / `play agent` path. Exit `0`/`1`/`2`.                                                          |
+| `skytest restart [args…]`        | `stop` the live session **+ relaunch the same mode** in one verb (the spec is saved on each `test`/`play agent` launch). With args, runs `skytest <args>` instead. For the native-DLL stop→relaunch cycle.                |
+
+Typical loop: `skytest cmd '{"cmd":"facegen-watch","ref":"speaker","on":true}'` then
+`skytest trace --src face --since 5s --jq '{t,paused,gt}'`. The `drive seq` inter-key gap defaults
+to **300 ms** (override `seq --gap MS` or `SKYTEST_SEQ_GAP_MS`); `status --json` carries a pollable
+`world` block (`skytest status --json | jq '.world.inWorld'`) when a session is live.
+
 ## Boot straight into a test save (v2)
 
 Instead of clicking through the main menu each run, `skytest <mod>` can drop you straight into
@@ -222,9 +241,11 @@ test profile **unconditionally** (DLL-only/Address-Library-only, like Start On S
 save condition; ini copied verbatim). It's a pre-compiled probe plugin: write JSON commands to
 `…/SKSE/skytest/commands.jsonl` and the running game writes structured traces to `trace.jsonl`
 in the same dir: arm engine event sinks (`trace`), dump an actor's state incl. collision group
-(`dump`), `watch` an actor value, sample a face's morph keyframes (`facegen-watch`) / force a
-parameterized facegen reset (`facegen-close`) — both accept a `speaker` ref (the live dialogue NPC)
-— run a console line (`exec`), `anim-trace`, `marker`, `status`; F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
+(`dump`), `watch` an actor value, sample a face's morph keyframes (`facegen-watch`) / log them
+per-render-frame read-only (`facegen-observe`) / force a parameterized facegen reset
+(`facegen-close`) — these accept a `speaker` ref (the live dialogue NPC), and every facegen line
+carries a `paused`/`gt` guard so a frozen sample is never mistaken for live data — run a console
+line (`exec`), `anim-trace`, `marker`, `status`; F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
 mods, and it is what `skytest ready` polls. Passive until armed, never crashes on bad input. Built
 from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that build output
 (`build/SkytestProbe.dll`) and the **ini** from the source dir (`SkytestProbe.ini`, alongside
