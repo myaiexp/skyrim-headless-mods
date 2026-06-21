@@ -85,10 +85,15 @@ party; the player's hostile magic deals no friendly damage to teammates. Still d
   which actor categories phase (teammates / summons / all non-hostiles). v2's membership set is
   already category-shaped, so this is mostly surfacing it as config (mirror the AutoFireBow INI
   decision below).
-- **Continuous spells (Flames/Sparks): damage refused ✅, true pass-through PARKED (infeasible).**
+- **Continuous spells (Flames/Sparks): damage refused ✅, true pass-through PARKED.**
+  > **Premise updated 2026-06-17 — see the Ghidra entry at the top of this file.** The "baked in a
+  > layer-filtered cast inside `UpdateImpl`" reasoning below was **disproven**: the decompiled
+  > `UpdateImpl` does no collision at all. Pass-through is still parked (the real gating point —
+  > likely magic aim / target-acquisition — is untraced), but no longer "structurally infeasible."
+  >
   Damage is handled — `MagicTarget::AddTarget` refusal drops the player's hostile effects on
   teammates (verified; `AddImpact` 0xBD was tried first and disproven). But making the *stream pass
-  through* the ally to hit the enemy behind is **structurally infeasible** (researched 2026-06-14, 4
+  through* the ally to hit the enemy behind was thought **structurally infeasible** (researched 2026-06-14, 4
   failed attempts incl. ghosting all the ally's rigid bodies, reverted in v0.9.0):
   `FlameProjectile`/`BeamProjectile` expose **no collision-point vfunc (slot 0xBE)** — their stop
   point is baked in non-virtual `UpdateImpl` via a **layer**-filtered cast that ignores systemGroup,

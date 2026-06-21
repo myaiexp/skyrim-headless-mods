@@ -74,10 +74,14 @@ A `GhostAllies.log` in the SKSE log dir records the stamp/enroll decisions for i
 
 - **Continuous streams don't pass through; they just don't hurt allies.** For Flames/Sparks the
   shipped outcome is "no friendly damage," *not* the stream reaching the enemy behind your ally.
-  True pass-through for streams is **parked as structurally infeasible**: unlike discrete
-  projectiles, `FlameProjectile`/`BeamProjectile` expose no collision-point hook, and their stop
-  point is computed by a *layer*-filtered cast that ignores systemGroup entirely. No existing mod
-  does it. Full evidence and the four rejected attempts: `docs/plans/ghost-allies-design.md` §2b.
+  True pass-through for streams is **parked — not proven impossible.** The earlier read that it was
+  *structurally infeasible* (that `FlameProjectile`/`BeamProjectile` bake their stop point in a
+  *layer*-filtered cast inside `UpdateImpl`, which exposes no collision-point hook) was later
+  **disproven by a Ghidra disassembly**: `UpdateImpl` does positioning/homing/lifetime math and *no
+  collision at all*, so where the stream's effective target is actually gated is still untraced
+  (most likely the magic aim / target-acquisition path). No existing mod does it and the four
+  discrete-collision attempts here failed — but the door isn't closed. See
+  `docs/plans/ghost-allies-design.md` §2b and the 2026-06-17 reopening note in `docs/ideas.md`.
 - **Whole-party pass-through ships unverified.** Single-follower arrows and aimed spells (Firebolt)
   are confirmed in-game; the multi-follower path uses the same code but hasn't been play-tested with
   a full party.
