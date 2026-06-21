@@ -129,6 +129,19 @@ vanilla. Built on a MinHook entry detour of `MessageBoxData::QueueMessage` (repl
 
 ## 2026-06-08 — AutoFireBow config (deferred)
 
+> **SHIPPED — both halves landed (plugin v2.1.0; confirmed in source 2026-06-21).** The SkyUI MCM
+> is built and ships: `AutoFireBowMCM extends SKI_ConfigBase` + an EspGen quest + a one-way
+> Papyrus→DLL native bridge (`SetEnabled`/`SetDamageBonus`/`SetMinShotDelay`), exposing master
+> on/off, a toggle hotkey, a damage-bonus slider, and the min-shot-delay cadence cap. And the
+> **real-charge spike landed** (`docs/plans/autofirebow-real-charge-design.md`): there is no
+> `PowerSpeedHook`/clamp anymore — auto arrows loose at genuine full draw via synthetic
+> input-release, so the "auto-fire vs full-power clamp" split below **collapsed to a single
+> auto-fire on/off**, exactly as the "Contingent" note predicted. The `GetPowerSpeedMult` hook
+> survives only as the auto-only DPS bump (the damage slider). The notes below are historical (the
+> INI-vs-MCM delivery decision); see `mods/AutoFireBow/README.md` for the as-built mod. **Still
+> deferred:** SE/VR in-engine verification, and the open question of whether the +10% DPS bump is
+> warranted on a clean save.
+
 > **Superseded 2026-06-14 by `docs/plans/autofirebow-mcm-design.md`.** The "how" below chose an
 > **INI read by the DLL** to stay zero-dependency; the user has since chosen a real in-game **SkyUI
 > MCM** (no MCM Helper) instead, accepting SkyUI as a hard dependency. The settings list below still
@@ -379,22 +392,25 @@ Deferred out of v1:
 
 ## 2026-06-14 — Per-mod READMEs for the remaining code mods
 
-State: **GhostAllies README done** — it was the acute gap (the root `README.md` headline link
-called GhostAllies "the flagship working mod" but `mods/GhostAllies/` had no README, so on GitHub
-the link opened a bare source dir). DBVO and RapidBowHold already have mod READMEs. Still missing a
-mod `README.md` landing page for the other working code mods:
+State: **DONE (2026-06-21) — every code mod now has a `README.md`.** GhostAllies was the acute gap
+(the root `README.md` headline link called it "the flagship working mod" but `mods/GhostAllies/`
+had no README, so on GitHub the link opened a bare source dir). DBVO, RapidBowHold, and
+OneClickTravel already had mod READMEs; the last three landed this pass:
 
-- **AutoFireBow** — working SKSE C++ mod, release-bound (Nexus messaging drafted in
-  `docs/autofirebow-nexus-page.md`); a proper mod README is the natural landing page.
-- **AutoCastSpell** — working SKSE C++ mod (v1).
-- **SkytestProbe** — working SKSE C++ debug toolkit; a README would double as its usage / command
-  reference (the command set currently only lives in `docs/plans/skytest-probe-design.md`).
+- **AutoFireBow** — **DONE** (`mods/AutoFireBow/README.md`). Writing it surfaced that the root row
+  + this file's AutoFireBow-config entry were stale (the SkyUI MCM + real-charge spike had both
+  shipped as v2.1.0); fixed both in the same pass.
+- **AutoCastSpell** — **DONE** (`mods/AutoCastSpell/README.md`, v1.0.7). Documents the log-flush
+  pacing fragility + magicka-out stall honestly (both still deferred per this file).
+- **SkytestProbe** — **DONE** (`mods/SkytestProbe/README.md`). Doubles as the full command
+  reference (the command set previously only lived in `docs/plans/skytest-probe-design.md`),
+  including the `exec`/CompileAndRun caveat and the facegen probes.
 - **OneClickTravel** — **DONE** (`mods/OneClickTravel/README.md`, 2026-06-14). Release artifacts also
   ready: `package.sh` → `dist/` zip + Nexus page copy (`docs/oneclicktravel-nexus-page.md`); awaiting
   only a header image + the manual Nexus upload.
 
-Each should mirror the DBVO/GhostAllies README shape (what it does / requirements / compatibility /
-install / how it works / build) and **move the detailed prose out of the root README table** into
-the mod README, leaving the root row a brief pointer — exactly as GhostAllies now does. Pure docs,
-low risk. For a showcase repo, consistent per-mod landing pages remove the last "looks half-done"
-signal once a browser clicks into each mod dir.
+Each mirrors the DBVO/GhostAllies README shape (what it does / requirements / compatibility /
+install / how it works / build) and the detailed prose moved out of the root README table into the
+mod README, leaving the root row a brief pointer — exactly as GhostAllies does. For a showcase repo,
+consistent per-mod landing pages remove the last "looks half-done" signal once a browser clicks into
+each mod dir.
