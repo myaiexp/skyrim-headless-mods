@@ -95,7 +95,7 @@ git-ignored, and you populate them locally from your own game + SKSE install. Se
 
 ## License
 
-This repo's own code is **MIT** (see [`LICENSE`](LICENSE)). It vendors a few third-party assets that
+This repo's own code is **0BSD** (see [`LICENSE`](LICENSE)). It vendors a few third-party assets that
 keep their own separate terms and credits:
 
 - **nlohmann/json** — MIT (header-only JSON, used by the SKSE C++ tier).
