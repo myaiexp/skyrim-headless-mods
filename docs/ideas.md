@@ -508,3 +508,28 @@ install / how it works / build) and the detailed prose moved out of the root REA
 mod README, leaving the root row a brief pointer — exactly as GhostAllies does. For a showcase repo,
 consistent per-mod landing pages remove the last "looks half-done" signal once a browser clicks into
 each mod dir.
+
+## 2026-08-31 — DBVO 2 supersedes DBVO Dialogue Tweaks
+
+State: **analysed, decision pending Mase.** Full write-up in
+`docs/plans/dbvo-v2-compatibility-analysis.md` (static analysis of the shipped 2.0.1.5 / 2.0.1.6
+DLLs — no in-engine test yet).
+
+DBVO 2 is a native rewrite: one `DBVO.dll`, no `.esp`, no Papyrus, **no `dialoguemenu.swf`**. It
+absorbs the reply-on-line-end fix (base delay = real `.fuz` duration, word-count guess demoted to
+fallback), the gap slider (`npc_response_delay`, default 0), the volume slider (`dialogue_volume`,
+plus a reverb slider we never had), and — in 2.0.1.6, 2026-08-30 — manual skip (`SkipInputHandler`:
+Activate / left-click / gamepad-A, 300 ms debounce → `FireResponse(token, skipped=true)`).
+
+Two follow-ups, neither started:
+
+- **Nexus page notice (do first).** The mod is live (182628) and installing it over DBVO 2
+  **softlocks dialogue** — our swf waits for DBVO 1.0's Papyrus to call `startTopicClickedTimer`,
+  which never comes, so `GameDelegate.call("TopicClicked")` is never reached. README warning has
+  landed; the Nexus page still needs it.
+- **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
+  handle (no sound RTTI in either build; neither references Address Library 36541/37542;
+  `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only
+  successor: he now has the input handler and the skip path, and a successor would race his
+  `SkipInputHandler` on the same input. Confirm in-engine first that a DBVO 2 skip really does leave
+  the player line playing over the NPC — that claim is inferred, not observed.

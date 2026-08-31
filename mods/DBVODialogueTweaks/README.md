@@ -33,14 +33,24 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 
 ## Compatibility
 
+> **⚠ DBVO 2 (Dragonborn Voice Over 2) — do NOT install this mod.** This mod targets **DBVO 1.x**
+> only. DBVO 2 is a native rewrite that ships no `dialoguemenu.swf` and no Papyrus, and the swf here
+> depends on DBVO 1.0's Papyrus calling `startTopicClickedTimer` to arm the reply. Under DBVO 2 that
+> call never comes, so clicking a topic **softlocks the conversation** — the menu enters the clicked
+> state and never advances. DBVO 2 also absorbs nearly everything this mod added: the reply is timed
+> off the real `.fuz` duration, `npc_response_delay` replaces the gap slider, `dialogue_volume`
+> (+ `dialogue_reverb`) replaces the volume slider, and 2.0.1.6 added manual skip. Full analysis:
+> [`docs/plans/dbvo-v2-compatibility-analysis.md`](../../docs/plans/dbvo-v2-compatibility-analysis.md).
+
 - **SE + AE, yes, one DLL for both.** The plugin is built on CommonLibSSE-NG and reaches the engine
   purely through the Address Library (the SE/AE addresses are resolved at runtime), so the same file
   runs on every SE and AE build (Steam or GOG) as long as Address Library is installed. The Papyrus
   scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
-- **Low maintenance.** DBVO hasn't changed in years, so the swf this mod is built from is a fixed
-  target. It won't drift or bitrot.
+- **Pinned to DBVO 1.x.** The swf this mod is built from was a fixed target for years — until DBVO 2
+  (2026) replaced the whole swf + Papyrus stack with a single DLL. Within DBVO 1.x this mod is still
+  stable; it does not and cannot follow DBVO forward.
 
 ## Installation
 
