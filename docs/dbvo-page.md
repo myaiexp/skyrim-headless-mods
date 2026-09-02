@@ -28,17 +28,26 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 
 ### Requirements
 
-- Skyrim Special Edition or Anniversary Edition + SKSE
-- **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153) from the mod page's OLD FILES tab (**not** the main DBVO 2 download), and everything DBVO 1.x requires (PapyrusUtil, ConsoleUtilSSE NG)
+- Skyrim Special Edition or Anniversary Edition + SKSE, matched to your game build (SKSE 2.3.1 for Skyrim 1.7.104). **On Skyrim 1.7.99 / 1.7.104 you need v1.0.1 or newer of this mod** — 1.0.0's plugin cannot read the format-5 Address Library those builds use and simply won't load.
+- **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153) from the mod page's OLD FILES tab (**not** the main DBVO 2 download), plus what DBVO 1.x itself needs: PapyrusUtil SE (4.8+ on 1.7.99/1.7.104) and ConsoleUtilSSE NG (1.6.1+ on 1.7.99/1.7.104) — same format-5 reason.
 - SkyUI (for the MCM)
-- Address Library for SKSE Plugins
+- Address Library for SKSE Plugins — v13, "All in One (1.7.104.0)", on the new game builds
 
 ### Compatibility
 
 - **SE and AE, one DLL for both.** Built on CommonLibSSE-NG and reaches the engine through the Address Library (addresses resolved at runtime), so the same file runs on every SE and AE build, Steam or GOG, as long as Address Library is installed. Tested on AE/Steam; SE (1.5.97) and GOG run the same build and should work, but are untested. Please report if you hit anything.
+- **Skyrim 1.7.104, yes, from v1.0.1.** Tested in-engine on 1.7.104 with SKSE 2.3.1 and Address Library v13: the plugin loads and installs its hooks. Version 1.0.0 does not load there at all — Skyrim 1.7.99 changed the Address Library database format, and 1.0.0 predates it, so it stops with "Unsupported address library format: 5". If you updated Skyrim and your dialogue timing went back to feeling wrong, that's why: grab 1.0.1.
 - **VR, no.** Skyrim VR uses a different dialogue UI and would need a separate build; it isn't provided.
 - **DBVO 2, no.** It replaced the whole swf + Papyrus stack with a single DLL; this mod patches that stack and softlocks dialogue on top of it. See the warning at the top.
 - It overwrites only DBVO's `Interface/dialoguemenu.swf` (let it win that conflict, install it after DBVO) and never touches DBVO's own scripts. The `.esp` is ESL-flagged and takes no load-order slot.
+
+### Changelog
+
+**1.0.1**
+
+- Rebuilt for Skyrim **1.7.99 / 1.7.104**. Skyrim's 1.7.99 update changed the Address Library database to format 5, which the 1.0.0 plugin can't read — it refused to load. Verified in-engine on 1.7.104 with SKSE 2.3.1.
+- The installer now warns, before it overwrites anything, that this mod is for **DBVO 1.x only** and softlocks dialogue on DBVO 2.
+- No gameplay or feature changes. If you're on Skyrim 1.6.1170 or older and 1.0.0 works for you, you don't need this.
 
 ### Configuration
 

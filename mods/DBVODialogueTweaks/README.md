@@ -31,12 +31,15 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 
 ## Requirements
 
-- Skyrim Special Edition or Anniversary Edition + **SKSE**
+- Skyrim Special Edition or Anniversary Edition + **SKSE**. On the **1.7.99 / 1.7.104** game builds
+  you need **v1.0.1 of this mod or newer** — 1.0.0's DLL cannot read the format-5 Address Library
+  those builds use and will not load. Match SKSE to your game (2.3.1 for 1.7.104).
 - **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153),
   which now lives under the mod page's **OLD FILES** tab: the page's main download is DBVO 2, which
-  this mod does not support. Plus everything DBVO 1.x itself requires (PapyrusUtil, ConsoleUtilSSE NG).
+  this mod does not support. Plus everything DBVO 1.x itself requires — **PapyrusUtil SE 4.8+** and
+  **ConsoleUtilSSE NG 1.6.1+** if you are on 1.7.99/1.7.104, for the same format-5 reason.
 - **SkyUI** (for the MCM)
-- **Address Library for SKSE Plugins**
+- **Address Library for SKSE Plugins** — v13 ("All in One (1.7.104.0)") on the new builds.
 
 ## Compatibility
 
@@ -62,6 +65,15 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   purely through the Address Library (the SE/AE addresses are resolved at runtime), so the same file
   runs on every SE and AE build (Steam or GOG) as long as Address Library is installed. The Papyrus
   scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
+- **Skyrim 1.7.104, yes — from v1.0.1.** Verified in-engine on 1.7.104 with SKSE 2.3.1 and Address
+  Library v13: the plugin loads, installs its speak-sound hook, registers its Papyrus native and
+  both event sinks. v1.0.0 does **not** load there: 1.7.99 changed the Address Library database to
+  format 5 and 1.0.0's CommonLibSSE-NG predates that, so it aborts with
+  *"Unsupported address library format: 5"*. The 1.7.104 build still targets SE + AE the same way,
+  but only 1.7.104 has been re-tested since the rebuild.
+  DBVO 1.x's own stack on 1.7.104 is a separate question this mod can't answer for you: PapyrusUtil
+  SE 4.8 and ConsoleUtilSSE NG 1.6.1 are the current builds and should cover it, but we have not
+  tested DBVO 1.x itself there.
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
 - **Pinned to DBVO 1.x, permanently.** The swf this mod is built from was a fixed target for years —

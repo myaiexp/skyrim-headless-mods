@@ -19,7 +19,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- release identity (Version tracks plugin/src/main.cpp kVersion) ---
 NAME="DBVO Dialogue Tweaks"
-VERSION="1.0.0"
+VERSION="1.0.1"
 AUTHOR="Mase"
 WEBSITE="https://github.com/myaiexp/skyrim-headless-mods"
 CATEGORY="Patches"
