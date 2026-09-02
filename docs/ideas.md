@@ -528,28 +528,31 @@ straight into the softlock.
 
 Three follow-ups:
 
-- **Nexus page notice (do first, only manual step left).** The mod is live (182628, v1.0, 245
-  downloads) and installing it over DBVO 2 **softlocks dialogue** — our swf waits for DBVO 1.0's
-  Papyrus to call `startTopicClickedTimer`, which never comes, so `GameDelegate.call("TopicClicked")`
-  is never reached. The repo README, the root README row and the page copy `docs/dbvo-page.md` all
-  carry the warning + the 1.1.1 OLD-FILES link now; **paste `docs/dbvo-page.md` onto the live Nexus
-  page** (website-only, no write API).
-- **In-engine test of DBVO 2 — staged, not yet run.** The runtime blocker is gone (1.7.104 stack is
-  live) and the archive is extracted and configured at `~/.cache/skytest-dbvo2/`, shaped as a Data
-  tree that `skytest test <dir>` mirrors directly: `SKSE/Plugins/DBVO.dll` + `DBVO2/`, SKSE Menu
-  Framework 3.14.1, `KaratVoice - Skyrim.bsa`/`.esp`, and `DragonbornVoiceOver/` with
-  `use_legacy_voice_over:true`, `legacy_pack:"Danagis_KaratVoice"`,
-  `always_use_default_options:true` so a saved per-save config can't override the test. The pack's
-  7092 `.fuz` live at `sound/dbvo/danagis_karatvoice/<sanitized prompt>.fuz`, which matches DBVO 2's
-  first path pattern — verified by listing the BSA.
-  What remains is the dialogue drive itself: spawn a talkable NPC (`placeatme`), open dialogue,
-  click a topic. **Profile B** (DBVO 2 + this mod) answers the softlock claim visually —
-  `is-menu-open` + a screenshot showing the menu stuck in the clicked state. **Profile A** (DBVO 2
-  alone) asks whether a skip leaves the player line playing, and that is *not* answerable from a
-  headless screenshot: it needs new SkytestProbe instrumentation hooking
-  `Actor::SpeakSoundFunction` to report whether the player's `BSSoundHandle` is still playing when
-  the NPC reply starts. That hook already exists in DBVODialogueTweaks — port the read-only part
-  into SkytestProbe, where instrumentation belongs.
+- **Nexus page notice — the only manual step left, and now evidence-backed.** The mod is live
+  (182628, v1.0, 245 downloads) and installing it over DBVO 2 **softlocks dialogue**, confirmed
+  in-engine 2026-09-02 by A/B on game 1.7.104: DBVO 2 alone replies in ~5 s, DBVO 2 + this mod was
+  still stuck 26 s after the same click. Tab escapes the menu, so it costs the conversation and not
+  the save, and **DBVO 2 logs its own `[Conflict]` warning** naming the patched swf — quote that at
+  users rather than our reverse-engineering. The repo README, the root README row and the page copy
+  `docs/dbvo-page.md` all carry it; **paste `docs/dbvo-page.md` onto the live Nexus page**
+  (website-only, no write API).
+- **The one DBVO 2 question still open: does a skip leave the player's line playing?** Everything
+  else is answered. This needs two things a screenshot can't give:
+  1. **DBVO 2's debug log turned on.** Its per-click `[resolve]`/`[fuz]`/`[speak]`/`[delay]` lines
+     are gated behind an "Enable DBVO logging" toggle that is **off by default and lives only in its
+     ImGui menu** (SKSE Menu Framework, F1) — it is *not* a key in `default_options.json`, so it
+     can't be pre-set from a file. Drive the menu (finding #25: coordinate clicks work).
+  2. **A sound-handle observer in SkytestProbe.** Port the read-only half of DBVODialogueTweaks'
+     `Actor::SpeakSoundFunction` hook (Address Library 36541/37542) so the probe reports whether the
+     player's `BSSoundHandle` is still playing when `FireResponse` advances the dialogue. That is
+     the actual measurement, and instrumentation belongs in the probe, not in a mod.
+
+  The reusable stage is already built: `~/.cache/skytest-dbvo2/` (DBVO 2 alone) and
+  `~/.cache/skytest-dbvo2-plus-tweaks/` (with this mod), both Data-shaped so
+  `SKYTEST_NO_AUTOLOAD=1 skytest test <dir> --headless` mirrors them straight in. Karat legacy pack
+  wired (`use_legacy_voice_over`, `legacy_pack:"Danagis_KaratVoice"`, `always_use_default_options`);
+  its 7092 `.fuz` sit at `sound/dbvo/danagis_karatvoice/<sanitized prompt>.fuz`, matching DBVO 2's
+  first path pattern. Drive recipe and the `freeze:false` trap: findings #25/#26.
 - **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
   handle (no sound RTTI in either build; neither references Address Library 36541/37542;
   `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only

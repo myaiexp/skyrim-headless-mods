@@ -44,11 +44,18 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 > on mod page 84329 (2.0.1.6, 2026-08-30; the page is titled "Dragonborn Voice Over 2" and 1.1.1 is
 > demoted to OLD FILES). It is a native rewrite that ships no `dialoguemenu.swf` and no Papyrus, and
 > the swf here depends on DBVO 1.0's Papyrus calling `startTopicClickedTimer` to arm the reply. Under
-> DBVO 2 that call never comes, so clicking a topic **softlocks the conversation** — the menu enters
-> the clicked state and never advances. DBVO 2 also absorbs nearly everything this mod added: the
-> reply is timed off the real `.fuz` duration, `npc_response_delay` replaces the gap slider,
-> `dialogue_volume` (+ `dialogue_reverb`) replaces the volume slider, and 2.0.1.6 added manual skip.
-> Only the clean audio cut on skip is still missing there. Full analysis:
+> DBVO 2 that call never comes, so clicking a topic **softlocks the conversation**: the menu enters
+> the clicked state and the NPC never replies. **Confirmed in-engine** (2026-09-02, game 1.7.104,
+> DBVO 2.0.1.6) — the same NPC and topic that reply in ~5 s with DBVO 2 alone were still stuck 26 s
+> after the click with this mod installed. Pressing **Tab** does escape the menu and the game keeps
+> running, so you lose the conversation rather than the save. DBVO 2 also detects this itself and
+> writes to its own log: *"[Conflict] A DBVO 1.0 patched dialoguemenu.swf is installed. Replace it
+> with an unpatched one for DBVO 2.0 to work properly."*
+>
+> DBVO 2 also absorbs nearly everything this mod added: the reply is timed off the real `.fuz`
+> duration, `npc_response_delay` replaces the gap slider, `dialogue_volume` (+ `dialogue_reverb`)
+> replaces the volume slider, and 2.0.1.6 added manual skip. Only the clean audio cut on skip is
+> still missing there. Full analysis:
 > [`docs/plans/dbvo-v2-compatibility-analysis.md`](../../docs/plans/dbvo-v2-compatibility-analysis.md).
 
 - **SE + AE, yes, one DLL for both.** The plugin is built on CommonLibSSE-NG and reaches the engine

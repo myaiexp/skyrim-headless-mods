@@ -1,10 +1,15 @@
 > **⚠ For DBVO 1.x only — do not install this on DBVO 2.** This mod patches the `dialoguemenu.swf` +
 > Papyrus stack that Dragonborn Voice Over shipped through 1.1.1 (now under DBVO's **OLD FILES** tab).
 > DBVO 2 is a native rewrite with no `dialoguemenu.swf` and no Papyrus, so the patched menu here
-> never gets the call that arms the reply and **clicking a topic softlocks the conversation**. DBVO 2
-> also does nearly everything this mod does, natively: the reply is timed off your line's real audio
-> length, `npc_response_delay` is the gap, `dialogue_volume` is the volume, and 2.0.1.6 added manual
-> skip. If you are on DBVO 2, you do not need this mod — use DBVO 2's own settings.
+> never gets the call that arms the reply and **clicking a topic softlocks the conversation** — the
+> topic list collapses and the NPC never answers. That is tested, not guessed: with DBVO 2 alone the
+> NPC replies in about five seconds, and with this mod installed the very same topic was still stuck
+> half a minute later. Tab does get you out of the menu, so you lose the conversation and not your
+> save, and DBVO 2 itself notices, logging *"[Conflict] A DBVO 1.0 patched dialoguemenu.swf is
+> installed."* DBVO 2 also does nearly everything this mod does, natively: the reply is timed off
+> your line's real audio length, `npc_response_delay` is the gap, `dialogue_volume` is the volume,
+> and 2.0.1.6 added manual skip. If you are on DBVO 2, you do not need this mod — use DBVO 2's own
+> settings.
 
 ## DBVO Dialogue Tweaks
 

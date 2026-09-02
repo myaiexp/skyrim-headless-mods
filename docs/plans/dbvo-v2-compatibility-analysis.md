@@ -186,31 +186,55 @@ straight into the §3 softlock. The README and the Nexus page copy (`docs/dbvo-p
 repointed at the OLD FILES entry for 1.1.1 the same day; **the live Nexus page still needs the same
 edit by hand** (website-only, no write API).
 
-### In-engine test is blocked twice over
+### In-engine result — 2026-09-02: the softlock is confirmed, and DBVO 2 flags it itself
 
-**Blocker 1, the bigger one: the game runtime moved.** Steam updated `SkyrimSE.exe` to **1.7.104.0**
-on 2026-09-01. The installed SKSE is 2.2.6 (1.6.1170) and every SKSE mod in this repo is built
-against an abandoned CommonLibSSE-NG that misfiles 1.7.x as pre-AE — so *nothing here loads in the
-engine at all* right now, DBVO 2 test or otherwise. Full diagnosis and the two ways out in
-`docs/skse-toolchain.md`; tracked in `docs/ideas.md` (2026-09-02). `skytest` now refuses to launch
-on the mismatch instead of booting a game with no SKSE.
+Both blockers cleared the same day (the repo moved to the 1.7.104 stack; the archive was
+downloaded), so the §3 prediction was tested as a clean A/B. Setup: game **1.7.104.0**, SKSE 2.3.1,
+**DBVO 2.0.1.6**, SKSE Menu Framework 3.14.1, the Karat legacy pack with
+`use_legacy_voice_over:true` / `legacy_pack:"Danagis_KaratVoice"` /
+`always_use_default_options:true`. Isolated `skytest` profiles, headless, base save in `QASmoke`,
+Hulda (base `0x00013BA3`) spawned 110u ahead with `placeatme`, same topic clicked both times
+("Heard any rumors lately?"), same input (`drive seq down enter`).
 
-**Blocker 2: the archive.** A `skytest` pass also needs files this machine does not have:
-
-| Needed | State |
+| Profile | Result |
 | --- | --- |
-| `Dragonborn Voice Over 2` 2.0.1.6 (`SKSE/Plugins/DBVO.dll` + `SKSE/Plugins/DBVO2/`) | **missing** — not on disk; the Nexus key is non-premium, so `/v1/.../download_link.json` returns **403**. Manual download required. |
-| SKSE Menu Framework (DBVO 2's new requirement, replaces DBVO 1.x's PapyrusUtil + ConsoleUtilSSE NG) | **missing** from `SKSE/Plugins/` |
-| A voice pack | **present** — the Karat legacy pack is installed (`KaratVoice - {Skyrim,CC,LOTD}.bsa` + `DragonbornVoiceOver/voice_packs/danagis_karatvoice_voice_pack.json`), so DBVO 2's `use_legacy_voice_over` mode is the cheap path to a voiced line. |
+| **A — DBVO 2 alone** | Works. Within ~5 s the topic list collapses to the clicked topic **and the NPC delivers her reply** (subtitle "Have you seen that Shrine of Azura? …", mouth animating). |
+| **B — DBVO 2 + DBVO Dialogue Tweaks 1.0.0** | **Softlocked.** The topic list collapses to the clicked topic and then *nothing*: no reply, no subtitle, mouth closed, still stuck **26 s** later. Clicking again is a no-op. |
 
-Once both clear, the three [Open items](#open-items) are one session's work: profile A = DBVO 2
-alone (does skip leave the player line playing?), profile B = DBVO 2 + this mod (does the click
-softlock?).
+Exactly the §3 mechanism: the menu reaches `TOPIC_CLICKED` and never calls
+`GameDelegate.call("TopicClicked")`, because `this.timer` is only armed by
+`startTopicClickedTimer`, which DBVO 1.0's Papyrus called and DBVO 2 has no Papyrus to call.
+
+**Two refinements to what the page/README should say:**
+
+- It is a **dialogue** softlock, not a game hang. **Tab exits** the menu cleanly and the player is
+  fully functional afterwards — you lose the conversation, not the session. Worth saying, because
+  "softlock" alone reads like "reload your save".
+- **DBVO 2 detects the conflict and says so itself**, in `DBVO.log` at load:
+  `[W] [Conflict] A DBVO 1.0 patched dialoguemenu.swf is installed. Replace it with an unpatched one
+  for DBVO 2.0 to work properly.` First-party confirmation, and a much better thing to quote at a
+  user than our own reverse-engineering.
+
+#### Still not answered: the skip/audio question
+
+Profile A showed no player voice before the reply, which is *consistent* with the Karat pack having
+no `.fuz` for that prompt (DBVO 2 then logs `[fuz] not found … passing click through` and advances
+immediately) — but it is not proof, because the per-click `[resolve]` / `[fuz]` / `[speak]` /
+`[delay]` lines never appeared: DBVO 2 gates them behind an **"Enable DBVO logging"** toggle that is
+**off by default** and lives only in its ImGui menu (`SKSEMenuFramework`, F1) — the option is absent
+from `default_options.json`, so it cannot be pre-set from a file.
+
+So confirming "a DBVO 2 skip leaves the player's line playing over the NPC" needs **both**: that
+toggle driven on in the ImGui menu, and a sound-handle observer, because the claim is about audio
+that a screenshot cannot show. The observer belongs in SkytestProbe — port the read-only half of
+DBVODialogueTweaks' `Actor::SpeakSoundFunction` hook (Address Library 36541/37542) so it reports
+whether the player's `BSSoundHandle` is still playing when `FireResponse` advances the dialogue.
 
 ## Open items
 
-- **Not tested in-engine.** Everything above is static. The §3 softlock follows from AS2 control
-  flow and is solid; the rest is binary evidence. A `skytest` pass over DBVO 2 would confirm.
+- ~~**Not tested in-engine.**~~ **Done 2026-09-02** — the §3 softlock is confirmed by A/B on game
+  1.7.104 with DBVO 2.0.1.6, and DBVO 2 logs its own `[Conflict]` warning about the patched swf.
+  See the in-engine result above. §1–§2 and §4 remain binary evidence, unchanged.
 - **"Player voice keeps playing on skip"** is inferred from the *absence* of any audio-stop path in
   `FireResponse`, not observed. Worth one in-engine check before citing it to the author.
 - **`word-count-estimate` fallback frequency** is unknown — if `.fuz` duration reads fail often for

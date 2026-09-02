@@ -123,9 +123,12 @@ a `Saves_skytest` dir holding **only** the base save, so the test menu's "Contin
 your _main modded_ save and pop the "missing content" modal that blocked po3 StartOnSave from
 loading `SkytestBase`. It's applied unconditionally on the test-boot path when a base save exists,
 torn down automatically on `stop`/`normal`/`play`/`uninstall`, and surfaced in `skytest status`.
-The one genuinely-still-open item: a precise **in-menu mouse click** to dismiss a modal via `drive`
-(keyboard `drive` is confirmed in-world, finding #14). The dead-ends behind the whole display/input
-layer are in [`docs/headless-findings.md`](docs/headless-findings.md). **Read it before changing the
+Menu interaction is settled too, though asymmetrically (finding #25): keyboard `drive` is reliable
+**in-world** but does not reach menu buttons, while a coordinate `drive click <x> <y>` read off a
+`shot` does dismiss an in-menu modal. On the main menu, nudge the selection
+(`drive seq down up enter`) rather than trusting a bare `enter`.
+The dead-ends behind the whole display/input layer are in
+[`docs/headless-findings.md`](docs/headless-findings.md). **Read it before changing the
 gamescope/libei approach.**
 
 ### The SKSE/runtime match is checked before every launch

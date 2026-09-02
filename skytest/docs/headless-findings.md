@@ -250,6 +250,9 @@ removed the autoload blocker that was gating a clean in-world run.)
 
 ## 14. RESOLVED (keyboard) — in-world driving worked via former full-profile wrapper; tab-clicks still desync
 
+> Menu clicking, listed below as the remaining gap, is **resolved in finding #25**: a coordinate
+> `drive click` does dismiss an in-menu modal headlessly.
+
 2026-06-14, while verifying AutoFireBow's SkyUI MCM. The earlier in-world blockers were both
 profile artifacts, not engine/libei faults — sidestepped by a full-profile gamescope wrapper and a
 log-based check. That wrapper was later removed from the public CLI; keep this section as historical
@@ -483,3 +486,36 @@ this session's "knowns" were all wrong: `0x0001C789` = **Fireball** (big AoE, no
 = **Frostbite** (a stream, not Ice Spike), `0x0002B96C` = **Ice Spike**. Player-clone bases (`0x00000007`,
 a handy always-present collidable humanoid) also carry **50% Resist Frost**, another reason frost is a poor
 test bolt.
+
+## 25. CONFIRMED — an in-menu MOUSE CLICK works headless; keyboard does not reach menu buttons
+
+Finding #14 left "a precise in-menu mouse click to dismiss a modal" as the open item. It works.
+
+Loading a save that carries plugins the save doesn't know pops **"Creations are currently loaded …
+Do you wish to continue loading this save?" (Yes/No)**. Keyboard did nothing to it — `drive tap
+enter`, `drive seq left enter`, `drive seq down up enter` all left the modal up and the world
+unloaded. A single `drive click 600 422` on the **Yes** button dismissed it and the save loaded
+(2026-09-02, headless 1280x720, game 1.7.104).
+
+Same asymmetry on the main menu: `drive tap enter` alone did not activate **CONTINUE**, but nudging
+the selection first (`drive seq --gap 400 down up enter`) did. So for menus: **click by coordinate
+from a `shot`, or nudge the selection before committing** — a bare `enter` on a freshly-opened menu
+is unreliable, while in-world keyboard driving (finding #14) stays fine.
+
+## 26. Dialogue tests need `freeze:false` — a frozen NPC fakes a softlock
+
+`placeatme` defaults to `freeze:true` (`EnableAI(false)`), which is right for geometry tests and
+**wrong for conversations**: a frozen NPC opens the topic list and takes the click, then never
+delivers the reply. The menu just sits in the clicked state — indistinguishable from the dialogue
+softlock we were actually trying to measure. Cost a false positive before the A/B control caught it
+(frozen: no reply ever; unfrozen: reply in ~5 s, same NPC, same topic, same input).
+
+Recipe that works: `{"cmd":"placeatme","base":"0x00013BA3","as":"npc","d":110,"freeze":false}` then
+`drive tap e`, then `{"cmd":"is-menu-open","menu":"Dialogue Menu"}` to gate. `0x00013BA3` is Hulda —
+an innkeeper, so several player topics with no quest staging. `d` must be ~110–120: the default 256
+is outside activation range, so `e` does nothing.
+
+**Get FormIDs from the ESM, never from memory** (see the FormID footgun above). Mutagen reads them
+headlessly, but `SkyrimMod.CreateFromBinaryOverlay` throws
+*"Could not determine plugin listings path"* the moment you touch a **localized** field such as
+`Npc.Name` — that lookup wants `LocalAppData`. Read `EditorID` (not localized) and match on that.
