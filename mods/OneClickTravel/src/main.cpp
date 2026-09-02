@@ -87,16 +87,23 @@ namespace
 		return out;
 	}
 
-	// Drive the actual fast travel for a confirmed target. Run(kUnk1) is the "Yes / travel" answer
-	// (per PapyrusExtender's ChangeFastTravelTarget, which keys confirmed travel off kUnk1); it
+	// Drive the actual fast travel for a confirmed target. Button 1 is the "Yes / travel" answer
+	// (per PapyrusExtender's ChangeFastTravelTarget, which keys confirmed travel off it); it
 	// initiates the trip AND closes the map itself, exactly as pressing Yes does in vanilla.
+	//
+	// The name is ours: CommonLibSSE-NG 7 removed IMessageBoxCallback::Message and made Run take a
+	// raw std::uint8_t button index. The old enumerator this code used, Message::kUnk1, was
+	// literally 1 (CharmedBaryon include/RE/I/IMessageBoxCallback.h), so the value is unchanged —
+	// only the spelling is, and a bare `Run(1)` would have thrown away what the 1 means.
 	//
 	// NB: we do NOT send our own kHide here. An extra kHide tears MapMenu down through the close
 	// path before the queued fast-travel executes, dropping the trip (observed in-game: map closed,
 	// no travel). The proven precedent only hides the menu on its CANCEL path, never on travel.
+	constexpr std::uint8_t kMessageBoxYes = 1;
+
 	void DriveTravel(RE::FastTravelConfirmCallback* a_callback)
 	{
-		a_callback->Run(RE::IMessageBoxCallback::Message::kUnk1);
+		a_callback->Run(kMessageBoxYes);
 	}
 
 	// --- The suppression hook: MessageBoxData::QueueMessage entry detour -----------------------
@@ -118,8 +125,11 @@ namespace
 					// Resolve the marker under the cursor via the callback's MapMenu, exactly as the
 					// probe did, and classify it.
 					RE::TESObjectREFR* cursorRefr = nullptr;
+					// GetRuntimeData() returns a POINTER in NG 7 (nullptr on VR), not a reference.
 					if (auto* mapMenu = ftCallback->mapMenu) {
-						cursorRefr = mapMenu->GetRuntimeData().mapMarker.get().get();
+						if (auto* rd = mapMenu->GetRuntimeData()) {
+							cursorRefr = rd->mapMarker.get().get();
+						}
 					}
 					const MarkerRead cursor = ReadCursorMarker(cursorRefr);
 

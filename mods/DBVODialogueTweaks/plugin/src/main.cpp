@@ -229,10 +229,12 @@ namespace
 	// Cut the NPC's in-flight reply (player picked a NEW topic mid-reply). The per-line topic voice
 	// handle lives on the speaking actor's ExtraSayToTopicInfo extra-data (.sound) — NOT on
 	// HighProcessData::soundHandles (those stay empty for topic voice) and NOT reachable by
-	// PauseCurrentDialogue alone (it only PAUSES — see ExtraSayToTopicInfo::voicePaused — so a
-	// multi-segment reply keeps sounding). Both dead-ends were tried in-game. So: fade that .sound
-	// to silence the segment that's PLAYING, AND PauseCurrentDialogue to stop the reply advancing to
-	// further segments — the fade kills what's playing, Pause kills what's next. Marshalled onto the
+	// StopCurrentDialogue alone (despite the name it only PAUSES — see
+	// ExtraSayToTopicInfo::voicePaused — so a multi-segment reply keeps sounding; CommonLib called
+	// this vtable slot 0x4F PauseCurrentDialogue until 2026 and that was the accurate name). Both
+	// dead-ends were tried in-game. So: fade that .sound to silence the segment that's PLAYING, AND
+	// StopCurrentDialogue to stop the reply advancing to further segments — the fade kills what's
+	// playing, the pause kills what's next. Marshalled onto the
 	// main game thread (raw engine state). speaker falls back to lastSpeaker (menu mid-close, NPC
 	// still talking); the IsPlaying guard makes this a no-op when no reply is in flight.
 	void CutNpcReply()
@@ -260,7 +262,7 @@ namespace
 					say->sound.FadeOutAndRelease(30);
 				}
 			}
-			actor->PauseCurrentDialogue();
+			actor->StopCurrentDialogue();
 
 			// Cutting the audio leaves the NPC's mouth frozen open: the phoneme keyframe holds its
 			// last (mid-word) values and nothing zeroes them until the speaking state times out

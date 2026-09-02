@@ -159,7 +159,11 @@ RE::ActorValue engine::ResolveActorValue(std::string_view a_name)
 	if (!avl) {
 		return RE::ActorValue::kNone;
 	}
-	return avl->LookupActorValueByName(a_name);  // kNone if unknown (case-insensitive)
+	// LookupActorValueByName takes const char*, and a_name is a view with no
+	// null-terminator guarantee — the copy is required, not redundant (real AV
+	// names are short enough to stay in the string's SSO buffer).
+	const std::string name{ a_name };
+	return avl->LookupActorValueByName(name.c_str());  // kNone if unknown (case-insensitive)
 }
 
 void engine::SetAlias(const std::string& a_name, RE::FormID a_id)

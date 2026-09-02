@@ -7,6 +7,13 @@
 
 #include "trace.h"
 
+// wingdi.h's `#define GetObject GetObjectA` reaches us through RE/S/State.h -> <SimpleMath.h>,
+// which the RE/Skyrim.h umbrella pulls in long AFTER RE/V/Variable.h has already run its own
+// `#undef GetObject` (RE/A/Array.h includes it at umbrella line 51), and #pragma once keeps
+// that undef from re-running. Without this line slot.GetObject() below expands to a
+// nonexistent Variable::GetObjectA().
+#undef GetObject
+
 namespace
 {
 	// ---- MCM (SkyUI) bound-script reveal ----------------------------------------

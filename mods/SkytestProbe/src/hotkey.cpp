@@ -29,7 +29,7 @@ namespace
 		}
 
 		if (config::notifications) {
-			RE::DebugNotification("SkytestProbe: marker dropped");
+			RE::SendHUDMessage::ShowHUDMessage("SkytestProbe: marker dropped");
 		}
 		SKSE::log::info("SkytestProbe: F11 marker fired");
 	}

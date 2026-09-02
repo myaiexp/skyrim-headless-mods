@@ -27,7 +27,9 @@ namespace
 	// after GetCollisionFilterInfo at slot 0x08 which CommonLib *does* name:
 	//   - adamhynek/activeragdoll  include/RE/havok_behavior.h
 	//   - adamhynek/higgs          include/RE/havok.h
-	// Both: `virtual void SetCollisionFilterInfo(std::uint32_t filterInfo) = 0; // 09`.
+	// Both: `virtual void SetCollisionFilterInfo(std::uint32_t filterInfo) = 0; // 09`. NG 7 types
+	// the READ side (slot 0x08) as RE::CFilter, but CFilter is a 4-byte struct wrapping exactly
+	// that std::uint32_t, so passing the raw value by value here stays ABI-identical.
 	// This setter is what propagates the filter into the underlying Havok proxy/rigid-body
 	// collidable, so it's the correct write path (cleaner and safer than poking the collidable
 	// memory by raw offset, which is unk-padded in the headers). We invoke it through the live
@@ -106,9 +108,9 @@ namespace
 			if (!ctrl) {
 				continue;
 			}
-			std::uint32_t info = 0;
+			RE::CFilter info{};
 			ctrl->GetCollisionFilterInfo(info);
-			const std::uint32_t group = info >> 16;
+			const std::uint32_t group = info.filter >> 16;
 			if (group == kGhostGroup) {
 				continue;  // char-controller already ghosted (enrolled on a prior frame)
 			}
@@ -116,7 +118,7 @@ namespace
 			if (g_enrolled.find(id) == g_enrolled.end()) {
 				g_enrolled.emplace(id, group);
 			}
-			const std::uint32_t ghosted = (info & 0x0000FFFF) | (kGhostGroup << 16);
+			const std::uint32_t ghosted = (info.filter & 0x0000FFFF) | (kGhostGroup << 16);
 			CharController_SetCollisionFilterInfo(ctrl, ghosted);
 			SKSE::log::info("enrolled ghost-ally {} ({:08X}) orig group {}",
 				actor->GetName(), id, group);
@@ -134,9 +136,9 @@ namespace
 			}
 			if (actor) {
 				if (auto* ctrl = actor->GetCharController()) {
-					std::uint32_t info = 0;
+					RE::CFilter info{};
 					ctrl->GetCollisionFilterInfo(info);
-					const std::uint32_t restored = (info & 0x0000FFFF) | (it->second << 16);
+					const std::uint32_t restored = (info.filter & 0x0000FFFF) | (it->second << 16);
 					CharController_SetCollisionFilterInfo(ctrl, restored);
 				}
 			}
@@ -177,7 +179,7 @@ namespace
 		//       .get() -> hkpShapePhantom*                              (hkpWorldObject subtype)
 		//         ->collidable (hkpLinkedCollidable : hkpCollidable)   (hkpWorldObject, 0x20)
 		//           .broadPhaseHandle (hkpTypedBroadPhaseHandle)       (hkpCollidable, 0x24)
-		//             .collisionFilterInfo (std::uint32_t)             (handle +0x8)
+		//             .collisionFilterInfo (RE::CFilter, a 4-byte uint32 wrapper) (handle +0x8)
 		//
 		// CommonLibSSE-NG only forward-declares bhkSimpleShapePhantom (no full def), so we
 		// reinterpret_cast unk0E0 to its complete base bhkShapePhantom to reach the inherited
@@ -187,7 +189,7 @@ namespace
 		if (!phantom) {
 			return;
 		}
-		std::uint32_t& filterInfo = phantom->collidable.broadPhaseHandle.collisionFilterInfo;
+		RE::CFilter& filterInfo = phantom->collidable.broadPhaseHandle.collisionFilterInfo;
 
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
@@ -198,12 +200,12 @@ namespace
 		// here (inside the guard) rather than unconditionally means the full high-actor scan +
 		// enroll runs once per shot, not every frame for every projectile in flight — important
 		// with the auto-fire bow spamming projectiles.
-		if ((filterInfo >> 16) != kGhostGroup) {
+		if ((filterInfo.filter >> 16) != kGhostGroup) {
 			// Ensure every current teammate is enrolled in the ghost group (and any ex-teammate
 			// restored) before stamping the projectile with that same group.
 			MaintainGhostGroup(player);
-			filterInfo &= 0x0000FFFF;
-			filterInfo |= (kGhostGroup << 16);
+			filterInfo.filter &= 0x0000FFFF;
+			filterInfo.filter |= (kGhostGroup << 16);
 			SKSE::log::info("stamped player {} -> ghost group", a_label);
 		}
 	}

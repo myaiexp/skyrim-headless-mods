@@ -8,7 +8,7 @@
 namespace config
 {
 	inline std::uint32_t markerHotkey = 0x57;  // DX scancode, F11. 0 = disabled.
-	inline bool          notifications = true;  // on-screen DebugNotification feedback.
+	inline bool          notifications = true;  // on-screen ShowHUDMessage feedback.
 	inline int           pollIntervalMs = 250;  // command-file poll + watch cadence.
 
 	void Load();  // reads the ini; defined in main.cpp.

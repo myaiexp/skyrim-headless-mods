@@ -125,10 +125,10 @@ void engine::DumpActor(RE::Actor* a_actor, const std::vector<std::string>& a_avs
 	// (7) char-controller collision group (GhostAllies pattern): top 16 bits of
 	// collisionFilterInfo = systemGroup. Controller null when 3D not loaded.
 	if (auto* ctrl = a_actor->GetCharController()) {
-		std::uint32_t info = 0;
+		RE::CFilter info{};
 		ctrl->GetCollisionFilterInfo(info);
-		f["collisionFilterInfo"] = HexID(info);
-		f["systemGroup"]         = info >> 16;
+		f["collisionFilterInfo"] = HexID(info.filter);
+		f["systemGroup"]         = info.filter >> 16;
 	} else {
 		f["charController"] = "none (3D unloaded)";
 	}

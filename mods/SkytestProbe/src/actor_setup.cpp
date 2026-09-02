@@ -47,7 +47,9 @@ bool engine::SetAV(RE::Actor* a_actor, RE::ActorValue a_av, float a_value)
 	avo->SetActorValue(a_av, a_value);  // base/permanent
 	// Refill current to the new base: clear the damage modifier (positive restore caps
 	// at base). For value 0 this is a no-op, so the current value drains to 0 too.
-	avo->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, a_av, a_value);
+	// NG >=7 hardcodes the kDamage modifier (exactly what we used to pass) and abs()es the
+	// amount, so a negative a_value would now restore rather than damage.
+	avo->RestoreActorValue(a_av, a_value);
 	return true;
 }
 

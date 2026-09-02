@@ -83,22 +83,24 @@ void engine::DumpFaceGen(RE::Actor* a_actor, const char* a_src)
 		RE::BSSpinLockGuard locker(fg->lock);
 		line["exprOverride"] = fg->exprOverride;
 		// Sweep every keyframe (names tagged by struct offset) to locate the mouth driver.
+		// The keys keep CommonLib's pre-v7.1.0 placeholder names (unk140 == phoneme3@0x140): the
+		// harness mines them by string and facegen_ramp's `kf` tags mirror them — renaming breaks both.
 		trace::json kf = trace::json::object();
 		if (fg->transitionTargetKeyFrame) {
 			kf["transitionTarget@18"] = compact(*fg->transitionTargetKeyFrame);
 		}
 		kf["expression@20"] = compact(fg->expressionKeyFrame);
-		kf["unk040@40"]     = compact(fg->unk040);
+		kf["unk040@40"]     = compact(fg->expressionKeyFrame2);
 		kf["modifier@60"]   = compact(fg->modifierKeyFrame);
 		kf["phoneme@80"]    = compact(fg->phenomeKeyFrame);
 		kf["custom@A0"]     = compact(fg->customKeyFrame);
-		kf["unk0C0@C0"]     = compact(fg->unk0C0);
-		kf["unk0E0@E0"]     = compact(fg->unk0E0);
-		kf["unk100@100"]    = compact(fg->unk100);
-		kf["unk120@120"]    = compact(fg->unk120);
-		kf["unk140@140"]    = compact(fg->unk140);
-		kf["unk160@160"]    = compact(fg->unk160);
-		kf["unk180@180"]    = compact(fg->unk180);
+		kf["unk0C0@C0"]     = compact(fg->expression3);
+		kf["unk0E0@E0"]     = compact(fg->modifier1);
+		kf["unk100@100"]    = compact(fg->modifier3);
+		kf["unk120@120"]    = compact(fg->phoneme1);
+		kf["unk140@140"]    = compact(fg->phoneme3);
+		kf["unk160@160"]    = compact(fg->custom1);
+		kf["unk180@180"]    = compact(fg->custom3);
 		line["kf"]      = std::move(kf);
 		line["phoneme"] = summarize(fg->phenomeKeyFrame);  // full values for the v4 field
 	}

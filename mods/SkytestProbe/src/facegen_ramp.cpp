@@ -85,6 +85,8 @@ namespace
 	// matching keyframe on this facegen. transitionTarget is a POINTER member (0x18, may be null);
 	// every other keyframe is INLINE in the struct, so we return its address. The set mirrors the
 	// facegen dump exactly, so a tag copied straight from a sweep line targets the same keyframe.
+	// Tags are CommonLib's pre-v7.1.0 field names, frozen: FaceGenRampParams::kf defaults to
+	// "unk140" and the harness sends them over the wire, so they outlive the header rename.
 	RE::BSFaceGenKeyframeMultiple* SelectKeyframe(RE::BSFaceGenAnimationData* a_fg, const std::string& a_kf)
 	{
 		if (!a_fg) {
@@ -92,17 +94,17 @@ namespace
 		}
 		if (a_kf == "transitionTarget") return a_fg->transitionTargetKeyFrame;
 		if (a_kf == "expression")       return &a_fg->expressionKeyFrame;
-		if (a_kf == "unk040")           return &a_fg->unk040;
+		if (a_kf == "unk040")           return &a_fg->expressionKeyFrame2;
 		if (a_kf == "modifier")         return &a_fg->modifierKeyFrame;
 		if (a_kf == "phoneme")          return &a_fg->phenomeKeyFrame;
 		if (a_kf == "custom")           return &a_fg->customKeyFrame;
-		if (a_kf == "unk0C0")           return &a_fg->unk0C0;
-		if (a_kf == "unk0E0")           return &a_fg->unk0E0;
-		if (a_kf == "unk100")           return &a_fg->unk100;
-		if (a_kf == "unk120")           return &a_fg->unk120;
-		if (a_kf == "unk140")           return &a_fg->unk140;
-		if (a_kf == "unk160")           return &a_fg->unk160;
-		if (a_kf == "unk180")           return &a_fg->unk180;
+		if (a_kf == "unk0C0")           return &a_fg->expression3;
+		if (a_kf == "unk0E0")           return &a_fg->modifier1;
+		if (a_kf == "unk100")           return &a_fg->modifier3;
+		if (a_kf == "unk120")           return &a_fg->phoneme1;
+		if (a_kf == "unk140")           return &a_fg->phoneme3;
+		if (a_kf == "unk160")           return &a_fg->custom1;
+		if (a_kf == "unk180")           return &a_fg->custom3;
 		return nullptr;  // unknown tag
 	}
 
@@ -175,7 +177,7 @@ namespace
 							say->sound.FadeOutAndRelease(30);
 						}
 					}
-					actor->PauseCurrentDialogue();
+					actor->StopCurrentDialogue();
 				}
 				// Stop the speaking state if asked, then hand the actor's facegen to the hook —
 				// it does the per-frame scaling at the apply point (winning the pump race).

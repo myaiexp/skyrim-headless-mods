@@ -47,7 +47,7 @@ namespace engine
 		float       threshold    = 0.3F;       // self-trigger when transitionTarget max >= this
 		bool        speakingDone = true;       // SetSpeakingDone(true) at ramp start (mirrors the cut)
 		bool        cut          = false;      // at trigger, do CutNpcReply's audio-stop first (fade the
-		                                       // ExtraSayToTopicInfo sound + PauseCurrentDialogue) so the
+		                                       // ExtraSayToTopicInfo sound + StopCurrentDialogue) so the
 		                                       // pump goes quiet — WITHOUT this, mid-speech audio re-drives
 		                                       // transitionTarget every frame and any ramp loses (dead-end 6).
 		bool        reassert     = true;       // re-write the target every frame (own it) vs ramp-then-release
