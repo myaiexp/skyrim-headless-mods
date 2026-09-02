@@ -74,7 +74,7 @@ cat > "$FOMOD/info.xml" <<EOF
   <Author>${AUTHOR}</Author>
   <Version>${VERSION}</Version>
   <Website>${WEBSITE}</Website>
-  <Description>Pacing and control tweaks for Dragonborn Voice Over (DBVO): the NPC reply lands when your voiced line actually ends, line skip, clean audio cuts, and a player-voice volume slider — all from a SkyUI MCM.</Description>
+  <Description>DBVO 1.x ONLY — do not install on DBVO 2, it softlocks dialogue. Pacing and control tweaks for Dragonborn Voice Over (DBVO) 1.x: the NPC reply lands when your voiced line actually ends, line skip, clean audio cuts, and a player-voice volume slider — all from a SkyUI MCM.</Description>
   <Groups>
     <element>${CATEGORY}</element>
   </Groups>
@@ -93,9 +93,11 @@ cat > "$FOMOD/ModuleConfig.xml" <<'EOF'
         <group name="Components" type="SelectAll">
           <plugins order="Explicit">
             <plugin name="DBVO Dialogue Tweaks">
-              <description>Reply-on-line-end timing, manual line skip, clean cut on skip and interrupt, player-voice volume, and a SkyUI MCM.
+              <description>DBVO 1.x ONLY. Do NOT install this on DBVO 2 (Dragonborn Voice Over 2) — DBVO 2 ships no dialoguemenu.swf and no Papyrus, so the patched menu here never gets the call that arms the reply and clicking a topic softlocks the conversation. DBVO 2 already does nearly all of this natively (reply timed off your line's real audio length, npc_response_delay, dialogue_volume, and manual skip since 2.0.1.6).
 
-Requires Dragonborn Voice Over, SKSE, SkyUI, and Address Library. Let this overwrite DBVO's dialoguemenu.swf.</description>
+Reply-on-line-end timing, manual line skip, clean cut on skip and interrupt, player-voice volume, and a SkyUI MCM.
+
+Requires Dragonborn Voice Over 1.1.1 (the mod page's OLD FILES tab), SKSE, SkyUI, and Address Library. Let this overwrite DBVO's dialoguemenu.swf.</description>
               <image path="fomod\images\header.jpg"/>
               <files>
                 <folder source="core" destination="" priority="0"/>

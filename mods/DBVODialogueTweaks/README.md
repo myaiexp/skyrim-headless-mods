@@ -1,13 +1,19 @@
 # DBVO Dialogue Tweaks
 
-Pacing and control tweaks for **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329)**:
+> **For DBVO 1.x only — superseded by DBVO 2.** This mod patches the `dialoguemenu.swf` + Papyrus
+> stack that Dragonborn Voice Over shipped through 1.1.1. DBVO 2 (2026) replaced that stack with a
+> single DLL, absorbed nearly every feature below, and **softlocks dialogue if you install this on
+> top of it** — see [Compatibility](#compatibility). The one thing DBVO 2 still does not do is cut
+> your line's audio when you skip it.
+
+Pacing and control tweaks for **[Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329) 1.x**:
 makes the NPC reply land **when your voiced line actually ends** instead of after DBVO's fixed
 time-guess, lets you **skip** your own line, and adds a **player-voice volume** slider. Everything is
 configurable from a native SkyUI MCM.
 
-DBVO times the NPC's reply by _estimating_ your line's length from its word count. Fast voice packs
-(Karat and other AI packs) finish well before that estimate, so every line ends in dead air. Or,
-over-corrected, the NPC talks over you. This mod replaces the guess with real end-detection: a
+DBVO 1.x times the NPC's reply by _estimating_ your line's length from its word count. Fast voice
+packs (Karat and other AI packs) finish well before that estimate, so every line ends in dead air.
+Or, over-corrected, the NPC talks over you. This mod replaces the guess with real end-detection: a
 lightweight SKSE plugin watches your line and cues the reply the moment it stops.
 
 ## Features
@@ -26,20 +32,23 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 ## Requirements
 
 - Skyrim Special Edition or Anniversary Edition + **SKSE**
-- **[Dragonborn Voice Over](https://www.nexusmods.com/skyrimspecialedition/mods/84329)** and everything
-  it requires (PapyrusUtil, ConsoleUtilSSE NG)
+- **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153),
+  which now lives under the mod page's **OLD FILES** tab: the page's main download is DBVO 2, which
+  this mod does not support. Plus everything DBVO 1.x itself requires (PapyrusUtil, ConsoleUtilSSE NG).
 - **SkyUI** (for the MCM)
 - **Address Library for SKSE Plugins**
 
 ## Compatibility
 
-> **⚠ DBVO 2 (Dragonborn Voice Over 2) — do NOT install this mod.** This mod targets **DBVO 1.x**
-> only. DBVO 2 is a native rewrite that ships no `dialoguemenu.swf` and no Papyrus, and the swf here
-> depends on DBVO 1.0's Papyrus calling `startTopicClickedTimer` to arm the reply. Under DBVO 2 that
-> call never comes, so clicking a topic **softlocks the conversation** — the menu enters the clicked
-> state and never advances. DBVO 2 also absorbs nearly everything this mod added: the reply is timed
-> off the real `.fuz` duration, `npc_response_delay` replaces the gap slider, `dialogue_volume`
-> (+ `dialogue_reverb`) replaces the volume slider, and 2.0.1.6 added manual skip. Full analysis:
+> **⚠ DBVO 2 (Dragonborn Voice Over 2) — do NOT install this mod.** DBVO 2 is now the main download
+> on mod page 84329 (2.0.1.6, 2026-08-30; the page is titled "Dragonborn Voice Over 2" and 1.1.1 is
+> demoted to OLD FILES). It is a native rewrite that ships no `dialoguemenu.swf` and no Papyrus, and
+> the swf here depends on DBVO 1.0's Papyrus calling `startTopicClickedTimer` to arm the reply. Under
+> DBVO 2 that call never comes, so clicking a topic **softlocks the conversation** — the menu enters
+> the clicked state and never advances. DBVO 2 also absorbs nearly everything this mod added: the
+> reply is timed off the real `.fuz` duration, `npc_response_delay` replaces the gap slider,
+> `dialogue_volume` (+ `dialogue_reverb`) replaces the volume slider, and 2.0.1.6 added manual skip.
+> Only the clean audio cut on skip is still missing there. Full analysis:
 > [`docs/plans/dbvo-v2-compatibility-analysis.md`](../../docs/plans/dbvo-v2-compatibility-analysis.md).
 
 - **SE + AE, yes, one DLL for both.** The plugin is built on CommonLibSSE-NG and reaches the engine
@@ -48,13 +57,14 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
-- **Pinned to DBVO 1.x.** The swf this mod is built from was a fixed target for years — until DBVO 2
-  (2026) replaced the whole swf + Papyrus stack with a single DLL. Within DBVO 1.x this mod is still
-  stable; it does not and cannot follow DBVO forward.
+- **Pinned to DBVO 1.x, permanently.** The swf this mod is built from was a fixed target for years —
+  until DBVO 2 (2026) replaced the whole swf + Papyrus stack with a single DLL. Within DBVO 1.x this
+  mod is still stable; it does not and cannot follow DBVO forward, and there is nothing left to
+  follow it to (DBVO 2 does the same work natively).
 
 ## Installation
 
-1. Install **DBVO** first and get it working.
+1. Install **DBVO 1.1.1** (the OLD FILES tab, _not_ the page's main DBVO 2 download) and get it working.
 2. Install this mod with a mod manager and let it **overwrite DBVO's `Interface/dialoguemenu.swf`**:
    the bundled swf _is_ DBVO's, recompiled with these tweaks, so it must win over DBVO's copy (and lose
    to nothing else that edits the dialogue menu).

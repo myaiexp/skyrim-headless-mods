@@ -1,8 +1,16 @@
+> **⚠ For DBVO 1.x only — do not install this on DBVO 2.** This mod patches the `dialoguemenu.swf` +
+> Papyrus stack that Dragonborn Voice Over shipped through 1.1.1 (now under DBVO's **OLD FILES** tab).
+> DBVO 2 is a native rewrite with no `dialoguemenu.swf` and no Papyrus, so the patched menu here
+> never gets the call that arms the reply and **clicking a topic softlocks the conversation**. DBVO 2
+> also does nearly everything this mod does, natively: the reply is timed off your line's real audio
+> length, `npc_response_delay` is the gap, `dialogue_volume` is the volume, and 2.0.1.6 added manual
+> skip. If you are on DBVO 2, you do not need this mod — use DBVO 2's own settings.
+
 ## DBVO Dialogue Tweaks
 
 The NPC's reply lands when your voiced line actually ends. A small SKSE plugin watches your line's audio and fires the reply the moment it truly stops. You can also skip your own line, set the volume of your own voice, and tune the gap before the reply.
 
-*Pacing and control tweaks for [Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329).*
+*Pacing and control tweaks for [Dragonborn Voice Over (DBVO)](https://www.nexusmods.com/skyrimspecialedition/mods/84329) **1.x**.*
 
 ### Features
 
@@ -16,7 +24,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 ### Requirements
 
 - Skyrim Special Edition or Anniversary Edition + SKSE
-- [Dragonborn Voice Over](https://www.nexusmods.com/skyrimspecialedition/mods/84329) and everything it requires (PapyrusUtil, ConsoleUtilSSE NG)
+- **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153) from the mod page's OLD FILES tab (**not** the main DBVO 2 download), and everything DBVO 1.x requires (PapyrusUtil, ConsoleUtilSSE NG)
 - SkyUI (for the MCM)
 - Address Library for SKSE Plugins
 
@@ -24,6 +32,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 
 - **SE and AE, one DLL for both.** Built on CommonLibSSE-NG and reaches the engine through the Address Library (addresses resolved at runtime), so the same file runs on every SE and AE build, Steam or GOG, as long as Address Library is installed. Tested on AE/Steam; SE (1.5.97) and GOG run the same build and should work, but are untested. Please report if you hit anything.
 - **VR, no.** Skyrim VR uses a different dialogue UI and would need a separate build; it isn't provided.
+- **DBVO 2, no.** It replaced the whole swf + Papyrus stack with a single DLL; this mod patches that stack and softlocks dialogue on top of it. See the warning at the top.
 - It overwrites only DBVO's `Interface/dialoguemenu.swf` (let it win that conflict, install it after DBVO) and never touches DBVO's own scripts. The `.esp` is ESL-flagged and takes no load-order slot.
 
 ### Configuration

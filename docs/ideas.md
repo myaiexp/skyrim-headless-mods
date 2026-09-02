@@ -511,9 +511,10 @@ each mod dir.
 
 ## 2026-08-31 — DBVO 2 supersedes DBVO Dialogue Tweaks
 
-State: **analysed, decision pending Mase.** Full write-up in
+State: **analysed; repo docs repointed at DBVO 1.x (2026-09-02); in-engine test blocked on the
+archive.** Full write-up + the 2026-09-02 addendum in
 `docs/plans/dbvo-v2-compatibility-analysis.md` (static analysis of the shipped 2.0.1.5 / 2.0.1.6
-DLLs — no in-engine test yet).
+DLLs — still no in-engine test).
 
 DBVO 2 is a native rewrite: one `DBVO.dll`, no `.esp`, no Papyrus, **no `dialoguemenu.swf`**. It
 absorbs the reply-on-line-end fix (base delay = real `.fuz` duration, word-count guess demoted to
@@ -521,12 +522,23 @@ fallback), the gap slider (`npc_response_delay`, default 0), the volume slider (
 plus a reverb slider we never had), and — in 2.0.1.6, 2026-08-30 — manual skip (`SkipInputHandler`:
 Activate / left-click / gamepad-A, 300 ms debounce → `FireResponse(token, skipped=true)`).
 
-Two follow-ups, neither started:
+DBVO 2 is now the **main download** on page 84329 (2.0.1.6; the page is titled "Dragonborn Voice
+Over 2" and DBVO 1.1.1 is demoted to OLD FILES), so the plain mod link new users follow leads
+straight into the softlock.
 
-- **Nexus page notice (do first).** The mod is live (182628) and installing it over DBVO 2
-  **softlocks dialogue** — our swf waits for DBVO 1.0's Papyrus to call `startTopicClickedTimer`,
-  which never comes, so `GameDelegate.call("TopicClicked")` is never reached. README warning has
-  landed; the Nexus page still needs it.
+Three follow-ups:
+
+- **Nexus page notice (do first, only manual step left).** The mod is live (182628, v1.0, 245
+  downloads) and installing it over DBVO 2 **softlocks dialogue** — our swf waits for DBVO 1.0's
+  Papyrus to call `startTopicClickedTimer`, which never comes, so `GameDelegate.call("TopicClicked")`
+  is never reached. The repo README, the root README row and the page copy `docs/dbvo-page.md` all
+  carry the warning + the 1.1.1 OLD-FILES link now; **paste `docs/dbvo-page.md` onto the live Nexus
+  page** (website-only, no write API).
+- **In-engine test of DBVO 2 — needs a manual download.** `DBVO.dll` 2.0.1.6 + `SKSE/Plugins/DBVO2/`
+  and **SKSE Menu Framework** are not on this machine, and the Nexus key is non-premium
+  (`download_link.json` → 403). The Karat legacy voice pack *is* installed, so `use_legacy_voice_over`
+  is the cheap path to a voiced line once the archive lands. Two profiles: DBVO 2 alone (does skip
+  leave the player line playing?), DBVO 2 + this mod (does the click softlock?).
 - **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
   handle (no sound RTTI in either build; neither references Address Library 36541/37542;
   `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only

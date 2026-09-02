@@ -171,6 +171,34 @@ what makes a clean fade-out possible at all.
    the fade must not double-fire the response. That is real work for one polish detail the author
    can now add in a few lines — hence third.
 
+## Addendum — 2026-09-02: DBVO 2 is the page's main download now
+
+Re-checked against the Nexus API (mod 84329, owner key):
+
+- The page is titled **"Dragonborn Voice Over 2"**. `2.0.1.6` (file `797830`, 2026-08-30, 2.44 MB) is
+  the **MAIN** file; `2.0.1.5` (`772544`) and **DBVO 1.1.1 (`416153`)** are both `OLD_VERSION`.
+- **Nothing newer than 2.0.1.6 has shipped**, so §1–§4 above still describe the current release —
+  the "release" event is the page flip, not a new build.
+
+Consequence for this mod: a new user who follows the plain
+`nexusmods.com/skyrimspecialedition/mods/84329` link now lands on DBVO 2 by default and walks
+straight into the §3 softlock. The README and the Nexus page copy (`docs/dbvo-page.md`) were
+repointed at the OLD FILES entry for 1.1.1 the same day; **the live Nexus page still needs the same
+edit by hand** (website-only, no write API).
+
+### In-engine test is blocked on the archive
+
+A `skytest` pass needs files this machine does not have:
+
+| Needed | State |
+| --- | --- |
+| `Dragonborn Voice Over 2` 2.0.1.6 (`SKSE/Plugins/DBVO.dll` + `SKSE/Plugins/DBVO2/`) | **missing** — not on disk; the Nexus key is non-premium, so `/v1/.../download_link.json` returns **403**. Manual download required. |
+| SKSE Menu Framework (DBVO 2's new requirement, replaces DBVO 1.x's PapyrusUtil + ConsoleUtilSSE NG) | **missing** from `SKSE/Plugins/` |
+| A voice pack | **present** — the Karat legacy pack is installed (`KaratVoice - {Skyrim,CC,LOTD}.bsa` + `DragonbornVoiceOver/voice_packs/danagis_karatvoice_voice_pack.json`), so DBVO 2's `use_legacy_voice_over` mode is the cheap path to a voiced line. |
+
+Once those land, the three [Open items](#open-items) are one session's work: profile A = DBVO 2 alone
+(does skip leave the player line playing?), profile B = DBVO 2 + this mod (does the click softlock?).
+
 ## Open items
 
 - **Not tested in-engine.** Everything above is static. The §3 softlock follows from AS2 control
