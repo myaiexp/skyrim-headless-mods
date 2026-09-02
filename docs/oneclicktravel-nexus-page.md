@@ -1,8 +1,9 @@
 # OneClickTravel: Nexus page copy
 
-**Status: release-ready (v1.0.0, verified in-game on AE 1.6.1170).** This is the copy to paste into
-the Nexus mod page. Honesty over hype throughout: single-purpose and always-on by design, that's the
-feature, not a gap. **Page title: One-Click Map: Instant Fast Travel** (locked, reads better in
+**Status: release-ready (v1.0.0, verified in-game on Skyrim 1.7.104; the same code verified earlier
+on AE 1.6.1170).** This is the copy to paste into the Nexus mod page. Honesty over hype throughout:
+single-purpose and always-on by design, that's the feature, not a gap.
+**Page title: One-Click Map: Instant Fast Travel** (locked, reads better in
 search); the DLL/plugin name stays `OneClickTravel`. Packaged as a **FOMOD** (single required
 component, no choices) for a branded install page, matching the DBVO Dialogue Tweaks release shape.
 See `mods/OneClickTravel/package.sh`.
@@ -39,9 +40,14 @@ takedown.
 ## Requirements
 
 - **SKSE64** and **Address Library for SKSE Plugins**. (Do **not** bundle Address Library; require it.)
-- **Runtime:** AE / 1.6.x **tested in-game**. SE (1.5.97) is **built but untested**: the DLL resolves
-  the correct address per runtime via Address Library, but I have no SE install to verify on. VR is
-  unsupported. Label SE clearly as unverified, not unsupported.
+- **Runtime:** **1.7.104 tested in-game** (2026-09-03, SKSE 2.3.1 + Address Library v13). AE 1.6.x
+  was tested in-game on the earlier build of the same code. SE (1.5.97) is **built but untested**:
+  the DLL resolves the correct address per runtime via Address Library, but I have no SE install to
+  verify on. VR is unsupported. Label SE clearly as unverified, not unsupported.
+- **Ship the CURRENT build, not an old zip.** A DLL built against a pre-2026-08 CommonLibSSE-NG
+  cannot even load on 1.7.104 — it dies on the format-5 Address Library with a modal — which is
+  exactly what happened to DBVO Dialogue Tweaks 1.0.0 after the patch. `dist/` was rebuilt from the
+  verified DLL on 2026-09-03; re-run `package.sh` after any rebuild so the artifact matches.
 
 ## Known limitations (say this up front)
 

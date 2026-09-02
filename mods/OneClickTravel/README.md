@@ -1,7 +1,7 @@
 # OneClickTravel
 
-> **Status: working, verified in-game (v1.0.0, AE 1.6.1170).** Click a discovered location on
-> the world map and you travel, instantly, no confirmation box.
+> **Status: working, verified in-game on Skyrim 1.7.104 (v1.0.0).** Click a discovered location
+> on the world map and you travel, instantly, no confirmation box.
 
 Open the world map, click a place you've already discovered, and you're there. No "Fast travel to
 X? Yes / No / Place Marker" box to click through first. The click _is_ the answer. Every other map
@@ -25,9 +25,11 @@ No `.esp`, no scripts, no Papyrus, no SkyUI: a single SKSE DLL. It takes no load
 
 ## Compatibility
 
-- **SE + AE: one DLL for both.** Built on CommonLibSSE-NG; every engine address is resolved at
-  runtime through the Address Library, so the same file runs on every SE and AE build (Steam or
-  GOG) as long as Address Library is installed. **Verified in-game on AE** (v1.6.1170).
+- **SE + AE, including the 2026-09 patch: one DLL for both.** Built on CommonLibSSE-NG; every
+  engine address is resolved at runtime through the Address Library, so the same file runs on every
+  SE and AE build (Steam or GOG) as long as Address Library is installed. **Verified in-game on
+  1.6.1170 and again on 1.7.104** (2026-09-03; SKSE 2.3.1 + Address Library v13, rebuilt against
+  `alandtse/CommonLibSSE-NG` v7.1.0 — the `QueueMessage` hook resolves and fires unchanged).
 - **Map-replacer mods: fully compatible.** It hooks the engine's native C++ message box, **not**
   `map.swf`, so it stacks cleanly with map overhauls that replace the map interface: A Quality
   World Map, FlatMapMarkers, Atlas Map Markers, Baka World Map, and the like. It changes _when the
@@ -48,6 +50,30 @@ No `.esp`, no scripts, no Papyrus, no SkyUI: a single SKSE DLL. It takes no load
 2. **Restart Skyrim.**
 
 That's all. It's active immediately, always on, no configuration.
+
+## How it was verified (and how to re-verify it)
+
+`mods/OneClickTravel/oneclick.steps` is the whole test, hands-free and headless — it boots an
+isolated vanilla+OneClickTravel session, reveals the map markers, teleports outdoors, opens the
+world map, clicks one discovered marker, and **gates on the player's cell changing**, so a click
+that fails to travel fails the run:
+
+```bash
+SKYTEST_NO_AUTOLOAD=1 skytest replay mods/OneClickTravel/build/OneClickTravel.dll \
+    oneclick.steps --headless
+```
+
+The 1.7.104 result, as an A/B against the same rig with the DLL absent
+(`skytest test --vanilla --headless`), same save, same staging, same marker, same click:
+
+| Run                   | Result                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| **With the mod**      | no box; player moves `Riverwood` → `NorthSkyboundWatchExterior01`; log: `travelable click intercepted; suppressing confirm box and driving travel (target formID=0004B6EB)` |
+| **Vanilla control**   | the vanilla **"Fast travel to North Skybound Watch? Yes / No / Place Marker"** box; player stays in Riverwood |
+
+Three travels in three separate sessions, two different destinations (`0004B6EB`,
+`00017760`). Pass-through was checked in the same runs: the AE **Survival Mode** prompt and the
+custom-marker placement/highlight path rendered exactly as in the control.
 
 ## How it works
 

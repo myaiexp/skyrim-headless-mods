@@ -55,9 +55,11 @@ What this means for anything you touch here:
 - **Two bundled/third-party DLLs are still stale**, so a test profile is not automatically clean:
   `CrashLogger.dll` is renamed `.disabled-stale-for-1.7.104` in the vanilla profile, and
   `skytest/base-skse/po3_StartOnSave.dll` (v2.7.0.1) cannot load — so **boot-into-save is
-  unavailable**. Use `SKYTEST_NO_AUTOLOAD=1 skytest test …`, which boots to the menu with only the
-  base save loadable, then `drive` into it. Restoring autoload needs Start On Save **2.8.0**
-  (Nexus 50054, file 795157) dropped into `skytest/base-skse/`.
+  unavailable**. Use `SKYTEST_NO_AUTOLOAD=1 skytest test …`: it boots to the menu with only the
+  base save loadable, returns as soon as the probe answers (~40 s — it no longer waits out the
+  in-world timeout), and prints the drive-in recipe (`drive click 1177 496` → `drive tap enter` →
+  `ready`). Restoring autoload needs Start On Save **2.8.0** (Nexus 50054, file 795157) dropped
+  into `skytest/base-skse/`.
 - **`.profiles/full` — the real ~40-mod load order — is NOT usable.** Every third-party plugin in
   it predates the patch. `skytest play` will hit the format-5 modal. Only `skytest test` (vanilla
   + our own rebuilt DLLs) is known-good.
@@ -66,6 +68,10 @@ What this means for anything you touch here:
   not installed. See `docs/ideas.md` before you sit through it again.
 - `skytest status` prints a `runtime` line and every launch verb runs `assert_runtime_match`.
   **Trust that line** rather than reasoning about whether the game "should" work.
+- **Loading is not working.** The tier-move verified that the six DLLs *load* on 1.7.104; only
+  **OneClickTravel** has since been re-verified as *functional* there (2026-09-03, A/B against
+  `test --vanilla`, replayable as `mods/OneClickTravel/oneclick.steps`). The other five are
+  unverified on this build — re-run each mod's own in-engine test before claiming otherwise.
 
 ## Testing a mod you built — which mode?
 
@@ -81,9 +87,18 @@ What this means for anything you touch here:
 - **First test = drive live; every test after = `skytest replay`.** Once you've driven a setup by
   hand, persist it as `mods/<mod>/<name>.steps` and re-run it with `skytest replay <mod> <name>.steps`
   — it boots the same isolated session and snaps to the target state via probe-gated steps, then
-  leaves it live to probe. **Caveat:** console `exec` staging does NOT work on game 1.6.1170 —
-  CommonLib mis-binds `CompileAndRun` (stale dependency, pinned in `skytest/docs/headless-findings.md`
-  #18; would fault windowed too). Use direct-call probe commands — the harness design, not a fallback.
+  leaves it live to probe. Make the LAST gate the assertion (`until:cell:<EditorID>` after a
+  travel/`coc`, `until:menu:<NAME>` after an open) so the script fails when the mod does, and see
+  `mods/OneClickTravel/oneclick.steps` for the shape.
+- **World staging: probe command if one exists, otherwise TYPE THE CONSOLE.** Direct-call probe
+  commands (`placeatme`, `give-spell`, `set-av`, …) are first choice — acked, main-thread. For
+  anything they don't cover, drive the real console: `drive tap tilde` + `drive type '<line>'` +
+  `drive tap enter` (a `type` step exists in `.steps`), verified on 1.7.104 with `tmm 1` and
+  `coc riverwood`. The console's **command table** is fine; only the probe's *programmatic* `exec`
+  is broken (CommonLib mis-binds `CompileAndRun` — findings #18/#27). **Close the console** before
+  driving anything else: open, it eats keys and turns clicks into console ref-picks.
+- **A/B every behavioral claim with `skytest test --vanilla`** — the same rig, same save, same
+  staging, no mod. It is one flag, so the control differs from the test run in exactly one thing.
 
 > **skytest manages the live game's `Data/` symlink.** It lives here now but operates on the real
 > install (`…/Skyrim Special Edition/Data` → `.profiles/full`). The mod-_managing_ repo

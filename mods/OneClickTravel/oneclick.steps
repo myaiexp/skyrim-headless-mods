@@ -1,0 +1,58 @@
+# OneClickTravel — the in-engine verification, replayable.
+#
+# What it proves, hands-free: ONE click on a discovered world-map marker fast-travels
+# instantly, with no "Fast travel to X? Yes / No / Place Marker" box in between. The last
+# gate IS the assertion — if the click did not travel, the replay fails there, loudly.
+#
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay mods/OneClickTravel/build/OneClickTravel.dll \
+#       oneclick.steps --headless
+#
+# NO_AUTOLOAD because the bundled po3_StartOnSave is stale for game 1.7.104, so boot-into-save
+# is unavailable and the script drives the main menu itself. Drop that env var once Start On
+# Save 2.8.0 lands in skytest/base-skse/ AND delete the first three steps.
+#
+# The control half of the A/B (must show the vanilla confirm box at the final click):
+#   SKYTEST_NO_AUTOLOAD=1 skytest test --vanilla --headless    # then drive these steps by hand
+#
+# Pixel coordinates are for the headless default 1280x720; re-read them off a `shot` if the
+# session resolution changes.
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait until:inworld
+wait 3s                 # inworld fires before the player's 3D settles (#16)
+
+# --- stage: every marker discovered, and get OUTDOORS -------------------------------
+# The console: its command table runs, unlike the probe's programmatic exec (#18).
+# NOTE: `type` takes the rest of the line VERBATIM (like exec/cmd) — a trailing `# comment`
+# would be typed into the console, so these comments live on their own lines.
+tap tilde
+wait until:menu:Console
+# tmm 1 -> "All map markers shown." (shown AND fast-travelable)
+type tmm 1
+tap enter
+wait 500ms
+type coc riverwood
+tap enter
+wait until:cell:Riverwood
+# The cell load CLOSES the console by itself — do NOT tap tilde here, that would REOPEN it, and
+# an open console eats the keys below while turning the click into a console ref-pick (#27).
+# This gate asserts that rather than trusting it.
+wait until:!menu:Console
+wait 1s
+# "Enable Survival Mode?" -> No. AE offers it on the first exterior load of a save, and Survival
+# Mode DISABLES fast travel. Harmless if the box is absent (an in-world click swings a fist).
+click 679 548
+wait 1s
+
+# --- the test itself ----------------------------------------------------------------
+tap m
+wait until:menu:MapMenu
+move 768 434            # hover "North Skybound Watch" (the map opens centred on Riverwood)
+wait 1s
+shot /tmp/oneclick-hover.png
+click                   # ONE click, on the marker under the pointer
+wait until:cell:NorthSkyboundWatchExterior01    # THE ASSERTION: the click alone travelled
+shot /tmp/oneclick-arrived.png

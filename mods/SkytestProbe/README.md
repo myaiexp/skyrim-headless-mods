@@ -95,6 +95,14 @@ SEH (`__try`/`__except`), so the AV becomes an `ok:false` "faulted" ack instead 
 is therefore retired, not fixed: **stage state with the direct-call commands** (`give-spell`,
 `set-av`) instead. Full pin: [`../../skytest/docs/headless-findings.md`](../../skytest/docs/headless-findings.md) #18.
 
+**What to use instead of `exec`, in order:** a direct-call probe command when one exists (acked,
+main-thread, null-safe), otherwise **type the real console** — `skytest drive tap tilde`,
+`skytest drive type '<line>'`, `skytest drive tap enter`. Typed input runs through the console's
+**command table**, which is untouched by the `CompileAndRun` mis-binding, and it is verified
+working headlessly on 1.7.104 (`tmm 1`, `coc riverwood` — headless-findings #27). So a missing
+staging capability is no longer a reason to add a probe command: add one when a test needs the
+result *observed* or acked, type the console when it just needs the world changed.
+
 ## Configuration
 
 `SkytestProbe.ini` sits next to the DLL in `Data/SKSE/Plugins/` (missing/garbled keys keep their
