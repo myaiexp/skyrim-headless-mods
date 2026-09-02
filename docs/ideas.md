@@ -536,16 +536,17 @@ Three follow-ups:
   users rather than our reverse-engineering. The repo README, the root README row and the page copy
   `docs/dbvo-page.md` all carry it; **paste `docs/dbvo-page.md` onto the live Nexus page**
   (website-only, no write API).
-- **The one DBVO 2 question still open: does a skip leave the player's line playing?** Everything
-  else is answered. This needs two things a screenshot can't give:
-  1. **DBVO 2's debug log turned on.** Its per-click `[resolve]`/`[fuz]`/`[speak]`/`[delay]` lines
-     are gated behind an "Enable DBVO logging" toggle that is **off by default and lives only in its
-     ImGui menu** (SKSE Menu Framework, F1) — it is *not* a key in `default_options.json`, so it
-     can't be pre-set from a file. Drive the menu (finding #25: coordinate clicks work).
-  2. **A sound-handle observer in SkytestProbe.** Port the read-only half of DBVODialogueTweaks'
-     `Actor::SpeakSoundFunction` hook (Address Library 36541/37542) so the probe reports whether the
-     player's `BSSoundHandle` is still playing when `FireResponse` advances the dialogue. That is
-     the actual measurement, and instrumentation belongs in the probe, not in a mod.
+- **One link left on the DBVO 2 skip question.** The observer is built and shipped:
+  SkytestProbe's **`speak-watch`** (read-only `Actor::SpeakSoundFunction` detour). With it,
+  pressing Activate ~600 ms into the player's line **never truncated it** — full ~1.6 s every run,
+  four runs, two prompts (table in `docs/plans/dbvo-v2-compatibility-analysis.md`). It also
+  confirmed DBVO 2 plays the line at `DBVO/Danagis_KaratVoice/<Sanitized_Prompt>.fuz`.
+  What is missing is proof that `SkipInputHandler` **fired** on the synthetic input, so
+  "skip fires but can't cut audio" and "skip never fired" both still fit. That needs DBVO 2's
+  `[FireResponse]`/`[delay]` lines, gated behind an **"Enable DBVO logging"** toggle that is off by
+  default and lives **only in its ImGui menu** (SKSE Menu Framework, F1) — not a key in
+  `default_options.json`. Drive the toggle on (finding #25: coordinate `drive click` works), re-run
+  the four-row table, done. **Don't cite the claim to MathiewMay before that.**
 
   The reusable stage is already built: `~/.cache/skytest-dbvo2/` (DBVO 2 alone) and
   `~/.cache/skytest-dbvo2-plus-tweaks/` (with this mod), both Data-shaped so

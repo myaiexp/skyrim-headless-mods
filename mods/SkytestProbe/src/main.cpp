@@ -12,6 +12,7 @@
 #include "engine.h"
 #include "hotkey.h"
 #include "probes.h"
+#include "speakwatch.h"
 #include "trace.h"
 
 namespace
@@ -48,6 +49,14 @@ namespace
 		probes::RegisterEventSinks();
 		engine::InstallFaceGenHook();  // facegen-ramp's per-frame apply hook (idle until a ramp triggers)
 		engine::InstallSkipEaseSink();  // react to DBVO's real CutNpcDBVOReply skip with an eased close
+		// Read-only player-voice observer. Best-effort by design: in a profile that also has
+		// DBVODialogueTweaks the same function is already detoured and MinHook allows one hook
+		// per target, so this legitimately loses there — log the reason and stay inert.
+		if (std::string err; !engine::InstallSpeakWatchHook(err)) {
+			SKSE::log::info("SkytestProbe: speak-watch unavailable — {}", err);
+		} else {
+			SKSE::log::info("SkytestProbe: speak-sound observer hook installed (read-only)");
+		}
 		hotkey::Register();
 		commands::Start();
 		SKSE::log::info("SkytestProbe: kDataLoaded setup complete");
@@ -100,7 +109,7 @@ void config::Load()
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 2, 0 },
+	.Version = REL::Version{ 0, 3, 0 },
 	.Name = "SkytestProbe",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,

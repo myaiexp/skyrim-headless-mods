@@ -16,6 +16,7 @@
 #include "config.h"
 #include "engine.h"
 #include "probes.h"
+#include "speakwatch.h"
 #include "trace.h"
 
 namespace
@@ -306,6 +307,26 @@ namespace
 					trace::Ack(id, true);
 				} else {
 					trace::Ack(id, false, "facegen-observe: " + err);
+				}
+			});
+			return;
+		}
+
+		if (c == "speak-watch") {
+			// Read-only observer of the PLAYER's DBVO voice line: the only way to answer "is the
+			// player's line still audible?", which no screenshot and no UI state can show. Emits
+			// src:"speak" start/playing/stopped lines with elapsed ms. `prefix` gates the sound
+			// path (default "DBVO/"); on:false disarms. Refuses with a reason when the
+			// SpeakSoundFunction hook could not be installed — notably in a profile that also
+			// contains DBVODialogueTweaks, which detours the same function.
+			const bool        on     = JBool(cmd, "on", true);
+			const std::string prefix = JStr(cmd, "prefix", "");
+			EnqueueMain([id, prefix, on]() {
+				std::string err;
+				if (engine::ArmSpeakWatch(prefix, on, err)) {
+					trace::Ack(id, true);
+				} else {
+					trace::Ack(id, false, "speak-watch: " + err);
 				}
 			});
 			return;

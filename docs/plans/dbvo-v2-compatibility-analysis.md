@@ -215,28 +215,49 @@ Exactly the §3 mechanism: the menu reaches `TOPIC_CLICKED` and never calls
   for DBVO 2.0 to work properly.` First-party confirmation, and a much better thing to quote at a
   user than our own reverse-engineering.
 
-#### Still not answered: the skip/audio question
+#### Measured: DBVO 2 does not shorten the player's line when you press skip
 
-Profile A showed no player voice before the reply, which is *consistent* with the Karat pack having
-no `.fuz` for that prompt (DBVO 2 then logs `[fuz] not found … passing click through` and advances
-immediately) — but it is not proof, because the per-click `[resolve]` / `[fuz]` / `[speak]` /
-`[delay]` lines never appeared: DBVO 2 gates them behind an **"Enable DBVO logging"** toggle that is
-**off by default** and lives only in its ImGui menu (`SKSEMenuFramework`, F1) — the option is absent
-from `default_options.json`, so it cannot be pre-set from a file.
+The claim needed an instrument, so one was built: SkytestProbe's **`speak-watch`** — a read-only
+MinHook detour on `Actor::SpeakSoundFunction` (Address Library 36541/37542) that copies the
+`BSSoundHandle` by value and samples it, never touching it. It confirms §1 empirically first: DBVO 2
+really does play the player's line through that native, with the path
+`DBVO/Danagis_KaratVoice/<Sanitized_Prompt>.fuz` — so the legacy-pack resolution and the `sanitized`
+key strategy are now observed, not inferred.
 
-So confirming "a DBVO 2 skip leaves the player's line playing over the NPC" needs **both**: that
-toggle driven on in the ImGui menu, and a sound-handle observer, because the claim is about audio
-that a screenshot cannot show. The observer belongs in SkytestProbe — port the read-only half of
-DBVODialogueTweaks' `Actor::SpeakSoundFunction` hook (Address Library 36541/37542) so it reports
-whether the player's `BSSoundHandle` is still playing when `FireResponse` advances the dialogue.
+Then the experiment, Profile A (DBVO 2 alone), same NPC, `speak-watch` armed, `elapsedMs` from the
+`stopped` line (`why:"handle-released"` every time — the engine releases the handle at the natural
+end of the line):
+
+| Prompt | Activate pressed ~600 ms in? | Line ran for |
+| --- | --- | --- |
+| `Heard_any_rumors_lately_` | no | **1649 ms** |
+| `Heard_any_rumors_lately_` | no | **1850 ms** |
+| `Where_can_I_learn_more_about_magic_` | **yes** | **1564 ms** |
+| `Where_can_I_learn_more_about_magic_` | **yes** | **1617 ms** |
+
+Pressing the skip input a third of the way into the line **did not truncate it**: every run played
+to its natural length (spread is ±one 250 ms sampling tick). If DBVO 2 cut the audio we would see
+~600–900 ms. This is the positive evidence §4 predicted from the *absence* of an audio path in
+`FireResponse` — the mod's one surviving differentiator is real.
+
+**The gap that remains is narrow and named:** these runs do not independently prove
+`SkipInputHandler` *fired* on the synthetic Activate, so "skip fires but cannot cut the audio" and
+"skip never fired" both fit the numbers. Closing it needs DBVO 2's own `[FireResponse]` /
+`[delay]` lines, which sit behind an **"Enable DBVO logging"** toggle that is **off by default and
+exists only in its ImGui menu** (`SKSEMenuFramework`, F1) — the option is not a key in
+`default_options.json`, so it cannot be pre-set from a file. Drive that toggle on (finding #25:
+coordinate `drive click` works), re-run the table above, and the answer is complete.
 
 ## Open items
 
 - ~~**Not tested in-engine.**~~ **Done 2026-09-02** — the §3 softlock is confirmed by A/B on game
   1.7.104 with DBVO 2.0.1.6, and DBVO 2 logs its own `[Conflict]` warning about the patched swf.
-  See the in-engine result above. §1–§2 and §4 remain binary evidence, unchanged.
-- **"Player voice keeps playing on skip"** is inferred from the *absence* of any audio-stop path in
-  `FireResponse`, not observed. Worth one in-engine check before citing it to the author.
+  §1's player-voice path is confirmed too (`speak-watch` sees
+  `DBVO/Danagis_KaratVoice/<Sanitized_Prompt>.fuz`). §2 and §4 remain binary evidence.
+- **"Player voice keeps playing on skip"** — **measured, one link short.** Pressing Activate ~600 ms
+  into the line never truncated it: it ran its full ~1.6 s every time (table above). What is still
+  unproven is that `SkipInputHandler` *fired* on the synthetic input, which needs DBVO 2's debug log
+  (ImGui toggle, off by default). Do not cite it to MathiewMay as observed until that is closed.
 - **`word-count-estimate` fallback frequency** is unknown — if `.fuz` duration reads fail often for
   some pack layout, DBVO 2's pacing would regress toward DBVO 1.0's for those lines.
 - The two 5-byte globals at `0x1802037c0` / `0x1802037c8` (BSS, runtime-initialized) feeding the

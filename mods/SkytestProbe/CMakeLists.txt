@@ -66,6 +66,16 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(CommonLibSSE)
 
+# --- MinHook: needed by the read-only speak-sound observer (src/speakwatch.cpp).
+# CommonLibSSE-NG's write_branch<5> only rewrites existing call-site branches, and
+# Actor::SpeakSoundFunction has to be detoured at its ENTRY with the original still
+# callable — that needs a prologue-stealing trampoline. Same pin as
+# DBVODialogueTweaks, which hooks the same function; bump both together.
+FetchContent_Declare(minhook
+	GIT_REPOSITORY https://github.com/TsudaKageyu/minhook
+	GIT_TAG d94c64d32ea37bc4f5ee47d580709f70c6fb6080)
+FetchContent_MakeAvailable(minhook)
+
 # --- The plugin DLL itself. JSON is the vendored single-header nlohmann/json
 # (src/external/nlohmann/json.hpp) — no FetchContent for it: header-only, NG
 # never links it, so it can't hit the spdlog export-set problem.
@@ -82,14 +92,15 @@ add_library(SkytestProbe SHARED
 	src/mcm.cpp
 	src/probes.cpp
 	src/hotkey.cpp
-	src/commands.cpp)
+	src/commands.cpp
+	src/speakwatch.cpp)
 target_compile_features(SkytestProbe PRIVATE cxx_std_23)
 # NOMINMAX is mandatory since NG started including <SimpleMath.h> in RE/S/State.h:
 # that drags in the Windows headers, whose min/max MACROS then eat every
 # `std::min(`/`std::max(` in this plugin ("expected unqualified-id"). NG defines it
 # only PRIVATEly for its own PCH, so each consumer must define it too.
 target_compile_definitions(SkytestProbe PRIVATE NOMINMAX)
-target_link_libraries(SkytestProbe PRIVATE CommonLibSSE::CommonLibSSE)
+target_link_libraries(SkytestProbe PRIVATE CommonLibSSE::CommonLibSSE minhook)
 target_include_directories(SkytestProbe PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/src"
 	"${CMAKE_CURRENT_SOURCE_DIR}/src/external")

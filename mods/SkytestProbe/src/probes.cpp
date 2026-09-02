@@ -10,6 +10,7 @@
 #include <SKSE/SKSE.h>
 
 #include "engine.h"
+#include "speakwatch.h"
 #include "trace.h"
 
 namespace
@@ -503,6 +504,9 @@ void probes::MainTick()
 	if (g_armedFilterCount.load(std::memory_order_relaxed) > 0) {
 		ReResolveFilters();
 	}
+	if (engine::SpeakWatchArmed()) {
+		engine::SampleSpeakWatch();
+	}
 }
 
 bool probes::HasMainTickWork()
@@ -510,7 +514,8 @@ bool probes::HasMainTickWork()
 	return g_activeWatchCount.load(std::memory_order_relaxed) > 0 ||
 	       g_activeFaceWatchCount.load(std::memory_order_relaxed) > 0 ||
 	       g_armedAnimCount.load(std::memory_order_relaxed) > 0 ||
-	       g_armedFilterCount.load(std::memory_order_relaxed) > 0;
+	       g_armedFilterCount.load(std::memory_order_relaxed) > 0 ||
+	       engine::SpeakWatchArmed();
 }
 
 void probes::WriteStatus()
