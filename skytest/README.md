@@ -148,8 +148,10 @@ which is the version it declares. Only `major.minor.patch` is compared — the e
 component the DLL name never has. If `strings` is unavailable the check is **skipped**, never fatal:
 a diagnostic must not be the thing that blocks a launch.
 
-`skytest status` prints the same pair unconditionally as a `runtime` line (and
-`status --json` as `.runtime.{game,skse,match}`), so the state is visible without launching:
+`skytest status` prints the matched pair unconditionally as a `runtime` line (and
+`status --json` as `.runtime.{game,skse,installed,match}` — `installed` lists every
+`skse64_*.dll` present, since keeping the old one beside the new one is how you stay able to
+downgrade), so the state is visible without launching:
 
 ```
 runtime    game 1.7.104.0 + SKSE 1.7.104          # matched
@@ -157,8 +159,45 @@ runtime    MISMATCH — game 1.7.104.0 but SKSE is for 1.6.1170 (SKSE will not l
 ```
 
 A match is **necessary, not sufficient**: the plugins also have to be built against a
-CommonLibSSE-NG that recognises the runtime. That is a rebuild, and it is why this repo is
-currently blocked on 1.7.104 — see [`../docs/skse-toolchain.md`](../docs/skse-toolchain.md).
+CommonLibSSE-NG that recognises the runtime — see
+[`../docs/skse-toolchain.md`](../docs/skse-toolchain.md).
+
+### A stale plugin parks the boot — the wait aborts instead of timing out
+
+Address Library v13 ships `versionlib-1-7-104-0.bin` in **format 5** (1.6.1170's was format 2). A
+CommonLibSSE older than v6.7.0 rejects it via `report_and_fail`, which throws a **modal**:
+
+```
+REL/ID.h(166): Unsupported address library format: 5
+This means this script extender plugin is incompatible with the address library …
+```
+
+That is not a soft failure — the game sits on the modal forever, so the readiness poll used to
+report 180 s of `-> booting` and then time out, which reads exactly like a harness bug. It isn't:
+it is a pre-patch third-party DLL. `gs_wait_ready` now greps the SKSE plugin logs written by *this*
+boot (a launch marker file gates on mtime, so a stale log can't fail a good boot) and aborts
+immediately, naming the plugin:
+
+```
+FATAL: an SKSE plugin refused this game build -> po3_StartOnSave: Unsupported address library format: 5
+```
+
+Two known casualties on 1.7.104: `CrashLogger.dll` (renamed `.disabled-stale-for-1.7.104` in the
+vanilla profile) and the bundled `base-skse/po3_StartOnSave.dll` v2.7.0.1.
+
+### `SKYTEST_NO_AUTOLOAD=1` — boot to the menu on purpose
+
+Because StartOnSave is what implements boot-into-save, its death takes autoload with it. The escape:
+
+```bash
+SKYTEST_NO_AUTOLOAD=1 skytest test mods/AutoFireBow/build/AutoFireBow.dll --headless
+skytest drive tap enter          # CONTINUE
+skytest ready 120
+```
+
+It still **isolates saves**, so the menu's Load list holds only `SkytestBase` and driving it cannot
+hit the missing-content modal (finding #13) that a real modded save would pop. Fix the underlying
+problem by dropping Start On Save 2.8.0 (Nexus 50054, file 795157) into `skytest/base-skse/`.
 
 ## Which mode: `test` or `play`?
 

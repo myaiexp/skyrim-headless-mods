@@ -38,22 +38,34 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 2. **SKSE C++** (`tools/skse/`) — native DLL, full engine access, for what Papyrus fundamentally can't reach. Cross-compiled Linux→Windows (clang-cl + lld-link + xwin; CommonLibSSE-NG via FetchContent).
 3. **Test what you build** — `skytest/`: vanilla+1 isolation **plus** a drivable gamescope test session (visible or `--headless`) to screenshot, inject input, and probe the mod in-engine. One tool.
 
-## BLOCKED: the game is on 1.7.104 and this repo is not (2026-09-01)
+## The game is on 1.7.104 — and so is this repo (2026-09-02)
 
-Steam updated `SkyrimSE.exe` to **1.7.104.0** on 2026-09-01 — Bethesda's first Skyrim patch in
-two and a half years. **Nothing SKSE-based in this repo can run until the stack moves forward**,
-so do not plan an in-engine test around a working game:
+Steam updated `SkyrimSE.exe` to **1.7.104.0** on 2026-09-01, Bethesda's first Skyrim patch in two
+and a half years. This repo has moved with it and is **verified in-engine on 1.7.104**: SKSE
+**2.3.1**, Address Library **v13**, and all six SKSE plugins rebuilt against
+**`alandtse/CommonLibSSE-NG v7.1.0`** (CharmedBaryon's upstream is abandoned at `b93280e` and
+misfiles 1.7.x as pre-AE — never repin to it; `docs/skse-toolchain.md` has the detail).
 
-- Installed SKSE is **2.2.6 (for 1.6.1170)**; SKSE **2.3.1** is the 1.7.104 build. Until it's
-  installed the loader refuses to start and there is no SKSE log at all.
-- Every SKSE mod here pins **CharmedBaryon/CommonLibSSE-NG @ `b93280e`** — that repo is
-  **abandoned** (that commit *is* its `main` HEAD, 2024-09-03) and its `REL::Module::load_version`
-  matches the minor version *exactly* (`case 6 → AE`), so 1.7.x falls through to `SE`, picks the
-  wrong Address Library file and the wrong struct layouts. A rebuilt DLL is required, not a
-  reconfigured one; see `docs/skse-toolchain.md` for the fork to move to.
-- `skytest` now refuses every launch verb with the two versions and the fix
-  (`assert_runtime_match`), and `skytest status` prints a `runtime` line. **Trust that line**
-  rather than reasoning about whether the game "should" work.
+What this means for anything you touch here:
+
+- **The new Address Library is FORMAT 5** (`versionlib-1-7-104-0.bin`; 1.6.1170's was format 2).
+  Any SKSE DLL built before ~2026-08 dies on it with a modal — `REL/ID.h: Unsupported address
+  library format: 5` — which **parks the boot forever**, it does not fail soft. `skytest` detects
+  that modal and aborts the wait naming the plugin; believe it and go update that DLL.
+- **Two bundled/third-party DLLs are still stale**, so a test profile is not automatically clean:
+  `CrashLogger.dll` is renamed `.disabled-stale-for-1.7.104` in the vanilla profile, and
+  `skytest/base-skse/po3_StartOnSave.dll` (v2.7.0.1) cannot load — so **boot-into-save is
+  unavailable**. Use `SKYTEST_NO_AUTOLOAD=1 skytest test …`, which boots to the menu with only the
+  base save loadable, then `drive` into it. Restoring autoload needs Start On Save **2.8.0**
+  (Nexus 50054, file 795157) dropped into `skytest/base-skse/`.
+- **`.profiles/full` — the real ~40-mod load order — is NOT usable.** Every third-party plugin in
+  it predates the patch. `skytest play` will hit the format-5 modal. Only `skytest test` (vanilla
+  + our own rebuilt DLLs) is known-good.
+- **A full six-mod rebuild is slow on purpose-less duplication**: each mod's `FetchContent`
+  compiles its own private CommonLibSSE-NG (~500 TUs, ~10 min), six times over, and `ccache` is
+  not installed. See `docs/ideas.md` before you sit through it again.
+- `skytest status` prints a `runtime` line and every launch verb runs `assert_runtime_match`.
+  **Trust that line** rather than reasoning about whether the game "should" work.
 
 ## Testing a mod you built — which mode?
 

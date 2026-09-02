@@ -534,15 +534,22 @@ Three follow-ups:
   is never reached. The repo README, the root README row and the page copy `docs/dbvo-page.md` all
   carry the warning + the 1.1.1 OLD-FILES link now; **paste `docs/dbvo-page.md` onto the live Nexus
   page** (website-only, no write API).
-- **In-engine test of DBVO 2 — double-blocked.** First on the **1.7.104 runtime** (see the
-  2026-09-02 entry: no SKSE plugin here loads at all right now), then on a **manual download** —
-  `DBVO.dll` 2.0.1.6 + `SKSE/Plugins/DBVO2/` and **SKSE Menu Framework** are not on this machine
-  and the Nexus key is non-premium (`download_link.json` → 403). The Karat legacy voice pack *is*
-  installed, so `use_legacy_voice_over` is the cheap path to a voiced line. Two profiles once
-  unblocked: DBVO 2 alone (does skip leave the player line playing?), DBVO 2 + this mod (does the
-  click softlock?). DBVO 2.0.1.6 is itself the "updated for 1.7.104.0" release; it links
-  CommonLibSSE-NG 6.7.1, and NG builds are multi-runtime by design, so it *probably* also runs on
-  1.6.1170 after a downgrade — unverified, check before betting a test plan on it.
+- **In-engine test of DBVO 2 — staged, not yet run.** The runtime blocker is gone (1.7.104 stack is
+  live) and the archive is extracted and configured at `~/.cache/skytest-dbvo2/`, shaped as a Data
+  tree that `skytest test <dir>` mirrors directly: `SKSE/Plugins/DBVO.dll` + `DBVO2/`, SKSE Menu
+  Framework 3.14.1, `KaratVoice - Skyrim.bsa`/`.esp`, and `DragonbornVoiceOver/` with
+  `use_legacy_voice_over:true`, `legacy_pack:"Danagis_KaratVoice"`,
+  `always_use_default_options:true` so a saved per-save config can't override the test. The pack's
+  7092 `.fuz` live at `sound/dbvo/danagis_karatvoice/<sanitized prompt>.fuz`, which matches DBVO 2's
+  first path pattern — verified by listing the BSA.
+  What remains is the dialogue drive itself: spawn a talkable NPC (`placeatme`), open dialogue,
+  click a topic. **Profile B** (DBVO 2 + this mod) answers the softlock claim visually —
+  `is-menu-open` + a screenshot showing the menu stuck in the clicked state. **Profile A** (DBVO 2
+  alone) asks whether a skip leaves the player line playing, and that is *not* answerable from a
+  headless screenshot: it needs new SkytestProbe instrumentation hooking
+  `Actor::SpeakSoundFunction` to report whether the player's `BSSoundHandle` is still playing when
+  the NPC reply starts. That hook already exists in DBVODialogueTweaks — port the read-only part
+  into SkytestProbe, where instrumentation belongs.
 - **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
   handle (no sound RTTI in either build; neither references Address Library 36541/37542;
   `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only
@@ -550,27 +557,31 @@ Three follow-ups:
   `SkipInputHandler` on the same input. Confirm in-engine first that a DBVO 2 skip really does leave
   the player line playing over the NPC — that claim is inferred, not observed.
 
-## 2026-09-02 — Skyrim 1.7.104: bring the SKSE tier forward (blocks every in-engine test)
+## 2026-09-02 — Skyrim 1.7.104 fallout: what the move forward left open
 
-State: **diagnosed, decision pending Mase. Highest-priority item in this file** — until it's
-resolved no mod here can be tested in the engine. Depth (the exact broken line, the fork, the
-download list) in `docs/skse-toolchain.md`; the blocker is also summarised in `CLAUDE.md`.
+The migration itself is **DONE and verified in-engine** (SKSE 2.3.1, Address Library v13, all six
+plugins on `alandtse/CommonLibSSE-NG v7.1.0`) — see `CLAUDE.md` and `docs/skse-toolchain.md`. These
+are the loose ends it created, roughly by impact.
 
-Steam updated `SkyrimSE.exe` to **1.7.104.0** on 2026-09-01. Installed SKSE is 2.2.6 (1.6.1170),
-and all six SKSE mods pin `CharmedBaryon/CommonLibSSE-NG @ b93280e` — an abandoned repo whose
-runtime detection matches the minor version exactly, so it misfiles 1.7.x as pre-AE `SE` and looks
-up the wrong Address Library file with the wrong struct layouts.
-
-Two mutually exclusive directions; pick one before any other in-engine work:
-
-- **Move forward.** SKSE 2.3.1 + Address Library v13, repoint all six `FetchContent` pins at
-  `alandtse/CommonLibSSE-NG` ≥ `v6.7.0` (the maintained fork; DBVO 2 itself links 6.7.1), rebuild,
-  then re-verify each mod in-engine — `SkytestProbe` first, since nothing else can be checked
-  without it. Expect API drift across two years of fork divergence, and treat the verified
-  timing-sensitive mods (AutoCastSpell, AutoFireBow) as needing their original tests re-run, not a
-  glance.
-- **Downgrade + pin Steam** back to 1.6.1170. Every existing verified build stays valid; the repo
-  stops tracking the live game.
-
-Landed with the diagnosis: `skytest` refuses every launch verb on a version mismatch and
-`skytest status` shows a `runtime` line, so this can never again look like a harness bug.
+- **A six-mod rebuild compiles CommonLibSSE-NG six times.** Each mod's `FetchContent` builds its own
+  private copy (~500 TUs, ~10 min each) into its own `build/`; the plugin's own handful of files is
+  noise beside it. Two fixes, not exclusive: **`ccache`** (not installed — needs root, and clang-cl
+  works with it), and **build CommonLib once** into a shared prefix (it already ships
+  `install(EXPORT)` + a `CommonLibSSEConfig.cmake`, so a small `tools/skse/commonlib/` project plus
+  `find_package(CommonLibSSE CONFIG)` in the six mods would do it). Would turn ~60 min into ~10 + 6×20s.
+- **The full profile is dead until third-party mods update.** Every SKSE DLL in `.profiles/full`
+  predates format-5 Address Library, so `skytest play` hits the boot-parking modal. Nothing to fix
+  here — it resolves as each mod author ships a 1.7.104 build — but do not plan work around `full`.
+- **Restore boot-into-save**: drop Start On Save **2.8.0** (Nexus 50054, file 795157) into
+  `skytest/base-skse/`, replacing the v2.7.0.1 DLL that dies on format 5. Until then every test
+  needs `SKYTEST_NO_AUTOLOAD=1` plus a manual menu drive, and `replay` scripts that assume an
+  in-world boot will not run.
+- **Re-verify behaviour, not just loading.** Load + hook-install is proven for AutoFireBow and
+  SkytestProbe (probe answers `inWorld:true`). The *behavioural* tests — AutoFireBow's full-draw
+  shot, AutoCastSpell's recharge loop (the log-flush pacing gotcha), GhostAllies' pass-through,
+  OneClickTravel's confirm suppression — have NOT been re-run on 1.7.104. 1.7.99 changed struct
+  layouts; treat each mod's original in-engine test as owed, not optional.
+- **Upstream now cross-compiles on Linux itself** (`cmake/toolchain-linux-clangcl.cmake`, NG v6.6.0,
+  clang-cl + xwin). `tools/skse/cross-env.sh` is our hand-rolled equivalent and still works, but the
+  maintained path exists now; it wants an `xwin splat --use-winsysroot-style` sysroot. Evaluate
+  before extending the local glue.

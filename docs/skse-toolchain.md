@@ -107,15 +107,15 @@ file mods/AutoFireBow/build/AutoFireBow.dll                          # expect PE
 A loadable-DLL smoke test under wine (`LoadLibraryA` + `GetProcAddress` on the exports) confirms
 the imports resolve. In-game loading needs SKSE + the Address Library installed.
 
-## The CommonLibSSE-NG pin is stale, and 1.7.104 broke it (2026-09-01)
+## Why the pin is `alandtse`, and what 1.7.104 cost (2026-09-02)
 
-Every mod here pins `https://github.com/CharmedBaryon/CommonLibSSE-NG` at
-`b93280e832f263dbef44e44cbe2936622a02f91a` (in each `mods/*/CMakeLists.txt`,
-`mods/DBVODialogueTweaks/plugin/CMakeLists.txt` for that one). **That repo is abandoned**: the
-pinned commit *is* the tip of its `main` (2024-09-03), and its newest tag, `v3.7.0`, is from 2023.
+Every mod pins `https://github.com/alandtse/CommonLibSSE-NG` at **`v7.1.0`** (in each
+`mods/*/CMakeLists.txt`, `mods/DBVODialogueTweaks/plugin/CMakeLists.txt` for that one).
+**Never repin to `CharmedBaryon/CommonLibSSE-NG`** — that repo is abandoned: its `main` HEAD is
+`b93280e` (2024-09-03) and its newest tag, `v3.7.0`, is from 2023. Here is why it cannot come back.
 
-Skyrim **1.7.104.0** (Steam, 2026-09-01) is the first runtime that pin cannot handle. The reason is
-one line in `include/REL/Module.h`:
+Skyrim **1.7.104.0** (Steam, 2026-09-01) is the first runtime CharmedBaryon's code cannot handle.
+The reason is one line in its `include/REL/Module.h`:
 
 ```cpp
 switch (_version[1]) {           // the minor version digit
@@ -137,7 +137,7 @@ to the `SE` branch. Two things then go wrong, neither of them a clean load failu
 SKSE itself won't catch it: a plugin declaring `UsesAddressLibrary()` is version-independent as far
 as `SKSE::PluginVersionData` is concerned, so SKSE 2.3.1 loads the DLL and CommonLib fails after.
 
-**The fix is a dependency move, not a flag.** The maintained fork is
+**The fix was a dependency move, not a flag.** The maintained fork is
 [`alandtse/CommonLibSSE-NG`](https://github.com/alandtse/CommonLibSSE-NG) (branch `ng`), where the
 same switch is a floor (`>= 6 → AE`). 1.7.99/1.7.104 support landed in commits
 [`7b47c5a`](https://github.com/alandtse/CommonLibSSE-NG/commit/7b47c5a8f1772ed2331aebdb7035fac48d3c19ca)
@@ -147,19 +147,62 @@ same switch is a floor (`>= 6 → AE`). 1.7.99/1.7.104 support landed in commits
 links CommonLibSSE-NG **6.7.1** — that fork's numbering, not CharmedBaryon's — which is how the rest
 of the ecosystem moved.
 
-So bringing this repo back to a testable state is:
+### The three build changes the move forced
 
-1. **SKSE 2.3.1** (Nexus 30379, file 795992) — the 1.7.104 Steam build.
-2. **Address Library v13** (Nexus 32444, file 795954), literally named "All in One (1.7.104.0)".
-3. Repoint all six `CommonLibSSE` `FetchContent_Declare`s at `alandtse/CommonLibSSE-NG` ≥ `v6.7.0`
-   and **rebuild** `DBVODialogueTweaks`, `AutoFireBow`, `AutoCastSpell`, `GhostAllies`,
-   `OneClickTravel`, `SkytestProbe`. Expect real API drift across two years of fork divergence.
-4. Re-run each mod's own in-engine test. These mods are timing-sensitive and were verified on
-   1.6.1170; a runtime jump plus a two-year library jump is not a no-op, and `SkytestProbe` has to
-   come back first or nothing else can be checked.
+All three are in every mod's CMakeLists; copy them if you add a seventh mod.
 
-The alternative is downgrading `SkyrimSE.exe` back to 1.6.1170 and pinning Steam, which keeps every
-verified build valid and abandons the new runtime.
+1. **spdlog ≥ 1.16.0.** NG's `vcpkg.json` floors it there (fmt ≥ 12.1.0). The old `v1.13.0`/fmt-10
+   pin, and the comment claiming newer spdlog *breaks* NG, are both obsolete — it's now the reverse.
+2. **DirectXTK, headers only.** NG added `find_package(directxtk CONFIG REQUIRED)` and links
+   `Microsoft::DirectXTK` for exactly one thing: `<SimpleMath.h>` in `RE/S/State.h`, and only for
+   the *field types* `Vector4`/`Matrix` in a layout struct. No SimpleMath function or constant is
+   referenced, so no symbol is needed — which is essential, because **DirectXTK cannot be built on
+   Linux**: its `Shaders` target shells out to `CompileShaders.cmd` (a Windows batch invoking `fxc`)
+   and fails on the first build edge. `SOURCE_SUBDIR Inc` points FetchContent at a directory with no
+   `CMakeLists.txt`, the documented way to populate without `add_subdirectory`. The resulting
+   INTERFACE target must be `install(TARGETS … EXPORT CommonLibSSE-targets)`'d with
+   `$<BUILD_INTERFACE:…>` includes — NG's `install(EXPORT)` refuses to export a target that links
+   anything outside an export set (the same trap `SPDLOG_INSTALL ON` already worked around).
+3. **`NOMINMAX` per target.** That SimpleMath include drags in the Windows headers, whose `min`/`max`
+   *macros* then eat every `std::min(`/`std::max(` in the plugin — the error reads
+   `expected unqualified-id`, which looks like anything but a macro collision. NG defines `NOMINMAX`
+   only PRIVATEly for its own PCH. A sibling of the same family: `wingdi.h`'s `GetObject` macro turns
+   `Variable::GetObject()` into "no member named `GetObjectA`"; fix that one with a local
+   `#undef GetObject`, the idiom CommonLib itself uses in `RE/V/Variable.h`.
 
-`skytest` refuses to launch on a mismatch (`assert_runtime_match`) and `skytest status` prints the
-`runtime` line, so this state announces itself instead of looking like a harness bug.
+### Address Library v13 is format 5, and that is a hard wall
+
+`versionlib-1-7-104-0.bin` is **format 5**; `versionlib-1-6-1170-0.bin` was format 2 (check with
+`od -An -tu4 -N4 <file>`). A CommonLib older than v6.7.0 only accepts format ≤ 2 and calls
+`report_and_fail`, which throws a **modal** — `REL/ID.h(166): Unsupported address library format: 5`
+— that parks the boot forever rather than failing soft. So **every** SKSE DLL built before ~2026-08
+is dead on this runtime, ours and third-party alike, and a boot that hangs is far more likely to be
+a stale DLL than a harness bug. `skytest` scans the fresh SKSE plugin logs for that message and
+aborts the readiness wait naming the culprit.
+
+### API drift that actually bit (all mapped against the fetched headers, none guessed)
+
+| Old | New |
+| --- | --- |
+| `BSFaceGenAnimationData::unk040/0C0/0E0/100/120/140/160/180` | `expressionKeyFrame2` / `expression3` / `modifier1` / `modifier3` / `phoneme1` / `phoneme3` / `custom1` / `custom3` — same offsets, same type. SkytestProbe's **wire** names (`kf:"unk140"`, trace keys) are frozen on purpose so existing `.steps` keep working. |
+| `TESObjectREFR/Actor::PauseCurrentDialogue()` | `StopCurrentDialogue()` — same vtable slot `0x4F`, same signature. DBVODialogueTweaks' in-game finding that it only *pauses* still holds; only the name changed. |
+| `hkpTypedBroadPhaseHandle::collisionFilterInfo` (`std::uint32_t`), `bhkCharacterController::GetCollisionFilterInfo(std::uint32_t&)` | `RE::CFilter` — a 4-byte struct whose sole member is that `std::uint32_t`; read `.filter` for bit-identical values. |
+| `ActorValueOwner::RestoreActorValue(modifier, av, value)` | `RestoreActorValue(av, value)` — `kDamage` is now hardcoded (exactly what we passed) and the amount is `abs()`ed. |
+| `RE::DebugNotification(msg)` | `RE::SendHUDMessage::ShowHUDMessage(msg)` — same relocation, same defaults. |
+| `ActorValueList::LookupActorValueByName(std::string_view)` | `(const char*)` only. A `string_view` isn't null-terminated: materialise a `std::string`. |
+| `IMessageBoxCallback::Message::kUnk1`, `Run(Message)` | `Run(std::uint8_t)`; `kUnk1` was literally `1`. |
+| `MapMenu::GetRuntimeData()` returning a reference | returns a **pointer** (null on VR). |
+
+The alternative to all of this was downgrading `SkyrimSE.exe` to 1.6.1170 and pinning Steam, which
+would have kept every verified build valid and abandoned the new runtime. We went forward.
+
+`skytest` refuses to launch on a version mismatch (`assert_runtime_match`) and `skytest status`
+prints a `runtime` line, so a stale-stack state announces itself instead of looking like a harness bug.
+
+### Still to do here
+
+Upstream v6.6.0 added **Linux-host cross-compile support** of its own
+(`cmake/toolchain-linux-clangcl.cmake`, clang-cl + xwin — issue #302). Our hand-rolled
+`tools/skse/cross-env.sh` predates it and still works, but that file is now the maintained path for
+exactly this setup; it wants an `xwin splat --use-winsysroot-style` sysroot, which ours is not.
+Evaluate before extending the local glue further.
