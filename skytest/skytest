@@ -17,13 +17,13 @@
 #   skytest setup-save          launch vanilla (no mod) to BUILD the base test save:
 #                               at the menu, console `coc qasmoke`, place any fixtures,
 #                               then `save SkytestBase`, quit. Used by the autoload below.
-#   skytest test <mod> [--with a.dll,b.dll] [--headless]
+#   skytest test <mod>|--vanilla [--with a.dll,b.dll] [--headless]
 #                               start a DETACHED, drivable gamescope test session (vanilla +
 #                               that mod). Boots into the base save if it exists, else the menu.
 #                               Returns once in-world; `skytest <mod>` is a shortcut.
 #   skytest ready [secs]        block until the test session is in-world (probe poll)
 #   skytest shot [out.png]      screenshot the test session    [cropWxH+X+Y] [scaleWxH]
-#   skytest drive <cmd> ...     inject input (tap|seq|key|click|abs|rel|raw)
+#   skytest drive <cmd> ...     inject input (tap|seq|key|type|click|abs|rel|raw)
 #   skytest stop                tear down the test session + restore Data -> full
 #   skytest play                launch the FULL modded game over the fast direct path (blocking)
 #   skytest normal              force Data -> full (recover after a crash)
@@ -653,7 +653,10 @@ _boot_test_session() {
   guard_no_running_game
   assert_launchable
 
-  say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
+  case "$mod" in
+    */.vanilla-control) say "building test profile: vanilla ONLY (control run — no mod under test)" ;;
+    *) say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}" ;;
+  esac
   build_test_profile "$mod" "$deps"
   inject_skytestprobe          # runtime probe toolkit, every test (unconditional)
   backup_plugins
@@ -668,7 +671,7 @@ _boot_test_session() {
     # real ~350 modded saves, whose newest entry pops a missing-content modal (finding #13).
     # Isolated, Load contains exactly the base save, so "Load -> first entry" is unambiguous.
     isolate_saves
-    say "SKYTEST_NO_AUTOLOAD set - skipping Start On Save; booting to the menu with only '$BASE_SAVE_NAME' loadable (drive it: skytest drive seq down down enter)."
+    say "SKYTEST_NO_AUTOLOAD set - skipping Start On Save; booting to the MENU with only '$BASE_SAVE_NAME' loadable."
   elif base_save_exists; then
     inject_startonsave
     isolate_saves   # redirect save path so StartOnSave can't grab a real modded save (#13)
@@ -690,23 +693,45 @@ _boot_test_session() {
     return 10
   fi
 
-  local rc=0; gs_wait_ready || rc=$?
+  # Readiness depends on WHERE this boot is headed. With autoload, in-world is the finish line.
+  # Booting to the menu on purpose (SKYTEST_NO_AUTOLOAD), in-world can never arrive on its own —
+  # waiting for it burned the full 180 s timeout and then printed a "timed out" warning that
+  # reads like a broken harness. There the finish line is "the probe answers", i.e. the game is
+  # up at the menu and ready to be driven in.
+  local rc=0
+  if [ -n "${SKYTEST_NO_AUTOLOAD:-}" ] && base_save_exists; then
+    gs_wait_probe || rc=$?
+  else
+    gs_wait_ready || rc=$?
+  fi
   [ "$rc" = 2 ] && die "test session died during boot - check $GS_LOG" "skytest stop"
   return "$rc"
 }
 
 cmd_test() {
-  local mod="" deps="" backend="wayland"
-  local usage="skytest test <mod-dir-or-file> [--with a.dll,b.dll] [--headless]"
+  local mod="" deps="" backend="wayland" vanilla=""
+  local usage="skytest test <mod-dir-or-file>|--vanilla [--with a.dll,b.dll] [--headless]"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --headless) backend="headless"; shift ;;
       --sdl)      backend="sdl"; shift ;;   # visible fallback if --backend wayland misbehaves under Hyprland
       --with)     deps="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --vanilla)  vanilla=1; shift ;;       # A/B control: boot the SAME rig with nothing under test
       -*)         usage_err "test: unknown option: $1" "$usage" ;;
       *)          if [ -z "$mod" ]; then mod="$1"; else usage_err "test: unexpected arg: $1" "$usage"; fi; shift ;;
     esac
   done
+
+  # --vanilla is the CONTROL half of an A/B: the same profile, saves isolation, probe, boot
+  # path and drive layer, with no mod. Implemented as an empty "mod dir" rather than a second
+  # code path, so the control provably differs from the test run in exactly one thing — the
+  # absence of the DLL. (Every A/B in this repo's history needed this; hand-editing the
+  # profile between runs is how you get a control that isn't one.)
+  if [ -n "$vanilla" ]; then
+    [ -z "$mod" ] || usage_err "test: --vanilla takes no <mod> (a control has nothing under test)" "$usage"
+    mod="$PROFILES/.vanilla-control"
+    mkdir -p "$mod"
+  fi
 
   [ -n "$mod" ] || usage_err "test: missing mod path" "$usage"
   [ -e "$mod" ] || usage_err "mod path not found: $mod" "$usage"
@@ -721,11 +746,21 @@ cmd_test() {
   local brc=0; _boot_test_session "$mod" "$deps" "$backend" || brc=$?
   [ "$brc" = 10 ] && return 0
   # Session is live (rc 0 in-world, or 1 timed-out-but-live) — record how to relaunch it.
-  local -a spec=(test "$mod"); [ -n "$deps" ] && spec+=(--with "$deps")
+  local -a spec=(test)
+  if [ -n "$vanilla" ]; then spec+=(--vanilla); else spec+=("$mod"); fi
+  [ -n "$deps" ] && spec+=(--with "$deps")
   case "$backend" in headless) spec+=(--headless) ;; sdl) spec+=(--sdl) ;; esac
   record_session_spec "${spec[@]}"
-  [ "$brc" = 1 ]  && say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready"
-  say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
+  if [ -n "${SKYTEST_NO_AUTOLOAD:-}" ] && base_save_exists; then
+    [ "$brc" = 1 ] && say "WARNING: the probe never answered (timed out); the session is still live — check $GS_LOG"
+    say "test session live ($backend), sitting at the MAIN MENU. Drive in (1280x720 coords, re-read them off a shot):"
+    say "  skytest drive click 1177 496   # CONTINUE (a coordinate click; a bare 'enter' is unreliable here — finding #25)"
+    say "  skytest drive tap enter        # 'Continue from your last saved game?' -> Yes"
+    say "  skytest ready                  # then block until in-world"
+  else
+    [ "$brc" = 1 ] && say "WARNING: not in-world yet (timed out); the session is still live — retry: skytest ready"
+    say "test session live ($backend). Drive it:  skytest shot <out.png> | skytest drive seq down down enter"
+  fi
   say "when done:  skytest stop   (tears down + restores Data -> full)"
   say "drove this by hand? save the steps as mods/<mod>/<name>.steps and re-run: skytest replay <mod> <name>.steps"
 }
@@ -1107,7 +1142,7 @@ Verbs:
   ready [secs]      block until the test session is in-world (probe poll)
   wait-probe [secs] block until the probe is answering (in-world NOT required; for play agent)
   shot [out.png]    screenshot the test session       [cropWxH+X+Y] [scaleWxH]
-  drive <cmd> …     inject input (tap|seq [--gap MS]|key|btn|click|abs|rel|raw)
+  drive <cmd> …     inject input (tap|seq [--gap MS]|key|type|btn|click|abs|rel|raw)
   restart [args…]   stop the live session + relaunch the same mode (or the given args)
   stop              tear down the test session + restore Data → full
   play              launch the full modded game (fast path, blocking, not drivable)
@@ -1160,6 +1195,7 @@ skytest test <mod> — start a drivable gamescope test session (vanilla + one mo
 boots into the base save if present). DETACHED: returns once in-world so you can
 drive it with shot/drive/ready, then `skytest stop` to end + restore Data → full.
   <mod>        a Data-shaped folder, or a single .dll/.esp/.esl/.esm file
+  --vanilla    no mod at all — the A/B CONTROL half (same rig, nothing under test)
   --with a,b   extra framework DLLs to pull from the full profile (prefix match)
   --headless   no window (offscreen render); default is a window nested in Hyprland
   --sdl        visible fallback if --backend wayland misbehaves under Hyprland
@@ -1167,6 +1203,7 @@ Examples:
   skytest test build/MyMod                    # visible, drivable
   skytest test build/MyMod.dll --headless     # invisible, drivable
   skytest test build/MyMod.dll --with SKSE,po3_
+  skytest test --vanilla --headless           # control run: same rig, no mod
   skytest build/MyMod.dll        # bare shortcut, identical to `test`
 Then:
   skytest ready                  # block until in-world
@@ -1223,6 +1260,8 @@ skytest drive <cmd> … — inject input into the test session via libei (isolat
   tap <key>            press+release one key            (e.g. drive tap enter)
   seq [--gap MS] <key> … tap several keys in order (gap default 300ms; SKYTEST_SEQ_GAP_MS)
   key <key> <0|1>      hold(1)/release(0) one key
+  type [--gap MS] <text> type literal text as taps — the in-game CONSOLE staging path
+                       (case-folded, unshifted; gap default 60ms, SKYTEST_TYPE_GAP_MS)
   btn <272|273> <0|1>  hold(1)/release(0) a mouse button (272=L 273=R)
   click [<x> <y>]      click at (x,y), or at current cursor if omitted
   abs <x> <y>          move cursor to pixel (x,y)
@@ -1230,9 +1269,11 @@ skytest drive <cmd> … — inject input into the test session via libei (isolat
   raw <eidriver args>  pass through verbatim
 Keys: esc enter tab space backspace up down left right pageup pagedown home end
       tilde/console e r m w a s d f y n j i
+Typeable chars: a-z 0-9 space . , - = ; ' / \ [ ]   (shifted glyphs are not supported)
 Examples:
   skytest drive seq down down enter
   skytest drive click 1195 556
+  skytest drive tap tilde && skytest drive type 'coc riverwood' && skytest drive tap enter
 EOF
 ;;
     "wait-probe") cat <<'EOF'

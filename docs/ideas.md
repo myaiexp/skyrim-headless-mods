@@ -110,19 +110,26 @@ disassemble `SkyrimSE.exe` for hook points the Address-Library tier can't reach.
 Replay machinery shipped & verified live; staging model settled in `docs/plans/
 skytest-replay-handoff.md`. Deferred:
 
-- **Direct-call staging probe commands (the agreed approach — not a blocker).** Programmatic
-  console `exec` (`coc`/`placeatme`/`addspell`) faults — PINNED (`skytest/docs/headless-findings.md`
-  #18): CommonLib mis-binds `CompileAndRun` on game 1.6.1170 (stale dependency, bound id absent), not
-  a headless or missing-subsystem limit; would fault windowed too. By
-  design the harness stages with **direct engine-call** SkytestProbe commands like the existing
-  `give-spell`/`set-av` and drives input through the drive layer. Add `placeatme` / cell-travel
-  (`coc`-equivalent via `PlayerCharacter::MoveTo`) / an `addspell` command **per-need** (when the
-  GhostAllies summons replay needs them), then route replay staging to them (or add a `stage`
-  step). Don't build the whole console surface speculatively, and don't try to "fix" `exec`.
-- **Exterior `SkytestBase` save** (for a meaningful Map demo). The base save is in qasmoke
-  (interior, no world map), so `tap m` renders black and the `MapMenu` gate is unreliable. An
-  exterior save would make a real OneClickTravel-relevant map demo possible — but it changes
-  shared test infra (every test autoloads `SkytestBase`), so it's a deliberate call.
+- **Probe commands for staging that must be _observed_.** Console typing now covers "just change
+  the world" (`drive type` / a `.steps` `type` step — ruling in `AGENTS.md`, mechanics in
+  `skytest/README.md`), so the remaining case for a new probe command is a test that needs the
+  result **acked or read back** the way `placeatme` echoes its FormID. Add those per need; still
+  don't build the console surface speculatively, and still don't try to "fix" `exec`.
+- **Exterior `SkytestBase` save** — a nice-to-have, not a blocker (this entry used to claim the
+  QASmoke base save made a map test impossible; `mods/OneClickTravel/oneclick.steps` disproves
+  that by typing `coc riverwood` first, and the `MapMenu` gate is reliable). An exterior save
+  would only save ~30 s of per-run staging while changing shared test infra (every test autoloads
+  `SkytestBase`), so it stays a deliberate call.
+- **Conditional / tolerant `.steps` steps.** `mods/OneClickTravel/oneclick.steps` clicks the AE
+  Survival-Mode "No" at fixed coordinates because no step can express "click that box *if* it is
+  up". It is harmless there (an in-world click just swings a fist), but a script that must branch
+  on observed state has no way to say so. Shapes considered: an `if:<gate>` prefix on a step, or a
+  `try` verb whose failure never aborts the run.
+- **`replay --vanilla` — a one-command A/B.** The control half of an A/B is currently driven by
+  hand against `skytest test --vanilla`. Running the *same* `.steps` against the control and
+  reporting which gate failed would make the whole comparison one command — and for an assertion
+  script the pass condition inverts: the control is *expected* to fail the final gate (that
+  failure IS the vanilla behavior). Needs a way to mark a step "expected to fail under --vanilla".
 - **~~Truncate `commands.jsonl` at session start.~~ DONE (2026-06-16).** Folded into a bigger fix:
   `gs_reset_io` now clears **both** `commands.jsonl` and `trace.jsonl` in `_boot_test_session`
   before `gs_launch`. The `trace.jsonl` half fixed a real bug — `gs_wait_ready`/replay gates were

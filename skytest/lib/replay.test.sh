@@ -100,6 +100,30 @@ wait_err="$(replay_parse - <<<'wait' 2>&1 >/dev/null)"; rc=$?
 check_rc  "wait no gate non-zero" 2 "$rc"
 contains  "wait no gate message"  "line 1: 'wait' needs" "$wait_err"
 
+# type keeps the whole line verbatim (a console command has spaces), like exec
+check "type verbatim" \
+  'STEP type text=coc riverwood' \
+  "$(replay_parse - <<<'type coc riverwood')"
+type_err="$(replay_parse - <<<'type' 2>&1 >/dev/null)"; rc=$?
+check_rc  "type no text non-zero" 2 "$rc"
+contains  "type no text message"  "line 1: 'type' needs text" "$type_err"
+
+# move needs BOTH coordinates; click takes either none (current pointer) or both
+check "move xy"        'STEP move x=768 y=434' "$(replay_parse - <<<'move 768 434')"
+check "click bare"     'STEP click x= y='      "$(replay_parse - <<<'click')"
+check "click xy"       'STEP click x=679 y=548' "$(replay_parse - <<<'click 679 548')"
+move_err="$(replay_parse - <<<'move 768' 2>&1 >/dev/null)"; rc=$?
+check_rc  "move half-pair non-zero"  2 "$rc"
+contains  "move half-pair message"   "line 1: 'move' needs <x> <y>" "$move_err"
+click_err="$(replay_parse - <<<'click 679' 2>&1 >/dev/null)"; rc=$?
+check_rc  "click half-pair non-zero" 2 "$rc"
+contains  "click half-pair message"  "line 1: 'click' takes no args or <x> <y>" "$click_err"
+
+# a trailing comment on a pointer step is stripped — a bare `click  # note` must NOT parse the
+# comment as coordinates (the bug the OneClickTravel script hit on its first --dry-run)
+check "click bare + comment" 'STEP click x= y='       "$(replay_parse - <<<'click            # ONE click, on the marker')"
+check "move + comment"       'STEP move x=768 y=434'  "$(replay_parse - <<<'move 768 434     # hover the marker')"
+
 # =============================================================================
 # Task 2 — gate resolver + unknown-condition path
 # =============================================================================
@@ -118,6 +142,30 @@ check "resolve menu cmd"  '{"cmd":"is-menu-open","menu":"FavoritesMenu"}'  "$gc"
 check "resolve menu src"  'menu'                                          "$gs"
 check "resolve menu pred" '.menu=="FavoritesMenu" and .open==true'        "$gp"
 
+
+# cell:<EditorID> resolves to a player dump + the cell-name predicate (the coc / travel gate)
+gc='' gs='' gp=''
+resolve_gate "cell:Riverwood" gc gs gp
+check "resolve cell cmd"  '{"cmd":"dump","ref":"player"}'      "$gc"
+check "resolve cell src"  'dump'                               "$gs"
+check "resolve cell pred" '.fields.cellEditorID=="Riverwood"'  "$gp"
+
+# a NEGATED gate reuses the inner gate's query and inverts only the predicate
+gc='' gs='' gp=''
+resolve_gate "!menu:Console" gc gs gp
+check "resolve negated cmd"  '{"cmd":"is-menu-open","menu":"Console"}'      "$gc"
+check "resolve negated src"  'menu'                                        "$gs"
+check "resolve negated pred" '(.menu=="Console" and .open==true) | not'    "$gp"
+
+# a negated UNKNOWN gate is still an unknown gate (the inner resolve decides)
+gc='' gs='' gp=''
+resolve_gate "!bogus" gc gs gp 2>/dev/null; rc=$?
+check_rc "resolve negated unknown non-zero" 2 "$rc"
+
+# an empty cell id is rejected, like an empty menu name
+gc='' gs='' gp=''
+resolve_gate "cell:" gc gs gp 2>/dev/null; rc=$?
+check_rc "resolve cell: empty id non-zero" 2 "$rc"
 # an empty menu name is rejected (not a silent {"menu":""})
 gc='' gs='' gp=''
 resolve_gate "menu:" gc gs gp 2>/dev/null; rc=$?
@@ -181,6 +229,14 @@ check_rc "hold press failure -> non-zero"   2 "$rc"
 check    "hold press failure skips the gate" 'drive key e 1' "$(emitted_str)"
 gs_drive() { EMITTED+=("drive $*"); }                             # restore the passing stub
 
+# type / move / click map straight onto the drive layer's own verbs — `type` passes the text
+# through as ONE argument (gs_drive splits it into taps), `move` becomes an absolute pointer
+# move, and a bare `click` clicks wherever the pointer already is (after a `move`).
+EMITTED=(); GATE_RC=0
+replay_run - <<<$'type tmm 1\nmove 768 434\nclick\nclick 679 548' >/dev/null 2>&1
+check "type/move/click emitted stream" \
+  'drive type tmm 1|drive abs 768 434|drive click|drive click 679 548' "$(emitted_str)"
+
 # =============================================================================
 # Task 4 — replay_lint (the --dry-run SEMANTIC pre-flight: keys / gates / durations / JSON)
 # replay_lint reaches into gs_keycode, which lives in lib/gamescope.sh (not sourced here, since
@@ -189,7 +245,10 @@ gs_drive() { EMITTED+=("drive $*"); }                             # restore the 
 # the genuine ones from replay.sh. The real gs_keycode wiring is covered by the end-to-end
 # `skytest replay --dry-run` check in the commit's manual verification.
 # =============================================================================
-gs_keycode() { case "$1" in e|q|w|a|s|d|up|down|enter|tilde|escape|space) echo 1 ;; *) return 2 ;; esac; }
+gs_keycode()  { case "$1" in e|q|w|a|s|d|up|down|enter|tilde|escape|space) echo 1 ;; *) return 2 ;; esac; }
+# _lint_text reaches into gs_charcode (also lib/gamescope.sh) — same contract: a typeable
+# char -> a code, anything else -> rc 2. Only the ASCII the real map covers is accepted.
+gs_charcode() { case "$1" in [a-z0-9]|' '|.|,|-|=|\;|\'|/|\\|\[|\]) echo 1 ;; *) return 2 ;; esac; }
 
 # a clean script lints clean: every key/gate/duration is valid (JSON checked only if jq present)
 clean='tap e
@@ -198,7 +257,11 @@ wait until:inworld
 wait until:menu:Console
 hold LMB 200ms
 hold e until:inworld
-wait 1s'
+wait 1s
+type coc riverwood
+move 768 434
+click
+click 679 548'
 command -v jq >/dev/null 2>&1 && clean+=$'\ncmd {"cmd":"status"}'
 lint_out="$(printf '%s\n' "$clean" | replay_parse - | replay_lint 2>&1)"; rc=$?
 check_rc "lint clean -> 0"          0  "$rc"
@@ -250,6 +313,20 @@ if command -v jq >/dev/null 2>&1; then
   check_rc "lint bad cmd json -> 2" 2 "$rc"
   contains "lint bad cmd json msg"  "step 1 (cmd): payload is not a valid JSON object" "$e"
 fi
+
+# an untypeable character (shifted glyph / non-ASCII) is caught before a boot, so a
+# `type` step can never half-type a console line and leave the console in a wedged state
+e="$(replay_parse - <<<'type coc riverwöod' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad type char -> 2" 2 "$rc"
+contains "lint bad type char msg"  "step 1 (type): untypeable character" "$e"
+
+# non-integer coordinates are caught for both pointer verbs
+e="$(replay_parse - <<<'move 768 middle' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad move coord -> 2" 2 "$rc"
+contains "lint bad move coord msg"  "step 1 (move): coordinates must be integer pixels" "$e"
+e="$(replay_parse - <<<'click x 548' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad click coord -> 2" 2 "$rc"
+contains "lint bad click coord msg"  "step 1 (click): coordinates must be integer pixels" "$e"
 
 printf '\nreplay.test.sh: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

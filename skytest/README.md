@@ -21,11 +21,12 @@ and restores `Data → full` when you `stop`. The profiles live next to the game
 skytest init [--commit]        # one-time: turn Data into a symlink, build vanilla profile
 skytest setup-save             # one-time: launch vanilla to BUILD the base test save
 skytest test <mod> [--headless]# start a drivable gamescope test session (visible by default)
+skytest test --vanilla         #   ^ same rig with NO mod: the A/B control half
 skytest <mod>                  #   ^ bare shortcut, identical to `test`
 skytest replay <mod> <s.steps> # boot, then run a .steps script to snap to a target state
 skytest ready [secs]           # block until the session is in-world (probe poll)
 skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [scaleWxH]
-skytest drive <cmd> …          # inject input (tap|seq|key|click|abs|rel|raw)
+skytest drive <cmd> …          # inject input (tap|seq|key|type|click|abs|rel|raw)
 skytest stop                   # tear down the session + restore Data → full
 skytest play                   # launch the FULL modded game over the fast direct path (blocking)
 skytest play agent [--headless]# FULL modded profile under a DRIVABLE gamescope session (for the agent)
@@ -92,6 +93,12 @@ gamescope session instead — see below.)
   raw-input Skyrim consumes; raw libei _absolute_ is inert, so `abs`/`click` are synthesized from
   relative, measured 1:1), **socket-scoped** (can't reach your real seat), and **isolated** by the
   session. Keyboard is the deterministic path; pointer `click x y` works open-loop.
+- **Mouth: the in-game CONSOLE, typed.** `drive tap tilde` → `drive type 'coc riverwood'` →
+  `drive tap enter` runs a real console command (its command table, not the mis-bound
+  `CompileAndRun` path the probe's `exec` hits — findings #18/#27). This is the general staging
+  escape hatch for anything no probe command implements. `type` is case-folded and unshifted
+  (a-z 0-9 space `. , - = ; ' / \ [ ]`). **Close the console** (`tap tilde`) before driving
+  anything else: left open it swallows keys, and a click in it becomes a console ref-pick.
 - **Truth: SkytestProbe.** Injected into every test profile (below). `ready` polls its `status` for
   `inWorld:true`; `drive`+probe gives a full blind test loop (act, then read `trace.jsonl`).
 
@@ -194,13 +201,36 @@ Because StartOnSave is what implements boot-into-save, its death takes autoload 
 
 ```bash
 SKYTEST_NO_AUTOLOAD=1 skytest test mods/AutoFireBow/build/AutoFireBow.dll --headless
-skytest drive tap enter          # CONTINUE
+skytest drive click 1177 496     # CONTINUE (a coordinate click; bare `enter` is unreliable — #25)
+skytest drive tap enter          # "Continue from your last saved game?" → Yes
 skytest ready 120
 ```
+
+A menu-bound boot **gates on the probe answering, not on in-world** (finding #29): with
+`SKYTEST_NO_AUTOLOAD` set, `test` returns as soon as the game is up at the menu (~40 s) and prints
+that recipe, instead of burning the full 180 s in-world timeout waiting for something no one is
+going to deliver. The coordinates are for the headless default 1280x720 — re-read them off a `shot`
+if you change resolution.
 
 It still **isolates saves**, so the menu's Load list holds only `SkytestBase` and driving it cannot
 hit the missing-content modal (finding #13) that a real modded save would pop. Fix the underlying
 problem by dropping Start On Save 2.8.0 (Nexus 50054, file 795157) into `skytest/base-skse/`.
+
+### `--vanilla` — the A/B control half
+
+`skytest test --vanilla [--headless]` boots the **same** rig with nothing under test: same vanilla
+profile, same saves isolation, same SkytestProbe, same boot path, same drive layer, minus the mod's
+DLL. It is the control you compare a result against, and because it is one flag rather than a
+hand-edited profile, the control provably differs from the test run in exactly one thing (the
+SKSE log lists the plugins, so that claim is checkable after the fact).
+
+What it is for: any "did the MOD do that, or does vanilla do it too?" question. OneClickTravel's
+verification is the shape to copy — identical staging and an identical click in both halves:
+
+| Run                              | Click a discovered map marker                                 |
+| -------------------------------- | ------------------------------------------------------------- |
+| `test .../OneClickTravel.dll`    | travels instantly; no box; `cellEditorID` changes             |
+| `test --vanilla`                 | vanilla "Fast travel to X? Yes / No / Place Marker" box; stays |
 
 ## Which mode: `test` or `play`?
 
@@ -250,9 +280,12 @@ instead of failing a step after a full boot.
 | Step                                     | Meaning                                                                                                                                                                                                                                                                           |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cmd <json>`                             | **The staging path.** Send a direct-call probe command (the whole rest of the line, a JSON object) and block on its ack before the next step: `cmd {"cmd":"placeatme","base":"0x..","as":"ally","d":250}`, `make-teammate`, `cast`, `give-spell`, `set-av`. Use this, not `exec`. |
-| `exec <console>`                         | Run the rest of the line as a console command. **⚠ Not the staging path**: programmatic `exec` faults in the test session; use `cmd` instead (caveat below).                                                                                                                      |
+| `exec <console>`                         | Run the rest of the line as a console command **through the probe**. **⚠ Broken by design-defect, not the staging path**: programmatic `CompileAndRun` is mis-bound (finding #18). To run a console line, `tap tilde` + `type` + `tap enter` instead (#27).                       |
+| `type <text>`                            | Type the rest of the line as literal keystrokes — how you reach the in-game **console** (open it with `tap tilde` first, close it after). Verbatim like `exec`/`cmd`, so no trailing `#` comment.                                                                               |
 | `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                                                                                                            |
 | `key <K1> <K2> …`                        | A sequence of taps.                                                                                                                                                                                                                                                               |
+| `move <x> <y>`                           | Move the pointer to a pixel read off a `shot` — the **hover** half of a menu interaction (Skyrim resolves the hovered target before the click).                                                                                                                                   |
+| `click [<x> <y>]`                        | Click at (x,y), or where the pointer already is. The only thing that reaches menu buttons and in-menu modals headlessly (#25).                                                                                                                                                    |
 | `hold <LMB\|RMB\|KEY> <dur\|until:COND>` | Press, gate, release (release always runs, even on a timed-out gate).                                                                                                                                                                                                             |
 | `wait <dur\|until:COND>`                 | Block on a fixed duration (`500ms`/`2s`) or an observed-state gate.                                                                                                                                                                                                               |
 | `shot [name]`                            | Checkpoint screenshot (default `/tmp/sky-shot.png`).                                                                                                                                                                                                                              |
@@ -268,19 +301,31 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
 
 - `until:inworld`: fully interactive (no main/loading menu + player 3D loaded).
 - `until:menu:<NAME>`: a UI menu open (CommonLib name: `Console`, `MapMenu`, `FavoritesMenu`, …).
+- `until:cell:<EditorID>`: the player is standing in that cell (a probe `dump`). The honest gate
+  for a `coc`, a fast travel, or any teleport — `inworld` stays true across the loading screen,
+  while the cell name flips exactly once, on arrival. Doubles as an **assertion**: in
+  `mods/OneClickTravel/oneclick.steps` the final `until:cell:NorthSkyboundWatchExterior01` IS the
+  test (if the one click didn't travel, the replay fails there).
 - `until:charged`, `until:actorcount`: **not built**; added per the first script that needs them
   (one `resolve_gate` row + one direct-call probe handler, see `mods/SkytestProbe` `is-menu-open`).
+- **Any gate negates with a leading `!`** — `until:!menu:Console` = "wait until the console is
+  closed" (same probe query, predicate inverted). Use it wherever a script would otherwise *assume*
+  a state change happened: a cell load closes the console by itself, and the assumption that it
+  stayed closed is what broke the first `oneclick.steps` run (finding #27).
 
-> **⚠ Console `exec` is not the staging path**: by design. Programmatic `exec` (the probe's
-> `CompileAndRun`) AVs — **pinned (`../skytest/docs/headless-findings.md` #18): this CommonLib build
-> predates the 1.6.1170 runtime, so `CompileAndRun`'s bound Address Library id is stale and the call
-> lands on the wrong function.** Not a headless or "missing console subsystem" issue (it faults
-> with the console menu open too, and would fault in a windowed 1.6.1170 game). The harness model is
-> **engine calls for staging, the drive layer for input**: stage world state with **direct-call**
-> SkytestProbe commands (`give-spell`/`set-av`, and `coc`/`placeatme` added per-need — every console
-> verb is just an engine-call wrapper) and drive anything needing input through `tap`/`hold`/`drive`.
-> `exec` stays in the probe (SEH-guarded, harmless) but `replay` does input + gates + shot, not
-> console staging. Background: `../docs/plans/skytest-replay-handoff.md`. Example: `examples/format-demo.steps`.
+> **⚠ Programmatic `exec` is not the staging path**: by design. The probe's `exec`
+> (`Script::CompileAndRun`) AVs — **pinned (`docs/headless-findings.md` #18): this CommonLib build
+> predates the runtime, so `CompileAndRun`'s bound Address Library id is stale and the call lands on
+> the wrong function.** Not a headless or "missing console subsystem" issue (it faults with the
+> console menu open too, and would fault in a windowed game on that version).
+>
+> The **console itself is fine** — you just have to type it like a player: `tap tilde` +
+> `type <line>` + `tap enter` runs through the console's command table, verified on 1.7.104 with
+> `tmm 1` and `coc riverwood` (finding #27). So the harness model is: **type the console for
+> world staging the probe has no command for, direct-call probe commands (`placeatme`,
+> `give-spell`, `set-av`, …) where one exists** — they are main-thread, null-safe and acked — and
+> the drive layer for input. `exec` stays in the probe (SEH-guarded, harmless).
+> Background: `../docs/plans/skytest-replay-handoff.md`. Example: `examples/format-demo.steps`.
 
 ## Driving the probe from the CLI (`io` / `cmd` / `trace` / `wait-probe` / `restart`)
 

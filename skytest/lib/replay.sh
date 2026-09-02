@@ -38,7 +38,7 @@ replay_parse() {
 # file redirect or the inherited stdin without duplicating the loop.
 _replay_parse_stream() {
   local line trimmed verb rest lineno=0 rc=0
-  local target gate key keys name
+  local target gate key keys name px py
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
     line="${line%$'\r'}"                          # tolerate CRLF
@@ -110,6 +110,40 @@ _replay_parse_stream() {
           printf 'STEP cmd json=%s\n' "$rest"
         fi
         ;;
+      type)
+        # the ENTIRE rest of the line, verbatim — typed into whatever has keyboard focus,
+        # normally the in-game CONSOLE (open it with `tap tilde` first). This is the console
+        # staging path that actually works: the console's own command table runs the line,
+        # unlike the probe's programmatic `exec`/CompileAndRun (finding #18).
+        if [ -z "$rest" ]; then
+          printf "replay: line %d: 'type' needs text to type\n" "$lineno" >&2; rc=2
+        else
+          printf 'STEP type text=%s\n' "$rest"
+        fi
+        ;;
+      move|click)
+        # Pointer steps. `move x y` is the hover half of a menu interaction (Skyrim's map and
+        # menus resolve a hovered target before a click); `click` clicks wherever the pointer
+        # already is, `click x y` moves and clicks. A coordinate click is the ONLY thing that
+        # reaches menu buttons and in-menu modals headlessly (finding #25) — keyboard is not.
+        #
+        # Coordinates are tokens, never free text, so a trailing `# comment` is stripped here.
+        # It has to be: a bare `click   # one click` would otherwise parse the comment AS the
+        # coordinates. (exec/type/cmd take the rest of the line verbatim and cannot do this —
+        # their comments go on their own line.)
+        rest="${rest%%#*}"
+        rest="${rest%"${rest##*[![:space:]]}"}"   # right-trim what the comment left behind
+        read -r px py _ <<<"$rest"
+        if [ "$verb" = move ] && { [ -z "$px" ] || [ -z "$py" ]; }; then
+          printf "replay: line %d: 'move' needs <x> <y>\n" "$lineno" >&2; rc=2
+        elif [ -z "$px" ] && [ -z "$py" ]; then     # only `click` reaches here (move errored above)
+          printf 'STEP click x= y=\n'
+        elif [ -n "$px" ] && [ -n "$py" ]; then
+          printf 'STEP %s x=%s y=%s\n' "$verb" "$px" "$py"
+        else
+          printf "replay: line %d: '%s' takes no args or <x> <y>\n" "$lineno" "$verb" >&2; rc=2
+        fi
+        ;;
       *)
         printf "replay: line %d: unknown step '%s'\n" "$lineno" "$verb" >&2
         rc=2
@@ -167,6 +201,19 @@ replay_lint() {
         j="${args#json=}"
         _lint_json "$j" || { _lint_bad "$stepno" cmd "payload is not a valid JSON object"; rc=2; }
         ;;
+      type)
+        j="${args#text=}"
+        _lint_text "$j" || { _lint_bad "$stepno" type "untypeable character in text (letters, digits, space . , - = ; ' / \\ [ ] only)"; rc=2; }
+        ;;
+      move|click)
+        read -r f1 f2 _ <<<"$args"
+        t="${f1#x=}"; g="${f2#y=}"
+        # `click` with no coords clicks at the current pointer — the parser already
+        # rejected a half-pair, so empty-both is legal here and only for click.
+        if [ -n "$t" ] || [ -n "$g" ] || [ "$verb" = move ]; then
+          _lint_num "$t" && _lint_num "$g" || { _lint_bad "$stepno" "$verb" "coordinates must be integer pixels, got '$t' '$g'"; rc=2; }
+        fi
+        ;;
       exec|shot) ;;  # arbitrary console text / a path — nothing semantic the parser didn't cover
     esac
   done
@@ -192,6 +239,13 @@ _lint_json() {                                                       # a JSON ob
   command -v jq >/dev/null 2>&1 || return 0
   printf '%s' "$1" | jq empty 2>/dev/null
 }
+_lint_text() {                                                       # every char is typeable
+  local s idx; s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  for ((idx = 0; idx < ${#s}; idx++)); do
+    gs_charcode "${s:idx:1}" >/dev/null 2>&1 || return 1
+  done
+}
+_lint_num()  { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }         # an integer pixel coordinate
 
 # --- gates --------------------------------------------------------------------
 
@@ -202,6 +256,12 @@ _lint_json() {                                                       # a JSON ob
 #   cond          probe cmd (sans id)                          src      predicate (jq, true = satisfied)
 #   inworld       {"cmd":"status"}                             status   .world.inWorld == true
 #   menu:<NAME>   {"cmd":"is-menu-open","menu":"<NAME>"}        menu     .menu=="<NAME>" and .open==true
+#   cell:<EDID>   {"cmd":"dump","ref":"player"}                dump     .fields.cellEditorID=="<EDID>"
+#
+# Any gate can be NEGATED with a leading `!` — `until:!menu:Console` = "wait until the console
+# is CLOSED". Same probe query, the predicate wrapped in jq's `not`. That turns "I remember the
+# game closes the console across a cell load" into a step that FAILS if it ever stops being true,
+# instead of silently mis-driving everything after it.
 #
 # resolve_gate <cond> <cmd-var> <src-var> <pred-var> — fill the three named vars (via
 # nameref) with this gate's pieces. Unknown cond -> message on stderr + return 2 (so
@@ -212,6 +272,14 @@ resolve_gate() {
            __src_ref="${3:?resolve_gate: src var}" \
            __pred_ref="${4:?resolve_gate: pred var}"
   case "$__cond" in
+    '!'*)
+      # Resolve the inner gate into locals (NOT into the namerefs — recursing with the same
+      # nameref names would be a circular reference), then invert its predicate.
+      local __ic __is __ip
+      resolve_gate "${__cond#!}" __ic __is __ip || return 2
+      __cmd_ref="$__ic"; __src_ref="$__is"; __pred_ref="($__ip) | not"
+      return 0
+      ;;
     inworld)
       __cmd_ref='{"cmd":"status"}'
       __src_ref='status'
@@ -223,6 +291,17 @@ resolve_gate() {
       __cmd_ref="{\"cmd\":\"is-menu-open\",\"menu\":\"$__n\"}"
       __src_ref='menu'
       __pred_ref=".menu==\"$__n\" and .open==true"
+      ;;
+    cell:*)
+      # "the player is standing in cell <EditorID>" — the honest gate for a `coc` step, a
+      # fast travel, or any teleport: the loading screen makes `inworld` flap (it is still
+      # true as the old cell unloads), while the cell name changes exactly once, on arrival.
+      # Doubles as the ASSERTION for a travel test: the gate failing IS the test failing.
+      local __c="${__cond#cell:}"
+      [ -n "$__c" ] || { printf "replay: gate 'cell:<EditorID>' needs a cell editor id\n" >&2; return 2; }
+      __cmd_ref='{"cmd":"dump","ref":"player"}'
+      __src_ref='dump'
+      __pred_ref=".fields.cellEditorID==\"$__c\""
       ;;
     *)
       printf "replay: unknown gate condition '%s'\n" "$__cond" >&2
@@ -428,6 +507,24 @@ replay_run() {
         local keys="${args#keys=}"
         # shellcheck disable=SC2086  # intentional split: seq takes each key as its own arg
         gs_drive seq ${keys//,/ } || { rc=$?; reason="input failed"; }
+        ;;
+      type)
+        gs_drive type "${args#text=}" || { rc=$?; reason="input failed"; }
+        ;;
+      move)
+        local mx my
+        read -r mx my _ <<<"$args"
+        gs_drive abs "${mx#x=}" "${my#y=}" || { rc=$?; reason="input failed"; }
+        ;;
+      click)
+        local cx cy
+        read -r cx cy _ <<<"$args"
+        cx="${cx#x=}"; cy="${cy#y=}"
+        if [ -n "$cx" ] && [ -n "$cy" ]; then
+          gs_drive click "$cx" "$cy" || { rc=$?; reason="input failed"; }
+        else
+          gs_drive click || { rc=$?; reason="input failed"; }
+        fi
         ;;
       hold)
         local f1 f2 ht hg

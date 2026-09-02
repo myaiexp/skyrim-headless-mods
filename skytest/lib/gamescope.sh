@@ -394,6 +394,26 @@ gs_keycode() {
   esac
 }
 
+# Printable char -> Linux evdev keycode, for typing literal text (the CONSOLE staging path).
+# Letters are case-FOLDED and every char is sent UNSHIFTED: the Skyrim console is
+# case-insensitive (`TGM` == `tgm`, hex ids too), and avoiding shift keeps the mapping
+# independent of which XKB layout gamescope hands the game. Shifted glyphs (`_`, `:`, `"`)
+# are therefore unsupported on purpose — no console verb needs one.
+gs_charcode() {
+  case "$1" in
+    a) echo 30 ;;  b) echo 48 ;;  c) echo 46 ;;  d) echo 32 ;;  e) echo 18 ;;  f) echo 33 ;;
+    g) echo 34 ;;  h) echo 35 ;;  i) echo 23 ;;  j) echo 36 ;;  k) echo 37 ;;  l) echo 38 ;;
+    m) echo 50 ;;  n) echo 49 ;;  o) echo 24 ;;  p) echo 25 ;;  q) echo 16 ;;  r) echo 19 ;;
+    s) echo 31 ;;  t) echo 20 ;;  u) echo 22 ;;  v) echo 47 ;;  w) echo 17 ;;  x) echo 45 ;;
+    y) echo 21 ;;  z) echo 44 ;;
+    1) echo 2 ;;   2) echo 3 ;;   3) echo 4 ;;   4) echo 5 ;;   5) echo 6 ;;
+    6) echo 7 ;;   7) echo 8 ;;   8) echo 9 ;;   9) echo 10 ;;  0) echo 11 ;;
+    ' ') echo 57 ;;  .) echo 52 ;;  ,) echo 51 ;;  -) echo 12 ;;  '=') echo 13 ;;
+    "'") echo 40 ;;  ';') echo 39 ;;  /) echo 53 ;;  '\') echo 43 ;;  '[') echo 26 ;;  ']') echo 27 ;;
+    *) echo "type: unsupported character '$1' (letters, digits, space . , - = ; ' / \\ [ ] only)" >&2; return 2 ;;
+  esac
+}
+
 # gs_drive <tap|seq|key|click|abs|rel|raw> … — inject input via the eidriver client
 # against gamescope's gamescope-0-ei socket. Isolated to the session — never touches
 # your seat. Pointer rides RELATIVE motion (abs/click are home+relative, 1:1); raw
@@ -419,13 +439,28 @@ gs_drive() {
            local args=() k; for k in "$@"; do kc="$(gs_keycode "$k")" || return 2; args+=(tap "$kc" sleep "$gap"); done
            "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
     key)   kc="$(gs_keycode "$1")" || return 2; "$EIDRIVER" "$GS_EIS_SOCK" key "$kc" "$2" ;;
+    type)  # Type literal text as unshifted taps — how you reach the in-game CONSOLE, whose
+           # command table works even though the probe's programmatic exec/CompileAndRun path
+           # does not (finding #18). Chars are validated BEFORE any is driven, so a bad char
+           # can't leave a half-typed line in the console.
+           local tgap="${SKYTEST_TYPE_GAP_MS:-60}"
+           [ "${1:-}" = "--gap" ] && { tgap="${2:-60}"; shift 2; }
+           local text="$*"
+           [ -n "$text" ] || usage_err "drive type: needs text to type" "skytest drive type 'coc riverwood'"
+           local lower args=() ch cc idx
+           lower="$(printf '%s' "$text" | tr '[:upper:]' '[:lower:]')"
+           for ((idx = 0; idx < ${#lower}; idx++)); do
+             ch="${lower:idx:1}"; cc="$(gs_charcode "$ch")" || return 2
+             args+=(tap "$cc" sleep "$tgap")
+           done
+           "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
     btn)   "$EIDRIVER" "$GS_EIS_SOCK" btn "$1" "$2" ;;   # mouse button hold/release (272=L 273=R), $2: 1=down 0=up
     click) if [ "$#" -ge 2 ]; then "$EIDRIVER" "$GS_EIS_SOCK" clickat "$1" "$2"
            else "$EIDRIVER" "$GS_EIS_SOCK" click; fi ;;
     rel)   "$EIDRIVER" "$GS_EIS_SOCK" rel "$1" "$2" ;;
     abs|moveto|mv) "$EIDRIVER" "$GS_EIS_SOCK" moveto "$1" "$2" ;;
     raw)   "$EIDRIVER" "$GS_EIS_SOCK" "$@" ;;
-    *) usage_err "drive: usage: skytest drive {tap|seq [--gap MS]|key|btn|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
+    *) usage_err "drive: usage: skytest drive {tap|seq [--gap MS]|key|type [--gap MS] <text>|btn|click [x y]|abs x y|rel dx dy|raw} …" "skytest drive seq down down enter" ;;
   esac
 }
 

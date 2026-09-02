@@ -519,3 +519,75 @@ is outside activation range, so `e` does nothing.
 headlessly, but `SkyrimMod.CreateFromBinaryOverlay` throws
 *"Could not determine plugin listings path"* the moment you touch a **localized** field such as
 `Npc.Name` — that lookup wants `LocalAppData`. Read `EditorID` (not localized) and match on that.
+
+## 27. RESOLVED — the in-game CONSOLE is drivable headlessly by TYPING it (`drive type`)
+
+2026-09-03, verifying OneClickTravel on game 1.7.104. Finding #18 pinned that the probe's
+**programmatic** `exec` (`Script::CompileAndRun`) is mis-bound and retired it, and the harness has
+since staged world state only through direct-call probe commands (`placeatme`, `give-spell`, …).
+That left a real gap: everything the console can do that no probe command implements yet.
+
+**The gap is closed, and it never needed C++.** The console is a normal in-game UI, and libei
+keyboard input reaches it: `drive tap tilde` opens it, `drive type '<text>'` types a line, `drive
+tap enter` runs it. It goes through the console **command table** (typed input), not the broken
+script-compiler path — the exact distinction #18 drew. Verified live, headless, in one session:
+
+```
+drive tap tilde ; drive type 'tmm 1'         ; drive tap enter   -> "All map markers shown."
+                  drive type 'coc riverwood' ; drive tap enter   -> probe dump: cellEditorID Riverwood
+```
+
+`drive type` (`gs_drive` + `gs_charcode`) maps a-z 0-9 space and `. , - = ; ' / \ [ ]` to evdev
+codes, **case-folded and unshifted**: the console is case-insensitive, and avoiding shift keeps the
+mapping independent of whichever XKB layout gamescope hands the game. Shifted glyphs are therefore
+unsupported by design — no console verb needs one. A `type` step exists in `.steps` too, and (like
+`exec`/`cmd`) it takes the rest of the line **verbatim**, so its comments go on their own line.
+
+**The three gotchas that cost time here — the console keeps focus:**
+
+- **Close it explicitly** (`tap tilde`) before driving anything else. Left open, a `tap m` types
+  `m` into the console line instead of opening the map. Clear a stray char with `tap backspace`.
+- **A click with the console open is a console REF-PICK, not a UI click.** Clicking the "No" button
+  of a modal while the console was up selected the reference under the cursor and printed
+  `RefID: (01000a2a) BaseID: (000a...)` — the modal stayed. (Useful in its own right: that is a
+  probe-free way to get a RefID.) Confirm the console is closed with a `shot` before clicking.
+- **A cell load CLOSES the console by itself, so a `tap tilde` after a `coc` REOPENS it.** This is
+  what broke the first full `oneclick.steps` run: the script's post-`coc` "close the console" tap
+  opened it instead, the Survival-Mode click became a ref-pick, `tap m` typed `m`, and the run died
+  120 s later on a `menu:MapMenu` gate that was never going to fire — three steps downstream of the
+  actual mistake. **Don't reason about console state, gate on it:** `until:menu:Console` after
+  opening it, `until:!menu:Console` (the negated form, added for exactly this) where the load is
+  supposed to have closed it. A gate turns a remembered behavior into a step that fails loudly the
+  day it changes.
+
+## 28. A fresh vanilla base save needs 3 things staged before any FAST-TRAVEL / map test
+
+Same session. `SkytestBase` is a QASmoke save, and QASmoke is an **interior**: Skyrim forbids fast
+travel from one, so a map test staged there can never fire. What a travel test actually needs:
+
+1. **Get outdoors** — `coc riverwood` (console, per #27). Verify with the `until:cell:<EditorID>`
+   replay gate (a probe `dump` of the player), not a sleep: the loading screen leaves `inworld`
+   true throughout, so only the cell name changes exactly once, on arrival.
+2. **Discovered markers** — `tmm 1` prints "All map markers shown." and the markers it reveals are
+   flagged `kCanTravelTo`: a click on one produced a real `FastTravelConfirmCallback` box in the
+   vanilla control, so `tmm 1` is enough, no per-marker flag poking.
+3. **Decline Survival Mode.** On the first EXTERIOR load of an AE save the engine offers
+   *"Enable Survival Mode?"* — and Survival Mode **disables fast travel**. It is a plain message
+   box, so `click 679 548` ("No", 1280x720) dismisses it (#25). It re-appears every boot from the
+   base save, because a test session never saves.
+
+Also useful: the world map's hover **snaps** to the nearest marker over a generous radius, so a
+`move x y` read off a `shot` lands on a marker even when it is ~30 px off — but with `tmm 1` the
+map is dense, so hover first, `shot`, and read the marker NAME back before committing the click.
+
+## 29. A menu-bound boot must gate on the PROBE, not on in-world
+
+`SKYTEST_NO_AUTOLOAD=1` boots to the main menu on purpose (Start On Save is stale for 1.7.104).
+The boot then waited for `inWorld:true`, which nothing was going to deliver: every such launch
+burned the full 180 s readiness timeout and printed `timed out after 180s (last state: main-menu)`
++ a "not in-world yet" WARNING — which reads exactly like a broken harness, twice per A/B.
+
+Fixed in `_boot_test_session`: with `SKYTEST_NO_AUTOLOAD` set it gates on `gs_wait_probe` (the
+probe answering = the game is up at the menu) and returns in ~40 s, then prints the *verified*
+way in: `drive click 1177 496` (CONTINUE) → `drive tap enter` (confirm) → `skytest ready`.
+**Lesson for any new boot path: the readiness gate has to match where the boot is HEADED.**
