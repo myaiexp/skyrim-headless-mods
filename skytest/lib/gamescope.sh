@@ -266,6 +266,31 @@ gs_wait_probe() {
 
 # --- readiness ---------------------------------------------------------------
 
+# A plugin that can't run on this game build doesn't fail softly: CommonLibSSE's
+# report_and_fail throws a MODAL ("Unsupported address library format: N", or the older
+# "failed to open address library file") and the boot parks on it forever — 180s of
+# "-> booting" and a timeout that reads like a harness bug. It is not: it is a stale
+# third-party DLL versus a newer runtime, which is exactly what a Skyrim update causes.
+# Scanning the SKSE plugin logs written by THIS boot turns that into an instant, named
+# error. Only logs newer than the launch count, so a stale log can't fail a good boot.
+# Echoes "<plugin>: <message>" and returns 0 when it finds one.
+_gs_fatal_plugin_log() {
+  local since="$1" dir f
+  dir="$MYGAMES/SKSE"
+  [ -d "$dir" ] || return 1
+  for f in "$dir"/*.log; do
+    [ -f "$f" ] || continue
+    [ "$f" -nt "$since" ] || continue
+    local hit
+    hit="$(grep -m1 -E 'Unsupported address library format|failed to open address library file' "$f" 2>/dev/null || true)"
+    if [ -n "$hit" ]; then
+      printf '%s: %s\n' "$(basename "$f" .log)" "${hit##*] }"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # gs_wait_ready [timeout=180] — block until the probe reports inWorld:true.
 # Exit 0 = in-world, 1 = timed out, 2 = session died. Ported from headless/ready.sh:
 # there is no foreground game PID and "at the main menu" is not ready, so the only
@@ -278,9 +303,19 @@ gs_wait_ready() {
   echo "waiting for in-world (timeout ${timeout}s)…" >&2
   local i=0 last_state="" state line inworld is3d main load
   local deadline=$((SECONDS + timeout))
+  # Marker file for the "log newer than launch" comparison in _gs_fatal_plugin_log.
+  local since; since="$(mktemp -t skytest-launch.XXXXXX)"
   while [ "$SECONDS" -lt "$deadline" ]; do
     if gs_session_dead; then
       echo "session died (gamescope pid not alive). relaunch: skytest test <mod>" >&2
+      return 2
+    fi
+    local fatal
+    if fatal="$(_gs_fatal_plugin_log "$since")"; then
+      rm -f "$since"
+      echo "FATAL: an SKSE plugin refused this game build -> $fatal" >&2
+      echo "  That plugin predates the installed Skyrim/Address Library. Update or remove it;" >&2
+      echo "  the boot is parked on its modal and will never reach the world." >&2
       return 2
     fi
     # Ask the probe for fresh world state (no-op until the trace writer exists).
@@ -306,10 +341,12 @@ gs_wait_ready() {
     [ "$state" != "$last_state" ] && { echo "  -> $state" >&2; last_state="$state"; }
     if [ "$state" = "in-world" ]; then
       echo "ready: in-world (interactive)" >&2
+      rm -f "$since"
       return 0
     fi
     sleep 1
   done
+  rm -f "$since"
   echo "timed out after ${timeout}s (last state: ${last_state:-booting})." >&2
   return 1
 }

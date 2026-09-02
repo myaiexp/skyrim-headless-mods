@@ -217,18 +217,24 @@ game_runtime_version() {
     grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || return 1
 }
 
-# The runtime the installed SKSE was built for, straight off its DLL name
-# (skse64_1_6_1170.dll -> 1.6.1170). SKSE is version-locked by design, so the name IS the
-# declaration; no need to parse the binary.
-skse_dll_version() {
-  local f
+# The runtimes the installed SKSE builds are for, straight off their DLL names
+# (skse64_1_6_1170.dll -> 1.6.1170), one per line. SKSE is version-locked by design, so the
+# name IS the declaration; no need to parse the binary. Plural on purpose: keeping the old
+# DLL alongside the new one is how you stay able to downgrade the exe, and the loader picks
+# by the exe's version anyway — so "which one" is the wrong question, "is the game's version
+# among them" is the right one.
+skse_dll_versions() {
+  local f n=0
   for f in "$SKYDIR"/skse64_*.dll; do
     f="${f##*/skse64_}"
-    printf '%s' "${f%.dll}" | tr '_' '.'
-    return 0
+    printf '%s\n' "${f%.dll}" | tr '_' '.'
+    n=$((n + 1))
   done
-  return 1
+  [ "$n" -gt 0 ]
 }
+
+# The installed SKSE build matching $1 (a game major.minor.patch), or nothing.
+skse_version_for() { skse_dll_versions 2>/dev/null | grep -Fx -m1 "$1" || return 1; }
 
 # Steam applies Skyrim updates silently, and SKSE's loader refuses a runtime it wasn't
 # built for — so an out-of-date SKSE turns every launch into a window that dies with no
@@ -236,13 +242,13 @@ skse_dll_version() {
 # session once (1.7.104.0 landed 2026-09-01 against SKSE 2.2.6/1.6.1170); never again.
 # Compares major.minor.patch only: the exe carries a 4th component the DLL name never has.
 assert_runtime_match() {
-  local game skse
+  local game have
   game="$(game_runtime_version)" || return 0
-  skse="$(skse_dll_version)" ||
+  have="$(skse_dll_versions | paste -sd, -)" ||
     die "no skse64_*.dll in the game dir (game is $game)" \
       "install SKSE for $game — https://skse.silverlock.org/"
-  [ "${game%.*}" = "$skse" ] && return 0
-  die "SKSE/runtime mismatch: game is $game, installed SKSE is for $skse" \
+  skse_version_for "${game%.*}" >/dev/null && return 0
+  die "SKSE/runtime mismatch: game is $game, installed SKSE is for $have" \
     "Steam updated Skyrim. Install SKSE + Address Library for $game (and rebuild plugins against a CommonLibSSE-NG that knows it), or downgrade the exe. See docs/skse-toolchain.md."
 }
 
@@ -652,7 +658,18 @@ _boot_test_session() {
   inject_skytestprobe          # runtime probe toolkit, every test (unconditional)
   backup_plugins
 
-  if base_save_exists; then
+  # SKYTEST_NO_AUTOLOAD: boot to the MENU even though a base save exists. Needed whenever the
+  # bundled po3_StartOnSave.dll can't run on the current game build — a Skyrim update outruns
+  # third-party SKSE plugins, and StartOnSave failing is not a soft failure: it throws a modal
+  # ("Unsupported address library format") that parks the boot forever. Escape, then drive the
+  # menu by hand.
+  if [ -n "${SKYTEST_NO_AUTOLOAD:-}" ] && base_save_exists; then
+    # Still isolate saves: the menu's Load list is what you drive, and unisolated it shows the
+    # real ~350 modded saves, whose newest entry pops a missing-content modal (finding #13).
+    # Isolated, Load contains exactly the base save, so "Load -> first entry" is unambiguous.
+    isolate_saves
+    say "SKYTEST_NO_AUTOLOAD set - skipping Start On Save; booting to the menu with only '$BASE_SAVE_NAME' loadable (drive it: skytest drive seq down down enter)."
+  elif base_save_exists; then
     inject_startonsave
     isolate_saves   # redirect save path so StartOnSave can't grab a real modded save (#13)
     say "base save '$BASE_SAVE_NAME' found - autoloading it on launch (hold SHIFT to skip to menu)."
@@ -987,9 +1004,10 @@ cmd_status() {
   # dir) with the real files orphaned in .profiles/full. Report that distinctly instead of
   # the misleading "not migrated (Data is the original real directory)". Status is read-only
   # — it only WARNS with the recovery command (cmd_normal/uninstall do the actual fix).
-  local migrated tgt base hf hv ht sess_pid="" iso orphaned=0 gver sver
+  local migrated tgt base hf hv ht sess_pid="" iso orphaned=0 gver shave smatch
   gver="$(game_runtime_version || true)"
-  sver="$(skse_dll_version || true)"
+  shave="$(skse_dll_versions | paste -sd, - || true)"
+  smatch="$([ -n "$gver" ] && skse_version_for "${gver%.*}" || true)"
   if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")")
   elif data_is_orphaned; then migrated=0; tgt="orphaned"; orphaned=1
   else migrated=0; tgt=""; fi
@@ -1005,9 +1023,9 @@ cmd_status() {
     # so `skytest status --json | jq '.world.inWorld'` works (the old grep matched nothing).
     local world=null
     [ -n "$sess_pid" ] && world="$(_probe_world_json 3)"
-    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"runtime":{"game":"%s","skse":"%s","match":%s},"session":{"alive":%s,"pid":"%s"},"world":%s}\n' \
+    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"runtime":{"game":"%s","skse":"%s","installed":"%s","match":%s},"session":{"alive":%s,"pid":"%s"},"world":%s}\n' \
       "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")" \
-      "$gver" "$sver" "$([ -n "$gver" ] && [ "${gver%.*}" = "$sver" ] && echo true || echo false)" \
+      "$gver" "$smatch" "$shave" "$([ -n "$smatch" ] && echo true || echo false)" \
       "$([ -n "$sess_pid" ] && echo true || echo false)" "$sess_pid" "$world"
     return 0
   fi
@@ -1017,10 +1035,10 @@ cmd_status() {
   # Runtime line, always shown: a silent Steam update to Skyrim breaks every SKSE plugin,
   # and this is the one place that says so without launching the game.
   if [ -n "$gver" ]; then
-    if [ "${gver%.*}" = "$sver" ]; then
-      printf '%-10s game %s + SKSE %s\n' runtime "$gver" "$sver"
+    if [ -n "$smatch" ]; then
+      printf '%-10s game %s + SKSE %s\n' runtime "$gver" "$smatch"
     else
-      printf '%-10s MISMATCH — game %s but SKSE is for %s (SKSE will not load)\n' runtime "$gver" "${sver:-none installed}"
+      printf '%-10s MISMATCH — game %s but SKSE is for %s (SKSE will not load)\n' runtime "$gver" "${shave:-none installed}"
     fi
   fi
   if [ "$migrated" = 1 ]; then
