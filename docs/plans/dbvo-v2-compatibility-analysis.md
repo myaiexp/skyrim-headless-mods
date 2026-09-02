@@ -182,7 +182,7 @@ Re-checked against the Nexus API (mod 84329, owner key):
 
 Consequence for this mod: a new user who follows the plain
 `nexusmods.com/skyrimspecialedition/mods/84329` link now lands on DBVO 2 by default and walks
-straight into the §3 softlock. The README and the Nexus page copy (`docs/dbvo-page.md`) were
+straight into the §3 softlock. The README and the Nexus page copy (`docs/dbvo-page.bbcode`) were
 repointed at the OLD FILES entry for 1.1.1 the same day; **the live Nexus page still needs the same
 edit by hand** (website-only, no write API).
 

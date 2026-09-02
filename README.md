@@ -101,7 +101,7 @@ keep their own separate terms and credits:
 - **nlohmann/json** — MIT (header-only JSON, used by the SKSE C++ tier).
 - **SkyUI MCM sources** — by the SkyUI team; the open-source MCM base classes, redistributed under
   their terms.
-- **Start On Save** ([Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/56795)) — by
+- **Start On Save** ([Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/50054)) — by
   **powerofthree**, bundled in `skytest/base-skse/` by permission (powerofthree's permissive
   reuse-with-credit terms).
 - **DBVO `dialoguemenu.swf` / `.as`** — by **MathiewMay** (Dragonborn Voice Over), recompiled and

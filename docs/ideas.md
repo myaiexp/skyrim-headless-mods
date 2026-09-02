@@ -534,8 +534,9 @@ Three follow-ups:
   still stuck 26 s after the same click. Tab escapes the menu, so it costs the conversation and not
   the save, and **DBVO 2 logs its own `[Conflict]` warning** naming the patched swf — quote that at
   users rather than our reverse-engineering. The repo README, the root README row and the page copy
-  `docs/dbvo-page.md` all carry it; **paste `docs/dbvo-page.md` onto the live Nexus page**
-  (website-only, no write API).
+  `docs/dbvo-page.bbcode` all carry it; **paste `docs/dbvo-page.bbcode` onto the live Nexus page**
+  (website-only, no write API). It is **BBCode, not Markdown** — Nexus renders Markdown literally,
+  which is how the first paste attempt looked.
 - **One link left on the DBVO 2 skip question.** The observer is built and shipped:
   SkytestProbe's **`speak-watch`** (read-only `Actor::SpeakSoundFunction` detour). With it,
   pressing Activate ~600 ms into the player's line **never truncated it** — full ~1.6 s every run,
