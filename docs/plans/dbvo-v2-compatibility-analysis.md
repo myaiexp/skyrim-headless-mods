@@ -186,9 +186,16 @@ straight into the §3 softlock. The README and the Nexus page copy (`docs/dbvo-p
 repointed at the OLD FILES entry for 1.1.1 the same day; **the live Nexus page still needs the same
 edit by hand** (website-only, no write API).
 
-### In-engine test is blocked on the archive
+### In-engine test is blocked twice over
 
-A `skytest` pass needs files this machine does not have:
+**Blocker 1, the bigger one: the game runtime moved.** Steam updated `SkyrimSE.exe` to **1.7.104.0**
+on 2026-09-01. The installed SKSE is 2.2.6 (1.6.1170) and every SKSE mod in this repo is built
+against an abandoned CommonLibSSE-NG that misfiles 1.7.x as pre-AE — so *nothing here loads in the
+engine at all* right now, DBVO 2 test or otherwise. Full diagnosis and the two ways out in
+`docs/skse-toolchain.md`; tracked in `docs/ideas.md` (2026-09-02). `skytest` now refuses to launch
+on the mismatch instead of booting a game with no SKSE.
+
+**Blocker 2: the archive.** A `skytest` pass also needs files this machine does not have:
 
 | Needed | State |
 | --- | --- |
@@ -196,8 +203,9 @@ A `skytest` pass needs files this machine does not have:
 | SKSE Menu Framework (DBVO 2's new requirement, replaces DBVO 1.x's PapyrusUtil + ConsoleUtilSSE NG) | **missing** from `SKSE/Plugins/` |
 | A voice pack | **present** — the Karat legacy pack is installed (`KaratVoice - {Skyrim,CC,LOTD}.bsa` + `DragonbornVoiceOver/voice_packs/danagis_karatvoice_voice_pack.json`), so DBVO 2's `use_legacy_voice_over` mode is the cheap path to a voiced line. |
 
-Once those land, the three [Open items](#open-items) are one session's work: profile A = DBVO 2 alone
-(does skip leave the player line playing?), profile B = DBVO 2 + this mod (does the click softlock?).
+Once both clear, the three [Open items](#open-items) are one session's work: profile A = DBVO 2
+alone (does skip leave the player line playing?), profile B = DBVO 2 + this mod (does the click
+softlock?).
 
 ## Open items
 

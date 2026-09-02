@@ -128,6 +128,38 @@ The one genuinely-still-open item: a precise **in-menu mouse click** to dismiss 
 layer are in [`docs/headless-findings.md`](docs/headless-findings.md). **Read it before changing the
 gamescope/libei approach.**
 
+### The SKSE/runtime match is checked before every launch
+
+SKSE is version-locked to one Skyrim build, and Steam updates Skyrim without asking. When they
+diverge the failure is maximally confusing: gamescope comes up, the game runs, **no SKSE log is
+written and no plugin loads** — indistinguishable from a harness bug. So every launch verb
+(`test`, `play`, `replay`, `setup-save`) now runs `assert_runtime_match` **before** it rebuilds or
+parks anything, and dies with both versions:
+
+```
+skytest: ERROR: SKSE/runtime mismatch: game is 1.7.104.0, installed SKSE is for 1.6.1170
+Try: Steam updated Skyrim. Install SKSE + Address Library for 1.7.104.0 (and rebuild plugins
+     against a CommonLibSSE-NG that knows it), or downgrade the exe. See docs/skse-toolchain.md.
+```
+
+The game's version comes from `SkyrimSE.exe`'s `VS_VERSION_INFO` ProductVersion string (read out of
+the last 8 MB with `strings -e l`, ~80 ms); SKSE's comes from its DLL name (`skse64_1_6_1170.dll`),
+which is the version it declares. Only `major.minor.patch` is compared — the exe carries a 4th
+component the DLL name never has. If `strings` is unavailable the check is **skipped**, never fatal:
+a diagnostic must not be the thing that blocks a launch.
+
+`skytest status` prints the same pair unconditionally as a `runtime` line (and
+`status --json` as `.runtime.{game,skse,match}`), so the state is visible without launching:
+
+```
+runtime    game 1.7.104.0 + SKSE 1.7.104          # matched
+runtime    MISMATCH — game 1.7.104.0 but SKSE is for 1.6.1170 (SKSE will not load)
+```
+
+A match is **necessary, not sufficient**: the plugins also have to be built against a
+CommonLibSSE-NG that recognises the runtime. That is a rebuild, and it is why this repo is
+currently blocked on 1.7.104 — see [`../docs/skse-toolchain.md`](../docs/skse-toolchain.md).
+
 ## Which mode: `test` or `play`?
 
 Use `skytest test <mod>` for a mod that works **standalone** (a new spell, a DLL, a self-contained

@@ -206,6 +206,52 @@ skse_env_export() {
 # `[ -x launch-skse.sh ]` guard now that skytest no longer shells out to that script).
 skse_launch_ready() { [ -x "$PROTON" ] && [ -f "$LOADER" ]; }
 
+# The game's own version, from SkyrimSE.exe's VS_VERSION_INFO ProductVersion string
+# (UTF-16LE, in .rsrc near the end of the file — hence the tail, which keeps this at ~80ms
+# instead of scanning 37 MB). Empty/failed -> caller skips the check; a diagnostic must
+# never be the thing that blocks a launch.
+game_runtime_version() {
+  command -v strings >/dev/null 2>&1 || return 1
+  [ -f "$SKYDIR/SkyrimSE.exe" ] || return 1
+  tail -c 8388608 "$SKYDIR/SkyrimSE.exe" | strings -e l |
+    grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+}
+
+# The runtime the installed SKSE was built for, straight off its DLL name
+# (skse64_1_6_1170.dll -> 1.6.1170). SKSE is version-locked by design, so the name IS the
+# declaration; no need to parse the binary.
+skse_dll_version() {
+  local f
+  for f in "$SKYDIR"/skse64_*.dll; do
+    f="${f##*/skse64_}"
+    printf '%s' "${f%.dll}" | tr '_' '.'
+    return 0
+  done
+  return 1
+}
+
+# Steam applies Skyrim updates silently, and SKSE's loader refuses a runtime it wasn't
+# built for — so an out-of-date SKSE turns every launch into a window that dies with no
+# SKSE log and no plugin output, which reads exactly like a harness bug. It cost a whole
+# session once (1.7.104.0 landed 2026-09-01 against SKSE 2.2.6/1.6.1170); never again.
+# Compares major.minor.patch only: the exe carries a 4th component the DLL name never has.
+assert_runtime_match() {
+  local game skse
+  game="$(game_runtime_version)" || return 0
+  skse="$(skse_dll_version)" ||
+    die "no skse64_*.dll in the game dir (game is $game)" \
+      "install SKSE for $game — https://skse.silverlock.org/"
+  [ "${game%.*}" = "$skse" ] && return 0
+  die "SKSE/runtime mismatch: game is $game, installed SKSE is for $skse" \
+    "Steam updated Skyrim. Install SKSE + Address Library for $game (and rebuild plugins against a CommonLibSSE-NG that knows it), or downgrade the exe. See docs/skse-toolchain.md."
+}
+
+# Both launch guards in one call, used by every verb that starts the game.
+assert_launchable() {
+  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+  assert_runtime_match
+}
+
 # The only safety net for the detached test model: refuse whenever a gamescope test
 # session is live and the verb would either launch a second one (double-parking Data)
 # or unpark Data -> full out from under it (the cross-profile crash — SKSE plugins from
@@ -599,7 +645,7 @@ _boot_test_session() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   guard_no_live_session
   guard_no_running_game
-  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+  assert_launchable
 
   say "building test profile: vanilla + $(basename "$mod")${deps:+ + deps[$deps]}"
   build_test_profile "$mod" "$deps"
@@ -845,7 +891,7 @@ cmd_setup_save() {
   [ -L "$DATA" ] || die "not migrated yet." "skytest init --commit"
   guard_no_live_session   # would launch a 2nd game over the live test session
   guard_no_running_game
-  skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+  assert_launchable
   [ -d "$VANILLA" ] || die "vanilla profile missing." "skytest init --commit"
 
   if base_save_exists; then
@@ -917,7 +963,7 @@ cmd_play() {
     # agent observation mode: detached, drivable gamescope session on `full`. Inject the probe
     # + reset its IO so facegen-* / dump / drive / shot work. Boots to the MENU (drive e,e to a
     # save). Tear down with `skytest stop`. (`ready`/`gs_wait_ready` unreliable on full.)
-    skse_launch_ready || die "proton or skse64_loader.exe missing" "check $PROTON and $LOADER"
+    assert_launchable
     backup_plugins                 # so `stop`'s restore_plugins round-trips the live Plugins.txt
     inject_skytestprobe "$FULL"    # refresh the probe in full with the current build
     gs_reset_io                    # clear stale commands.jsonl/trace.jsonl
@@ -941,7 +987,9 @@ cmd_status() {
   # dir) with the real files orphaned in .profiles/full. Report that distinctly instead of
   # the misleading "not migrated (Data is the original real directory)". Status is read-only
   # — it only WARNS with the recovery command (cmd_normal/uninstall do the actual fix).
-  local migrated tgt base hf hv ht sess_pid="" iso orphaned=0
+  local migrated tgt base hf hv ht sess_pid="" iso orphaned=0 gver sver
+  gver="$(game_runtime_version || true)"
+  sver="$(skse_dll_version || true)"
   if [ -L "$DATA" ]; then migrated=1; tgt=$(basename "$(readlink "$DATA")")
   elif data_is_orphaned; then migrated=0; tgt="orphaned"; orphaned=1
   else migrated=0; tgt=""; fi
@@ -957,14 +1005,24 @@ cmd_status() {
     # so `skytest status --json | jq '.world.inWorld'` works (the old grep matched nothing).
     local world=null
     [ -n "$sess_pid" ] && world="$(_probe_world_json 3)"
-    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"session":{"alive":%s,"pid":"%s"},"world":%s}\n' \
+    printf '{"migrated":%s,"data_target":"%s","profiles":{"full":%s,"vanilla":%s,"test":%s},"base_save":%s,"runtime":{"game":"%s","skse":"%s","match":%s},"session":{"alive":%s,"pid":"%s"},"world":%s}\n' \
       "$(jbool "$migrated")" "$tgt" "$(jbool "$hf")" "$(jbool "$hv")" "$(jbool "$ht")" "$(jbool "$base")" \
+      "$gver" "$sver" "$([ -n "$gver" ] && [ "${gver%.*}" = "$sver" ] && echo true || echo false)" \
       "$([ -n "$sess_pid" ] && echo true || echo false)" "$sess_pid" "$world"
     return 0
   fi
 
   echo "skytest — isolated Skyrim SE mod-test launcher"
   printf '%-10s %s\n' data "$DATA"
+  # Runtime line, always shown: a silent Steam update to Skyrim breaks every SKSE plugin,
+  # and this is the one place that says so without launching the game.
+  if [ -n "$gver" ]; then
+    if [ "${gver%.*}" = "$sver" ]; then
+      printf '%-10s game %s + SKSE %s\n' runtime "$gver" "$sver"
+    else
+      printf '%-10s MISMATCH — game %s but SKSE is for %s (SKSE will not load)\n' runtime "$gver" "${sver:-none installed}"
+    fi
+  fi
   if [ "$migrated" = 1 ]; then
     local profs=""
     [ "$hf" = 1 ] && profs+="full "; [ "$hv" = 1 ] && profs+="vanilla "; [ "$ht" = 1 ] && profs+="test "

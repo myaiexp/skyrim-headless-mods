@@ -106,3 +106,60 @@ file mods/AutoFireBow/build/AutoFireBow.dll                          # expect PE
 
 A loadable-DLL smoke test under wine (`LoadLibraryA` + `GetProcAddress` on the exports) confirms
 the imports resolve. In-game loading needs SKSE + the Address Library installed.
+
+## The CommonLibSSE-NG pin is stale, and 1.7.104 broke it (2026-09-01)
+
+Every mod here pins `https://github.com/CharmedBaryon/CommonLibSSE-NG` at
+`b93280e832f263dbef44e44cbe2936622a02f91a` (in each `mods/*/CMakeLists.txt`,
+`mods/DBVODialogueTweaks/plugin/CMakeLists.txt` for that one). **That repo is abandoned**: the
+pinned commit *is* the tip of its `main` (2024-09-03), and its newest tag, `v3.7.0`, is from 2023.
+
+Skyrim **1.7.104.0** (Steam, 2026-09-01) is the first runtime that pin cannot handle. The reason is
+one line in `include/REL/Module.h`:
+
+```cpp
+switch (_version[1]) {           // the minor version digit
+    case 4:  _runtime = Runtime::VR;  break;
+    case 6:  _runtime = Runtime::AE;  break;
+    default: _runtime = Runtime::SE;          // <- 1.7.x lands here
+}
+```
+
+1.7.104 continues the AE lineage but bumped the *minor* version, so an exact match on `6` sends it
+to the `SE` branch. Two things then go wrong, neither of them a clean load failure:
+
+- `REL::IDDatabase::load()` (`include/REL/ID.h`) picks `Data/SKSE/Plugins/version-{v}.bin` for SE
+  instead of `versionlib-{v}.bin` for AE — and Address Library only ships the AE-style file for
+  1.7.104, so every Address-Library lookup misses.
+- The `RE::` struct layouts and the `ENABLE_SKYRIM_AE` paths compile to the pre-AE variants, so what
+  does resolve reads the wrong offsets. Crashes or silent corruption, not a refusal.
+
+SKSE itself won't catch it: a plugin declaring `UsesAddressLibrary()` is version-independent as far
+as `SKSE::PluginVersionData` is concerned, so SKSE 2.3.1 loads the DLL and CommonLib fails after.
+
+**The fix is a dependency move, not a flag.** The maintained fork is
+[`alandtse/CommonLibSSE-NG`](https://github.com/alandtse/CommonLibSSE-NG) (branch `ng`), where the
+same switch is a floor (`>= 6 → AE`). 1.7.99/1.7.104 support landed in commits
+[`7b47c5a`](https://github.com/alandtse/CommonLibSSE-NG/commit/7b47c5a8f1772ed2331aebdb7035fac48d3c19ca)
+("support AE 1.7.99 address library format 5") and
+[`9b1b041`](https://github.com/alandtse/CommonLibSSE-NG/commit/9b1b041b9686525039e8ec587887ea29b749ab8f)
+("model AE 1.7.99 layout changes"), shipped in **v6.7.0** (2026-08-24). DBVO 2's own `DBVO.dll`
+links CommonLibSSE-NG **6.7.1** — that fork's numbering, not CharmedBaryon's — which is how the rest
+of the ecosystem moved.
+
+So bringing this repo back to a testable state is:
+
+1. **SKSE 2.3.1** (Nexus 30379, file 795992) — the 1.7.104 Steam build.
+2. **Address Library v13** (Nexus 32444, file 795954), literally named "All in One (1.7.104.0)".
+3. Repoint all six `CommonLibSSE` `FetchContent_Declare`s at `alandtse/CommonLibSSE-NG` ≥ `v6.7.0`
+   and **rebuild** `DBVODialogueTweaks`, `AutoFireBow`, `AutoCastSpell`, `GhostAllies`,
+   `OneClickTravel`, `SkytestProbe`. Expect real API drift across two years of fork divergence.
+4. Re-run each mod's own in-engine test. These mods are timing-sensitive and were verified on
+   1.6.1170; a runtime jump plus a two-year library jump is not a no-op, and `SkytestProbe` has to
+   come back first or nothing else can be checked.
+
+The alternative is downgrading `SkyrimSE.exe` back to 1.6.1170 and pinning Steam, which keeps every
+verified build valid and abandons the new runtime.
+
+`skytest` refuses to launch on a mismatch (`assert_runtime_match`) and `skytest status` prints the
+`runtime` line, so this state announces itself instead of looking like a harness bug.

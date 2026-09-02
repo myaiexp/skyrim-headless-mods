@@ -38,6 +38,23 @@ engine-level behavior lives in a cross-compiled SKSE C++ tier. Full _why_ + pipe
 2. **SKSE C++** (`tools/skse/`) — native DLL, full engine access, for what Papyrus fundamentally can't reach. Cross-compiled Linux→Windows (clang-cl + lld-link + xwin; CommonLibSSE-NG via FetchContent).
 3. **Test what you build** — `skytest/`: vanilla+1 isolation **plus** a drivable gamescope test session (visible or `--headless`) to screenshot, inject input, and probe the mod in-engine. One tool.
 
+## BLOCKED: the game is on 1.7.104 and this repo is not (2026-09-01)
+
+Steam updated `SkyrimSE.exe` to **1.7.104.0** on 2026-09-01 — Bethesda's first Skyrim patch in
+two and a half years. **Nothing SKSE-based in this repo can run until the stack moves forward**,
+so do not plan an in-engine test around a working game:
+
+- Installed SKSE is **2.2.6 (for 1.6.1170)**; SKSE **2.3.1** is the 1.7.104 build. Until it's
+  installed the loader refuses to start and there is no SKSE log at all.
+- Every SKSE mod here pins **CharmedBaryon/CommonLibSSE-NG @ `b93280e`** — that repo is
+  **abandoned** (that commit *is* its `main` HEAD, 2024-09-03) and its `REL::Module::load_version`
+  matches the minor version *exactly* (`case 6 → AE`), so 1.7.x falls through to `SE`, picks the
+  wrong Address Library file and the wrong struct layouts. A rebuilt DLL is required, not a
+  reconfigured one; see `docs/skse-toolchain.md` for the fork to move to.
+- `skytest` now refuses every launch verb with the two versions and the fix
+  (`assert_runtime_match`), and `skytest status` prints a `runtime` line. **Trust that line**
+  rather than reasoning about whether the game "should" work.
+
 ## Testing a mod you built — which mode?
 
 - **`skytest test <mod>`** (isolated vanilla+1, a **drivable gamescope session** — visible by

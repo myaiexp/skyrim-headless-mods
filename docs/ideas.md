@@ -534,14 +534,43 @@ Three follow-ups:
   is never reached. The repo README, the root README row and the page copy `docs/dbvo-page.md` all
   carry the warning + the 1.1.1 OLD-FILES link now; **paste `docs/dbvo-page.md` onto the live Nexus
   page** (website-only, no write API).
-- **In-engine test of DBVO 2 — needs a manual download.** `DBVO.dll` 2.0.1.6 + `SKSE/Plugins/DBVO2/`
-  and **SKSE Menu Framework** are not on this machine, and the Nexus key is non-premium
-  (`download_link.json` → 403). The Karat legacy voice pack *is* installed, so `use_legacy_voice_over`
-  is the cheap path to a voiced line once the archive lands. Two profiles: DBVO 2 alone (does skip
-  leave the player line playing?), DBVO 2 + this mod (does the click softlock?).
+- **In-engine test of DBVO 2 — double-blocked.** First on the **1.7.104 runtime** (see the
+  2026-09-02 entry: no SKSE plugin here loads at all right now), then on a **manual download** —
+  `DBVO.dll` 2.0.1.6 + `SKSE/Plugins/DBVO2/` and **SKSE Menu Framework** are not on this machine
+  and the Nexus key is non-premium (`download_link.json` → 403). The Karat legacy voice pack *is*
+  installed, so `use_legacy_voice_over` is the cheap path to a voiced line. Two profiles once
+  unblocked: DBVO 2 alone (does skip leave the player line playing?), DBVO 2 + this mod (does the
+  click softlock?). DBVO 2.0.1.6 is itself the "updated for 1.7.104.0" release; it links
+  CommonLibSSE-NG 6.7.1, and NG builds are multi-runtime by design, so it *probably* also runs on
+  1.6.1170 after a downgrade — unverified, check before betting a test plan on it.
 - **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
   handle (no sound RTTI in either build; neither references Address Library 36541/37542;
   `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only
   successor: he now has the input handler and the skip path, and a successor would race his
   `SkipInputHandler` on the same input. Confirm in-engine first that a DBVO 2 skip really does leave
   the player line playing over the NPC — that claim is inferred, not observed.
+
+## 2026-09-02 — Skyrim 1.7.104: bring the SKSE tier forward (blocks every in-engine test)
+
+State: **diagnosed, decision pending Mase. Highest-priority item in this file** — until it's
+resolved no mod here can be tested in the engine. Depth (the exact broken line, the fork, the
+download list) in `docs/skse-toolchain.md`; the blocker is also summarised in `CLAUDE.md`.
+
+Steam updated `SkyrimSE.exe` to **1.7.104.0** on 2026-09-01. Installed SKSE is 2.2.6 (1.6.1170),
+and all six SKSE mods pin `CharmedBaryon/CommonLibSSE-NG @ b93280e` — an abandoned repo whose
+runtime detection matches the minor version exactly, so it misfiles 1.7.x as pre-AE `SE` and looks
+up the wrong Address Library file with the wrong struct layouts.
+
+Two mutually exclusive directions; pick one before any other in-engine work:
+
+- **Move forward.** SKSE 2.3.1 + Address Library v13, repoint all six `FetchContent` pins at
+  `alandtse/CommonLibSSE-NG` ≥ `v6.7.0` (the maintained fork; DBVO 2 itself links 6.7.1), rebuild,
+  then re-verify each mod in-engine — `SkytestProbe` first, since nothing else can be checked
+  without it. Expect API drift across two years of fork divergence, and treat the verified
+  timing-sensitive mods (AutoCastSpell, AutoFireBow) as needing their original tests re-run, not a
+  glance.
+- **Downgrade + pin Steam** back to 1.6.1170. Every existing verified build stays valid; the repo
+  stops tracking the live game.
+
+Landed with the diagnosis: `skytest` refuses every launch verb on a version mismatch and
+`skytest status` shows a `runtime` line, so this can never again look like a harness bug.
