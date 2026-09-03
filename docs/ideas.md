@@ -623,3 +623,21 @@ are the loose ends it created, roughly by impact.
   clang-cl + xwin). `tools/skse/cross-env.sh` is our hand-rolled equivalent and still works, but the
   maintained path exists now; it wants an `xwin splat --use-winsysroot-style` sysroot. Evaluate
   before extending the local glue.
+
+## 2026-09-03 — skytest friction left behind by the DBVO 1.7.104 session
+
+- **A test profile no longer writes crash logs.** `CrashLogger.dll` is listed in
+  `<game>/.profiles/base-skse.skip` because it dies on the format-5 Address Library and parks every
+  boot. Correct, but it means a test session that crashes now leaves *nothing* — one replay boot did
+  die at step 8 ("session died") during this session and there was no crash log to explain it, and
+  it did not recur. Either find a CrashLogger build for 1.7.104 or accept that a test-session crash
+  is currently undiagnosable, and say so rather than hunting a log that was never written.
+- **Make the per-step filmstrip cheap enough for a timing test.** Each shot is a SIGUSR2 +
+  AVIF→PNG round trip of several seconds, so `replay` scripts whose steps must land inside a time
+  window have to run `--no-shots` (finding #34) and lose their visual evidence. Options: capture the
+  AVIF and defer the PNG conversion to after the run, or snap only on gate failure. Would let a
+  timing test keep its filmstrip.
+- **Skyrim may already be past 1.7.104.** Dragonborn ReVoiced's page claims testing against
+  **1.7.140**. If that build is real, this repo's whole 1.7.104 baseline (SKSE 2.3.1, Address
+  Library v13, the six rebuilt DLLs) is one patch behind again. Verify before assuming 1.7.104 is
+  current; `skytest status`'s `runtime` line reports what is actually installed here.
