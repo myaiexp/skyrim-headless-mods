@@ -106,6 +106,15 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   script actually uses, whatever the mod page's requirement list says.)
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
+- **⚠ Dragonborn ReVoiced (DBReV) — also incompatible, and it is where DBVO 1.x users are going.**
+  [DBReV](https://www.nexusmods.com/skyrimspecialedition/mods/184221) (mod 184221, v1.5, 2026-09-02)
+  is an independent successor that *does* eat DBVO 1.0 voice packs, computes reply timing natively
+  in its own SKSE plugin, and adds volume/pitch/reverb plus its own lip-sync driver. Its page is
+  explicit: *"Not compatible with any patches targeting the legacy DBVO mod … remove them if you
+  have them!"* — that includes this mod's `dialoguemenu.swf`. So on 1.7.104 a DBVO 1.x user has two
+  working exits (DBVO 2 in Legacy Mode, or DBReV) and **both require uninstalling this mod**. Full
+  picture, numbers and the reasoning behind not forking DBVO 1.x ourselves:
+  [`docs/dbvo-landscape.md`](../../docs/dbvo-landscape.md).
 - **Pinned to DBVO 1.x, permanently.** The swf this mod is built from was a fixed target for years —
   until DBVO 2 (2026) replaced the whole swf + Papyrus stack with a single DLL. Within DBVO 1.x this
   mod is still stable; it does not and cannot follow DBVO forward, and there is nothing left to

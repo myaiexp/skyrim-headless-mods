@@ -580,6 +580,18 @@ Three follow-ups:
   successor: he now has the input handler and the skip path, and a successor would race his
   `SkipInputHandler` on the same input. Confirm in-engine first that a DBVO 2 skip really does leave
   the player line playing over the NPC — that claim is inferred, not observed.
+  **Now also check DBReV** (below) before assuming the gap is still open: it advertises audio effects
+  and SmartTalk skip compatibility but says nothing about cutting the player's line.
+
+- **Compare Dragonborn ReVoiced against DBVO 2 and our mod — analysis only, not a patch.** DBReV
+  (Nexus 184221, v1.5, 2026-09-02, Raynor1511) is the DBVO 1.x takeover we were about to consider
+  building, already shipped and actively maintained. Open questions worth a dedicated session:
+  does it cut the player's line audio on skip (the last thing that might be ours)? How does its
+  timing engine compare to DBVO 2's `fuz-duration` base and to our line-end watcher? What does its
+  lip-sync driver do that DBVO 2's doesn't? Does it need ConsoleUtil/JContainers (its page implies
+  not — SKSE plugin + SkyUI MCM only)? Static analysis of its DLL, the same treatment
+  `docs/plans/dbvo-v2-compatibility-analysis.md` gave DBVO 2. Landscape + the "don't fork DBVO 1.x"
+  ruling: `docs/dbvo-landscape.md`.
 
 ## 2026-09-02 — Skyrim 1.7.104 fallout: what the move forward left open
 

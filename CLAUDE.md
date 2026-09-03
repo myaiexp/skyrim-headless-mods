@@ -172,4 +172,8 @@ What this means for anything you touch here:
 - **`docs/skse-{toolchain,tier-bringup}.md`** — the SKSE C++ tier bring-up.
 - **`docs/ghidra.md`** — the headless Ghidra RE tier (`tools/ghidra/ghidra.sh`): disassemble `SkyrimSE.exe` to find non-virtual hook seams the Address-Library tier can't reach (analyse once, query many; PyGhidra in a venv).
 - **`docs/nexus-api.md`** — the Nexus Mods read-only API + `tools/nexus` (mod release-status / stats checker).
+- **`docs/dbvo-landscape.md`** — the three DBVO frameworks (1.x, DBVO 2, Dragonborn ReVoiced) and
+  where `mods/DBVODialogueTweaks` stands. **Read before proposing any DBVO work.** It records the
+  2026-09-03 ruling *not* to fork/absorb DBVO 1.x — DBReV already did, is actively maintained, and
+  names patches like ours as incompatible.
 - **`docs/ideas.md`** — deferred features + tech debt. **`docs/plans/`** — design/plan/handoff per topic.
