@@ -157,6 +157,40 @@ check "resolve negated cmd"  '{"cmd":"is-menu-open","menu":"Console"}'      "$gc
 check "resolve negated src"  'menu'                                        "$gs"
 check "resolve negated pred" '(.menu=="Console" and .open==true) | not'    "$gp"
 
+# uivar:<menu>|<path>|<value> — the swf-state gate. `|`-separated because a menu name has a
+# space in it and an AS path has dots; values compare as the strings ui-get emits.
+gc='' gs='' gp=''
+resolve_gate 'uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true' gc gs gp
+check "resolve uivar cmd"  '{"cmd":"ui-get","menu":"Dialogue Menu","path":"_root.DialogueMenu_mc.timerBool"}' "$gc"
+check "resolve uivar src"  'ui-get' "$gs"
+check "resolve uivar pred" '.path=="_root.DialogueMenu_mc.timerBool" and .value=="true"' "$gp"
+
+# a uivar gate negates like any other
+gc='' gs='' gp=''
+resolve_gate '!uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true' gc gs gp
+check "resolve uivar negated pred" \
+  '(.path=="_root.DialogueMenu_mc.timerBool" and .value=="true") | not' "$gp"
+
+# a uivar gate missing fields is rejected rather than polling a malformed query
+gc='' gs='' gp=''
+resolve_gate 'uivar:Dialogue Menu' gc gs gp 2>/dev/null; rc=$?
+check_rc "resolve uivar short-form non-zero" 2 "$rc"
+
+# the `wait` gate is the REST of the line (a uivar menu name has a space), with a trailing
+# comment stripped first — so every pre-existing single-token gate still parses identically
+check "wait gate with spaces" \
+  'STEP wait gate=until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|false' \
+  "$(replay_parse - <<<'wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|false')"
+check "wait gate + trailing comment" \
+  'STEP wait gate=until:cell:Riverwood' \
+  "$(replay_parse - <<<'wait until:cell:Riverwood    # THE ASSERTION')"
+check "wait duration + trailing comment" \
+  'STEP wait gate=3s' \
+  "$(replay_parse - <<<'wait 3s                 # settle')"
+check "hold gate + trailing comment" \
+  'STEP hold target=LMB gate=200ms' \
+  "$(replay_parse - <<<'hold LMB 200ms   # charge')"
+
 # a negated UNKNOWN gate is still an unknown gate (the inner resolve decides)
 gc='' gs='' gp=''
 resolve_gate "!bogus" gc gs gp 2>/dev/null; rc=$?
@@ -249,6 +283,8 @@ gs_keycode()  { case "$1" in e|q|w|a|s|d|up|down|enter|tilde|escape|space) echo 
 # _lint_text reaches into gs_charcode (also lib/gamescope.sh) — same contract: a typeable
 # char -> a code, anything else -> rc 2. Only the ASCII the real map covers is accepted.
 gs_charcode() { case "$1" in [a-z0-9]|' '|.|,|-|=|\;|\'|/|\\|\[|\]) echo 1 ;; *) return 2 ;; esac; }
+# …and gs_shiftcode, its shift-held companion (a quoted console path needs `"` and `_`).
+gs_shiftcode() { case "$1" in '_'|'"'|:|'?'|+|'('|')'|'*'|'|'|'<'|'>'|'!'|'@'|'#'|'$'|'%'|'^'|'&'|'{'|'}') echo 1 ;; *) return 2 ;; esac; }
 
 # a clean script lints clean: every key/gate/duration is valid (JSON checked only if jq present)
 clean='tap e

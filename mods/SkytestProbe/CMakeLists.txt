@@ -90,6 +90,7 @@ add_library(SkytestProbe SHARED
 	src/facegen.cpp
 	src/facegen_ramp.cpp
 	src/mcm.cpp
+	src/uimenu.cpp
 	src/probes.cpp
 	src/hotkey.cpp
 	src/commands.cpp

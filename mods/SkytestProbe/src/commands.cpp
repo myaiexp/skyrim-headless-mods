@@ -332,6 +332,93 @@ namespace
 			return;
 		}
 
+		if (c == "ui-invoke") {
+			// Direct-call substitute for the SKSE native UI.InvokeString a menu mod's Papyrus
+			// would make. Use it when that Papyrus can't run (a dead framework DLL, or scripts
+			// deliberately left out to isolate the C++ half) and the swf is therefore sitting
+			// unstimulated. `menu` is the CommonLib MENU_NAME, `method` a full AS path, `args`
+			// a string array (AS2 coerces to number where the callee wants one).
+			const std::string menu   = JStr(cmd, "menu");
+			const std::string method = JStr(cmd, "method");
+			const auto        args   = JStrArr(cmd, "args");
+			if (menu.empty() || method.empty()) {
+				trace::Ack(id, false, "ui-invoke: needs \"menu\" and \"method\"");
+				return;
+			}
+			EnqueueMain([id, menu, method, args]() {
+				switch (engine::InvokeMenuMethod(menu, method, args)) {
+				case engine::InvokeResult::kOk:
+					trace::Write(json{ { "src", "ui-invoke" }, { "menu", menu }, { "method", method },
+						{ "args", args }, { "t", trace::NowMs() } });
+					trace::Ack(id, true);
+					break;
+				case engine::InvokeResult::kNoUI:
+					trace::Ack(id, false, "ui-invoke: UI singleton unavailable (too early in boot)");
+					break;
+				case engine::InvokeResult::kMenuClosed:
+					trace::Ack(id, false, "ui-invoke: menu is not open: " + menu);
+					break;
+				case engine::InvokeResult::kNoMovie:
+					trace::Ack(id, false, "ui-invoke: menu has no GFx movie (native menu): " + menu);
+					break;
+				case engine::InvokeResult::kFailed:
+					trace::Ack(id, false, "ui-invoke: the movie rejected the call (bad AS path or arity): " + method);
+					break;
+				}
+			});
+			return;
+		}
+
+		if (c == "ui-set" || c == "ui-get") {
+			// The variable half of ui-invoke: the direct-call form of UI.SetFloat / UI.SetString
+			// (and a read-back). `path` is a full AS path; ui-set takes `value` as a number or a
+			// string, ui-get writes {"src":"ui-get","value":…}.
+			const std::string menu = JStr(cmd, "menu");
+			const std::string path = JStr(cmd, "path");
+			if (menu.empty() || path.empty()) {
+				trace::Ack(id, false, c + ": needs \"menu\" and \"path\"");
+				return;
+			}
+			const bool        get   = (c == "ui-get");
+			const bool        isNum = JHasNum(cmd, "value");
+			const double      num   = JNum(cmd, "value");
+			const std::string text  = JStr(cmd, "value");
+			EnqueueMain([id, menu, path, get, isNum, num, text]() {
+				std::string          out;
+				engine::InvokeResult r;
+				if (get) {
+					r = engine::GetMenuVariable(menu, path, out);
+				} else {
+					r = engine::SetMenuVariable(menu, path, isNum, num, text);
+				}
+				switch (r) {
+				case engine::InvokeResult::kOk:
+					if (get) {
+						trace::Write(json{ { "src", "ui-get" }, { "menu", menu }, { "path", path },
+							{ "value", out }, { "t", trace::NowMs() } });
+					} else {
+						trace::Write(json{ { "src", "ui-set" }, { "menu", menu }, { "path", path },
+							{ "value", isNum ? json(num) : json(text) }, { "t", trace::NowMs() } });
+					}
+					trace::Ack(id, true);
+					break;
+				case engine::InvokeResult::kNoUI:
+					trace::Ack(id, false, "ui: UI singleton unavailable (too early in boot)");
+					break;
+				case engine::InvokeResult::kMenuClosed:
+					trace::Ack(id, false, "ui: menu is not open: " + menu);
+					break;
+				case engine::InvokeResult::kNoMovie:
+					trace::Ack(id, false, "ui: menu has no GFx movie (native menu): " + menu);
+					break;
+				case engine::InvokeResult::kFailed:
+					trace::Ack(id, false, "ui: the movie rejected the variable path: " + path);
+					break;
+				}
+			});
+			return;
+		}
+
 		if (c == "exec") {
 			const std::string line = JStr(cmd, "line");
 			if (line.empty()) {

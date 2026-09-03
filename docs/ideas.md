@@ -562,6 +562,18 @@ Three follow-ups:
   wired (`use_legacy_voice_over`, `legacy_pack:"Danagis_KaratVoice"`, `always_use_default_options`);
   its 7092 `.fuz` sit at `sound/dbvo/danagis_karatvoice/<sanitized prompt>.fuz`, matching DBVO 2's
   first path pattern. Drive recipe and the `freeze:false` trap: findings #25/#26.
+
+- **DBVO 1.x cannot run on game 1.7.104 at all — nothing here can be tested against it until two
+  third-party DLLs update.** Established in-engine 2026-09-03: SKSE 2.3.1 refuses both plugins
+  `DBVO_Script_MCM` calls into, before loading them, with its own modal (finding #30) —
+  `ConsoleUtilSSE.dll` 1.5.1.0 *"must be recompiled for new address library"* and `JContainers64.dll`
+  *"disabled, incompatible with current version of the game"*. ConsoleUtil speaks the player's line;
+  JContainers reads the voice-pack settings. (It is JContainers, not PapyrusUtil, that the shipped
+  DBVO script actually uses.) Newest upstream: ConsoleUtilSSE NG **1.6.1** (2026-08-22) and
+  JContainers SE **4.2.13.1** (2026-07-04) — neither installed here, and the Nexus API is read-only
+  so they cannot be fetched by a session. 4.2.13.1 predates the 1.7.104 patch, so it may not be
+  enough. Until then, any DBVO 1.x test is a test of the *mod's own tier* with the two Papyrus
+  stimuli synthesised (see `mods/DBVODialogueTweaks/replyonlineend.steps`), never end-to-end.
 - **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
   handle (no sound RTTI in either build; neither references Address Library 36541/37542;
   `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only
@@ -589,10 +601,12 @@ are the loose ends it created, roughly by impact.
   needs `SKYTEST_NO_AUTOLOAD=1` plus a manual menu drive, and `replay` scripts that assume an
   in-world boot will not run.
 - **Re-verify behaviour, not just loading.** Load + hook-install is proven for AutoFireBow and
-  SkytestProbe (probe answers `inWorld:true`). The *behavioural* tests — AutoFireBow's full-draw
-  shot, AutoCastSpell's recharge loop (the log-flush pacing gotcha), GhostAllies' pass-through,
-  OneClickTravel's confirm suppression — have NOT been re-run on 1.7.104. 1.7.99 changed struct
-  layouts; treat each mod's original in-engine test as owed, not optional.
+  SkytestProbe (probe answers `inWorld:true`). Two behavioural tests are now **done** on 1.7.104:
+  OneClickTravel's confirm suppression (2026-09-03) and DBVODialogueTweaks' reply-on-line-end
+  (2026-09-03). Still owed: AutoFireBow's full-draw shot, AutoCastSpell's recharge loop (the
+  log-flush pacing gotcha), GhostAllies' pass-through, and DBVODialogueTweaks' other three
+  features (skip, interrupt-cut, volume — same hook, but each needs its own test). 1.7.99 changed
+  struct layouts; treat each as owed, not optional.
 - **Upstream now cross-compiles on Linux itself** (`cmake/toolchain-linux-clangcl.cmake`, NG v6.6.0,
   clang-cl + xwin). `tools/skse/cross-env.sh` is our hand-rolled equivalent and still works, but the
   maintained path exists now; it wants an `xwin splat --use-winsysroot-style` sysroot. Evaluate

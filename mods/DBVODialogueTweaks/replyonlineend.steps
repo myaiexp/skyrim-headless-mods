@@ -1,0 +1,106 @@
+# DBVO Dialogue Tweaks — the reply-on-line-end verification, replayable.
+#
+# What it proves, hands-free: the SKSE plugin sees the player's DBVO line START, detects when
+# it ENDS, clears the swf's word-count backstop, and re-fires the NPC reply after the gap the
+# MCM configured. That is the mod's headline feature, and the half DBVO 1.x cannot do itself.
+#
+#   mods/DBVODialogueTweaks/stage-test-profile.sh          # build both stages (once)
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
+#       mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots
+#
+# The control half of the A/B — the SAME stage with the DLL deleted, nothing else changed:
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nodll \
+#       mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots
+# It MUST fail on the first assertion: with no DLL the reply fires on the word-count backstop
+# at 4.1 s, so timerBool is already false when the script checks it.
+#
+# `--no-shots` is REQUIRED, not a preference. This script is a timing test: the arming step has
+# to land while the player's line is still playing, and the per-step filmstrip costs several
+# seconds PER STEP — with it on, the ten steps between the topic click and the arm take ~45 s,
+# the conversation times out on its own, and the run fails for a reason that has nothing to do
+# with the mod. The two `shot` steps below still capture the frames that matter.
+#
+# Why the two probe `cmd` steps exist: DBVO 1.x's Papyrus is what normally speaks the line and
+# arms the swf, and on game 1.7.104 it cannot run at all — SKSE refuses ConsoleUtilSSE and
+# JContainers64, DBVO's two hard requirements (see the mod README, "Compatibility"). So the
+# script supplies exactly those two stimuli itself: the console runs the same
+# `Player.SpeakSound "DBVO/…"` ConsoleUtil would have run, and `ui-invoke` makes the same
+# `UI.InvokeString(… startTopicClickedTimer …)` call. Everything downstream is the mod's own.
+#
+# NO_AUTOLOAD because the bundled po3_StartOnSave is stale for 1.7.104, so boot-into-save is
+# unavailable and the script drives the main menu itself. Drop that env var once Start On Save
+# 2.8.0 lands in skytest/base-skse/ AND delete the first five steps.
+#
+# Pixel coordinates are for the headless default 1280x720; re-read them off a `shot` if the
+# session resolution changes.
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait 4s
+click 602 409           # "Creations are currently loaded … continue?" -> Yes (#25). Harmless if absent.
+wait until:inworld
+wait 3s                 # inworld fires before the player's 3D settles (#16)
+
+# --- stage: a talkable NPC in front of the player -----------------------------------
+# freeze:false is load-bearing — a frozen NPC opens the topic list and then never replies,
+# which is indistinguishable from the failure this test measures (#26). d:110 is inside
+# activation range; the default 256 is not.
+cmd {"cmd":"placeatme","base":"0x00013BA3","as":"hulda","d":110,"freeze":false}
+wait 6s
+tap e
+wait until:menu:Dialogue Menu
+
+# --- set a gap no other code path in the stack would produce ------------------------
+# 15000 ms. The MCM pushes its own value on every dialogue-menu open, so this has to come
+# AFTER the menu is up. Only dbvoOnPlayerLineEnded — the DLL's callback — ever reads it.
+cmd {"cmd":"ui-set","menu":"Dialogue Menu","path":"_root.DialogueMenu_mc.dbvoPadMs","value":15000}
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.dbvoPadMs|15000.000000
+
+# --- click a topic ------------------------------------------------------------------
+# "Where can I learn more about magic?" — 7 words, so the swf's backstop is 7*300+2000 = 4100 ms.
+# A longer topic is chosen on purpose: the backstop has to outlast the remaining audio at the
+# moment the timer is armed, or it beats the DLL's line-end callback and the test measures the
+# fallback instead of the feature.
+move 915 517
+wait 1s
+click
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true    # the click armed the swf
+
+# --- speak the player's line (the ConsoleUtil substitute) ---------------------------
+# The path MUST be quoted: the console splits an unquoted argument at `/` and `\`, so
+# `player.speaksound dbvo/t1.fuz` reaches the engine as just "dbvo" and plays nothing.
+# NOTE: `type` takes the rest of the line VERBATIM, so its comments live on their own lines.
+tap tilde
+wait until:menu:Console
+type player.speaksound "dbvo/t1.fuz"
+tap enter
+# A timing witness, not a query: this line's `t` in trace.jsonl marks when the audio started,
+# which is what every margin below is measured from. Without it a failed run cannot be told
+# apart from a mis-timed one.
+cmd {"cmd":"status"}
+# Close the console BEFORE arming, and so before the line ends. Leaving it open across the end
+# of the line silently loses the whole effect — the reply comes on the backstop instead, exactly
+# as if the DLL were absent. Cost three runs to pin down: the console is a menu stacked on the
+# dialogue menu, and the mod's callback into the dialogue swf does not land through it.
+tap tilde
+wait until:!menu:Console
+
+# --- arm the swf timer mid-line (the UI.InvokeString substitute) --------------------
+# Timing is the whole game here. Arming starts the swf's 4.1 s backstop, and the DLL's line-end
+# callback has to beat it — so the margin is `backstop - audio remaining at arm time`, and
+# arming EARLY is what kills it, not arming late. The line is ~5 s and the console-close above
+# spends ~2.5 s of it, which lands this arm in the window with ~2 s of audio still to run.
+cmd {"cmd":"ui-invoke","menu":"Dialogue Menu","method":"_root.DialogueMenu_mc.startTopicClickedTimer","args":["Danagis_KaratVoice"]}
+
+# --- THE ASSERTION (two halves) -----------------------------------------------------
+# 1. Past the backstop, the reply must NOT have fired yet. Without the DLL it fired at 4.1 s,
+#    so this is the gate the control fails: timerBool is already false -> never resolves.
+wait 6s
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true
+shot /tmp/dbvo-still-waiting.png
+# 2. …and it must then fire on its own, at line-end + the 15000 ms gap — proving the DLL
+#    RESCHEDULED the reply rather than the conversation simply hanging (the DBVO 2 softlock).
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|false
+shot /tmp/dbvo-replied.png

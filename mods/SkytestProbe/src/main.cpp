@@ -109,7 +109,7 @@ void config::Load()
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 0, 3, 0 },
+	.Version = REL::Version{ 0, 4, 0 },
 	.Name = "SkytestProbe",
 	.Author = "mase",
 	.StructCompatibility = SKSE::StructCompatibility::Independent,

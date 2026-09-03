@@ -96,9 +96,12 @@ gamescope session instead — see below.)
 - **Mouth: the in-game CONSOLE, typed.** `drive tap tilde` → `drive type 'coc riverwood'` →
   `drive tap enter` runs a real console command (its command table, not the mis-bound
   `CompileAndRun` path the probe's `exec` hits — findings #18/#27). This is the general staging
-  escape hatch for anything no probe command implements. `type` is case-folded and unshifted
-  (a-z 0-9 space `. , - = ; ' / \ [ ]`). **Close the console** (`tap tilde`) before driving
-  anything else: left open it swallows keys, and a click in it becomes a console ref-pick.
+  escape hatch for anything no probe command implements. `type` is case-folded, covers
+  a-z 0-9 space `. , - = ; ' / \ [ ]` unshifted, and holds SHIFT for `_ " : ? + ( ) * | < > !
+  @ # $ % ^ & { }` (finding #31 — a console **path argument must be quoted**, or the console
+  splits it at the first `/`). **Close the console** (`tap tilde`) before driving anything else
+  — and before whatever you are measuring happens (#33): left open it swallows keys, turns a
+  click into a console ref-pick, and swallows a mod's callback into the menu underneath.
 - **Truth: SkytestProbe.** Injected into every test profile (below). `ready` polls its `status` for
   `inWorld:true`; `drive`+probe gives a full blind test loop (act, then read `trace.jsonl`).
 
@@ -192,8 +195,32 @@ immediately, naming the plugin:
 FATAL: an SKSE plugin refused this game build -> po3_StartOnSave: Unsupported address library format: 5
 ```
 
-Two known casualties on 1.7.104: `CrashLogger.dll` (renamed `.disabled-stale-for-1.7.104` in the
-vanilla profile) and the bundled `base-skse/po3_StartOnSave.dll` v2.7.0.1.
+Two known casualties on 1.7.104: `CrashLogger.dll` and the bundled `base-skse/po3_StartOnSave.dll`
+v2.7.0.1.
+
+**A stale plugin that SKSE itself refuses is a different, dismissible modal** (finding #30). SKSE
+version-checks every DLL before loading it and pops its own win32 box listing the rejects
+(*"must be recompiled for new address library"*, *"disabled, incompatible with current version of
+the game"*). A coordinate click cannot reach a win32 window — **`skytest drive tap n`** (the "No"
+mnemonic) continues the boot without them. That message is written only to `skse64.log`, and both
+`gs_wait_ready` and `gs_wait_probe` now scan it, so either boot path names the DLL.
+
+**Keeping a stale base-SKSE plugin out: `<game>/.profiles/base-skse.skip`.** One basename per
+line (`#` comments allowed); `collect_base_skse` skips them. It exists because the vanilla profile
+is rebuilt on every `test` (below), so renaming a link by hand no longer survives. `CrashLogger.dll`
+is listed there for 1.7.104 — delete the line when CrashLogger ships a current build.
+
+**The vanilla profile is rebuilt on every `test`, not just at `init`.** It is ~40 symlinks, and a
+copy frozen at migration time silently misses whatever changed in the full profile since — a new
+Address Library, an updated base DLL, or a newly-collected file class. It now also carries
+**SKSE's own loose Papyrus scripts** (`SKSE.pex`, `UI.pex`, `StringUtil.pex`, …). Without them
+SKSE runs but none of its natives bind, so SkyUI boots into *"SKYUI ERROR CODE 1 — The Skyrim
+Script Extender (SKSE64) is not running"*, every MCM dies with it, and any swf-driving mod loses
+`UI.Invoke*` — a staging gap that reads exactly like a mod bug.
+
+**Plugins.txt is written master-first.** `find` order is arbitrary, and Skyrim drops a plugin whose
+master sits below it; the generated load order is now topologically sorted on the MAST entries read
+out of each plugin's TES4 header (a voice-pack ESP mastering `DBVO.esp` is what surfaced it).
 
 ### `SKYTEST_NO_AUTOLOAD=1` — boot to the menu on purpose
 
@@ -273,7 +300,9 @@ no profile change): beyond the structural parse (unknown verbs, missing args) it
 key name resolves, every `until:` gate is known, every duration is well-formed, and every `cmd`
 payload is valid JSON — so a typo'd key or gate is caught up front (`step N (verb): <problem>`)
 instead of failing a step after a full boot.
-`--no-shots` disables the per-step filmstrip (see below).
+`--no-shots` disables the per-step filmstrip (see below) — **required, not optional, for a script
+whose steps must land inside a time window**: each shot costs seconds, so the filmstrip can stretch
+a ten-step run past the thing it is trying to measure (finding #34).
 
 `.steps` is line-based (`#` comments, blank lines ignored):
 
@@ -306,6 +335,12 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
   while the cell name flips exactly once, on arrival. Doubles as an **assertion**: in
   `mods/OneClickTravel/oneclick.steps` the final `until:cell:NorthSkyboundWatchExterior01` IS the
   test (if the one click didn't travel, the replay fails there).
+- `until:uivar:<menu>|<path>|<value>`: an **ActionScript variable inside an open menu** equals
+  `<value>` — the swf's own state, which no screenshot and no engine query can show. Fields are
+  `|`-separated because a menu name has a space in it (`Dialogue Menu`) and an AS path has dots;
+  values compare as the strings `ui-get` emits (numbers arrive as `15000.000000`). This is what
+  makes a menu-side mod assertable: `mods/DBVODialogueTweaks/replyonlineend.steps` ends on two of
+  them — the reply must NOT have fired yet, then must fire on its own.
 - `until:charged`, `until:actorcount`: **not built**; added per the first script that needs them
   (one `resolve_gate` row + one direct-call probe handler, see `mods/SkytestProbe` `is-menu-open`).
 - **Any gate negates with a leading `!`** — `until:!menu:Console` = "wait until the console is

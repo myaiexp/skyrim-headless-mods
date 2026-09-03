@@ -17,6 +17,17 @@ if (match.Length == 0)
     return;
 }
 
+// "--sizes" = list mode with the uncompressed byte count first, tab-separated, so a caller can
+// `sort -rn` for the biggest asset. Picking a voice line BY LENGTH is the reason this exists:
+// a timing test needs the longest .fuz in a pack, and a filename says nothing about duration.
+// Decompresses every entry, so it is slower than the bare listing — hence a separate mode.
+if (match == "--sizes")
+{
+    foreach (var file in reader.Files)
+        System.Console.WriteLine($"{file.GetSpan().Length}\t{file.Path}");
+    return;
+}
+
 var hit = false;
 foreach (var file in reader.Files)
 {

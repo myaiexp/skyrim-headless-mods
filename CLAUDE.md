@@ -68,10 +68,20 @@ What this means for anything you touch here:
   not installed. See `docs/ideas.md` before you sit through it again.
 - `skytest status` prints a `runtime` line and every launch verb runs `assert_runtime_match`.
   **Trust that line** rather than reasoning about whether the game "should" work.
-- **Loading is not working.** The tier-move verified that the six DLLs *load* on 1.7.104; only
-  **OneClickTravel** has since been re-verified as *functional* there (2026-09-03, A/B against
-  `test --vanilla`, replayable as `mods/OneClickTravel/oneclick.steps`). The other five are
-  unverified on this build — re-run each mod's own in-engine test before claiming otherwise.
+- **Loading is not working.** The tier-move verified that the six DLLs *load* on 1.7.104.
+  Re-verified as *functional* there so far, each by A/B and each replayable:
+  **OneClickTravel** (2026-09-03, against `test --vanilla`, `mods/OneClickTravel/oneclick.steps`)
+  and **DBVODialogueTweaks**' reply-on-line-end (2026-09-03, against the same profile minus its
+  DLL, `mods/DBVODialogueTweaks/replyonlineend.steps`). AutoFireBow, AutoCastSpell and GhostAllies
+  are still load-only — re-run each mod's own in-engine test before claiming otherwise, and note
+  DBVODialogueTweaks' skip / interrupt-cut / volume features are also still untested here.
+- **A third-party mod can be dead on 1.7.104 in two different ways, and only one is loud.**
+  A CommonLibSSE plugin too old for the format-5 Address Library throws its own modal and parks
+  the boot. A *version-locked* plugin is refused by SKSE itself, before loading, behind a win32
+  message box that a coordinate click cannot dismiss — `skytest drive tap n` continues without it,
+  and the message appears only in `skse64.log` (skytest scans it and names the DLL). This is what
+  currently kills **DBVO 1.x**: SKSE refuses ConsoleUtilSSE and JContainers64, so DBVO speaks no
+  player line at all. Assume any un-updated framework DLL is in one of those two states.
 
 ## Testing a mod you built — which mode?
 
@@ -91,12 +101,20 @@ What this means for anything you touch here:
   travel/`coc`, `until:menu:<NAME>` after an open) so the script fails when the mod does, and see
   `mods/OneClickTravel/oneclick.steps` for the shape.
 - **World staging: probe command if one exists, otherwise TYPE THE CONSOLE.** Direct-call probe
-  commands (`placeatme`, `give-spell`, `set-av`, …) are first choice — acked, main-thread. For
-  anything they don't cover, drive the real console: `drive tap tilde` + `drive type '<line>'` +
-  `drive tap enter` (a `type` step exists in `.steps`), verified on 1.7.104 with `tmm 1` and
-  `coc riverwood`. The console's **command table** is fine; only the probe's *programmatic* `exec`
-  is broken (CommonLib mis-binds `CompileAndRun` — findings #18/#27). **Close the console** before
-  driving anything else: open, it eats keys and turns clicks into console ref-picks.
+  commands (`placeatme`, `give-spell`, `set-av`, `ui-invoke`/`ui-set`/`ui-get`, …) are first
+  choice — acked, main-thread. For anything they don't cover, drive the real console:
+  `drive tap tilde` + `drive type '<line>'` + `drive tap enter` (a `type` step exists in
+  `.steps`), verified on 1.7.104 with `tmm 1`, `coc riverwood` and `player.speaksound`. The
+  console's **command table** is fine; only the probe's *programmatic* `exec` is broken (CommonLib
+  mis-binds `CompileAndRun` — findings #18/#27). **Quote any path argument** — the console splits
+  an unquoted one at the first `/` (`type` holds SHIFT for `"` and `_` since finding #31).
+  **Close the console** before driving anything else *and before the thing you're measuring
+  happens*: open, it eats keys, turns clicks into console ref-picks, and swallows a mod's
+  callback into the menu underneath (#33).
+- **A menu-side mod is testable and assertable.** SkytestProbe's `ui-invoke`/`ui-set`/`ui-get`
+  call into an open menu's ActionScript — the direct-call form of `UI.InvokeString`/`SetFloat` —
+  so a swf can be stimulated when its own Papyrus can't run, and the `until:uivar:<menu>|<path>|
+  <value>` replay gate turns the swf's internal state into a pass/fail assertion.
 - **A/B every behavioral claim with `skytest test --vanilla`** — the same rig, same save, same
   staging, no mod. It is one flag, so the control differs from the test run in exactly one thing.
 

@@ -11,3 +11,4 @@
 #include "facegen.h"
 #include "facegen_ramp.h"
 #include "mcm.h"
+#include "uimenu.h"

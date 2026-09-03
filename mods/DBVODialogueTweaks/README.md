@@ -36,8 +36,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   those builds use and will not load. Match SKSE to your game (2.3.1 for 1.7.104).
 - **DBVO 1.x** — [Dragonborn Voice Over 1.1.1](https://www.nexusmods.com/skyrimspecialedition/mods/84329?tab=files&file_id=416153),
   which now lives under the mod page's **OLD FILES** tab: the page's main download is DBVO 2, which
-  this mod does not support. Plus everything DBVO 1.x itself requires — **PapyrusUtil SE 4.8+** and
-  **ConsoleUtilSSE NG 1.6.1+** if you are on 1.7.99/1.7.104, for the same format-5 reason.
+  this mod does not support. Plus what DBVO 1.x itself calls into — **ConsoleUtilSSE NG** (speaks
+  your line) and **JContainers SE** (reads DBVO's voice-pack settings) — both current for your game
+  build. On 1.7.104 the older builds of those two are refused outright; see
+  [Compatibility](#compatibility).
 - **SkyUI** (for the MCM)
 - **Address Library for SKSE Plugins** — v13 ("All in One (1.7.104.0)") on the new builds.
 
@@ -65,15 +67,43 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   purely through the Address Library (the SE/AE addresses are resolved at runtime), so the same file
   runs on every SE and AE build (Steam or GOG) as long as Address Library is installed. The Papyrus
   scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
-- **Skyrim 1.7.104, yes — from v1.0.1.** Verified in-engine on 1.7.104 with SKSE 2.3.1 and Address
-  Library v13: the plugin loads, installs its speak-sound hook, registers its Papyrus native and
-  both event sinks. v1.0.0 does **not** load there: 1.7.99 changed the Address Library database to
-  format 5 and 1.0.0's CommonLibSSE-NG predates that, so it aborts with
-  *"Unsupported address library format: 5"*. The 1.7.104 build still targets SE + AE the same way,
-  but only 1.7.104 has been re-tested since the rebuild.
-  DBVO 1.x's own stack on 1.7.104 is a separate question this mod can't answer for you: PapyrusUtil
-  SE 4.8 and ConsoleUtilSSE NG 1.6.1 are the current builds and should cover it, but we have not
-  tested DBVO 1.x itself there.
+- **Skyrim 1.7.104, yes — from v1.0.1, and the reply timing is verified there.** Tested in-engine
+  on game 1.7.104 with SKSE 2.3.1 and Address Library v13 (2026-09-03). The plugin loads, installs
+  its speak-sound hook, registers its Papyrus native and both event sinks — and the feature this
+  mod exists for demonstrably still works on the new build: with a player line playing, the plugin
+  detected the line's end, cleared the menu's word-count backstop, and re-fired the NPC's reply
+  after the configured gap. A/B against the *same* profile with only `DBVODialogueTweaks.dll`
+  removed, where the reply instead landed on the word-count guess:
+
+  | run | reply arrived |
+  | --- | --- |
+  | with the DLL | at the line's real end **+ the configured gap** (15 s gap → 20.3 s after the line started; predicted 20.0 s) |
+  | without it | at the swf backstop, 4.1 s after the timer was armed — the gap ignored |
+
+  Replayable as `replyonlineend.steps` (see [Testing](#testing) below). v1.0.0 does **not** load on
+  1.7.99/1.7.104: those builds changed the Address Library database to format 5 and 1.0.0's
+  CommonLibSSE-NG predates that, so it aborts with *"Unsupported address library format: 5"*. The
+  1.7.104 build still targets SE + AE the same way, but only 1.7.104 has been re-tested since the
+  rebuild.
+
+- **⚠ DBVO 1.x itself does not currently run on 1.7.104 — and that, not this mod, is what blocks
+  you.** Checked in-engine on 2026-09-03 with the DBVO 1.x install that worked on 1.6.1170. SKSE
+  2.3.1 refuses **both** of the SKSE plugins DBVO 1.x's `DBVO_Script_MCM` calls into, before they
+  ever load, and puts up its own modal saying so:
+
+  ```
+  ConsoleUtilSSE.dll: must be recompiled for new address library      (1.5.1.0)
+  JContainers64.dll: disabled, incompatible with current version of the game
+  ```
+
+  ConsoleUtil is what speaks your line (`Player.SpeakSound "DBVO/…"`) and JContainers is what reads
+  DBVO's voice-pack settings, so with those two refused DBVO 1.x produces no player voice at all —
+  and this mod, which exists to time the reply to that voice, has nothing to time. **Update both
+  before blaming this mod**: ConsoleUtilSSE NG 1.6.1 (2026-08-22) and JContainers SE 4.2.13.1
+  (2026-07-04) are the newest upstream builds, and neither was the one installed here. Whether that
+  newer pair is enough for 1.7.104 specifically is untested — JContainers is version-locked, and
+  4.2.13.1 predates the patch. (Note it is JContainers, not PapyrusUtil, that DBVO 1.x's shipped
+  script actually uses, whatever the mod page's requirement list says.)
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
 - **Pinned to DBVO 1.x, permanently.** The swf this mod is built from was a fixed target for years —
@@ -162,6 +192,30 @@ Toolchain:
 Built on **Dragonborn Voice Over** by **MathiewMay**, with permission received from the author. The
 bundled `dialoguemenu.swf` is MathiewMay's asset recompiled with these tweaks. **All credit for DBVO
 goes to MathiewMay.**
+
+## Testing
+
+`replyonlineend.steps` is the in-engine verification of the reply-on-line-end feature, replayable
+and hands-free. Build its two profiles once, then run each half:
+
+```bash
+./stage-test-profile.sh          # ~/.cache/skytest-dbvotweaks{,-nodll}: identical but the DLL
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
+    mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots     # must PASS
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nodll \
+    mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots     # must FAIL
+```
+
+The last two steps are the assertion: the reply must **not** have fired once the swf's word-count
+backstop would have expired, and must then fire on its own at line-end + the configured gap. The
+control has exactly one file fewer and fails the first of those.
+
+Because DBVO 1.x's Papyrus cannot run on 1.7.104 (see [Compatibility](#compatibility)), the script
+supplies the two stimuli that Papyrus would have: the console runs the same
+`Player.SpeakSound "DBVO/…"` ConsoleUtil would, and a SkytestProbe `ui-invoke` makes the same
+`UI.InvokeString(… startTopicClickedTimer …)` call. Everything downstream of those two is the
+mod's own code. It does **not** cover the skip, interrupt-cut, or volume features — those ride the
+same hook, but each needs its own in-engine test.
 
 ## Design notes
 

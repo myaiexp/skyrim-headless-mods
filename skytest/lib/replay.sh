@@ -77,9 +77,11 @@ _replay_parse_stream() {
         fi
         ;;
       hold)
-        # `hold <TARGET> <GATE>` — GATE is one token (a duration or until:<COND>),
-        # NOT another key. read peels target then gate; any trailing junk is ignored.
-        read -r target gate _ <<<"$rest"
+        # `hold <TARGET> <GATE>` — GATE is a duration or until:<COND>, NOT another key.
+        # read peels the target; the gate is everything left (see `wait` below for why).
+        rest="${rest%%#*}"; rest="${rest%"${rest##*[![:space:]]}"}"
+        read -r target gate <<<"$rest"
+        gate="${gate%"${gate##*[![:space:]]}"}"
         if [ -z "$target" ] || [ -z "$gate" ]; then
           printf "replay: line %d: 'hold' needs <LMB|RMB|key> <dur|until:COND>\n" "$lineno" >&2; rc=2
         else
@@ -87,7 +89,12 @@ _replay_parse_stream() {
         fi
         ;;
       wait)
-        read -r gate _ <<<"$rest"                 # one gate token
+        # The gate is the rest of the line, not the first token: `until:uivar:<menu>|…` names a
+        # menu, and the engine's menu names have spaces in them ("Dialogue Menu"). A trailing
+        # `# comment` is stripped first — every existing single-token gate parses identically,
+        # since right-trimming what the comment left behind yields the same token.
+        rest="${rest%%#*}"
+        gate="${rest%"${rest##*[![:space:]]}"}"
         if [ -z "$gate" ]; then
           printf "replay: line %d: 'wait' needs <dur|until:COND>\n" "$lineno" >&2; rc=2
         else
@@ -240,9 +247,11 @@ _lint_json() {                                                       # a JSON ob
   printf '%s' "$1" | jq empty 2>/dev/null
 }
 _lint_text() {                                                       # every char is typeable
-  local s idx; s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  local s idx c; s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   for ((idx = 0; idx < ${#s}; idx++)); do
-    gs_charcode "${s:idx:1}" >/dev/null 2>&1 || return 1
+    c="${s:idx:1}"
+    gs_charcode "$c" >/dev/null 2>&1 && continue
+    gs_shiftcode "$c" >/dev/null 2>&1 || return 1                    # shifted glyphs type too
   done
 }
 _lint_num()  { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }         # an integer pixel coordinate
@@ -257,6 +266,8 @@ _lint_num()  { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }         # an intege
 #   inworld       {"cmd":"status"}                             status   .world.inWorld == true
 #   menu:<NAME>   {"cmd":"is-menu-open","menu":"<NAME>"}        menu     .menu=="<NAME>" and .open==true
 #   cell:<EDID>   {"cmd":"dump","ref":"player"}                dump     .fields.cellEditorID=="<EDID>"
+#   uivar:<menu>|<path>|<value>
+#                 {"cmd":"ui-get","menu":…,"path":…}           ui-get   .path==<path> and .value==<value>
 #
 # Any gate can be NEGATED with a leading `!` — `until:!menu:Console` = "wait until the console
 # is CLOSED". Same probe query, the predicate wrapped in jq's `not`. That turns "I remember the
@@ -303,6 +314,25 @@ resolve_gate() {
       __src_ref='dump'
       __pred_ref=".fields.cellEditorID==\"$__c\""
       ;;
+    uivar:*)
+      # "an ActionScript variable in an open menu equals <value>" — the swf's own state, which
+      # no screenshot and no engine query can show. Reads through SkytestProbe's `ui-get`, so
+      # anything the menu's AS holds is gateable: a mod's flag, a mode enum, a pushed setting.
+      #
+      # Fields are `|`-separated because a CommonLib menu name has a space in it
+      # ("Dialogue Menu") and an AS path has dots: uivar:<menu>|<path>|<value>. Values compare
+      # as STRINGS — ui-get stringifies numbers, so a number is "6000.000000", and the useful
+      # comparisons here are flags ("true"/"false") anyway.
+      local __rest="${__cond#uivar:}" __m __p __v
+      __m="${__rest%%|*}"; __rest="${__rest#*|}"
+      __p="${__rest%%|*}"; __v="${__rest#*|}"
+      if [ -z "$__m" ] || [ -z "$__p" ] || [ "$__p" = "$__m" ]; then
+        printf "replay: gate 'uivar:<menu>|<path>|<value>' needs all three fields\n" >&2; return 2
+      fi
+      __cmd_ref="{\"cmd\":\"ui-get\",\"menu\":\"$__m\",\"path\":\"$__p\"}"
+      __src_ref='ui-get'
+      __pred_ref=".path==\"$__p\" and .value==\"$__v\""
+      ;;
     *)
       printf "replay: unknown gate condition '%s'\n" "$__cond" >&2
       return 2
@@ -316,6 +346,14 @@ resolve_gate() {
 # each iteration fast-fails on a dead session, re-issues the gate's probe query with a
 # fresh id, tails the matching trace `src` line, and evaluates the jq predicate. Never
 # polls without a deadline (the design's hard rule — a missed gate aborts, never hangs).
+#
+# Only lines written AFTER the gate started count. `trace.jsonl` is append-only for the whole
+# session, so an earlier step that asked the same question leaves a matching line sitting there
+# — and the tail below would answer this gate from it, instantly, without the probe ever being
+# asked. That is a silent FALSE PASS, and it is worst exactly where a gate matters most: an
+# assertion gate re-reading its own setup step's observation. Same class as the stale-trace
+# false positive gs_reset_io fixes across sessions (finding #13), one step apart instead of one
+# launch apart. Caught by an assertion that "passed" off a 44-second-old line.
 replay_wait_gate() {
   local cond="${1:?replay_wait_gate: condition required}" timeout="${2:-180}"
   local cmd src pred
@@ -323,6 +361,7 @@ replay_wait_gate() {
 
   local trace; trace="$(_skytest_io_dir)/trace.jsonl"
   local deadline=$((SECONDS + timeout)) i=0 line ok
+  local since; since="$(date +%s%3N)"             # probe trace `t` is epoch-ms, same clock
   printf 'replay: waiting for gate %s (timeout %ss)…\n' "$cond" "$timeout" >&2
   while [ "$SECONDS" -lt "$deadline" ]; do
     if gs_session_dead; then
@@ -333,17 +372,17 @@ replay_wait_gate() {
     # Splice a unique id into the resolved query: {"cmd":..} -> {"id":"gate-N","cmd":..}
     # (string-built JSON, same idiom as gs_wait_ready's printf'd status command).
     _probe_send "{\"id\":\"gate-$i\",${cmd#\{}"
+    sleep 1                                        # give the probe its poll interval to answer
     if [ -f "$trace" ]; then
       line="$(grep -F "\"src\":\"$src\"" "$trace" 2>/dev/null | tail -1 || true)"
       if [ -n "$line" ]; then
-        ok="$(printf '%s' "$line" | jq -r "if ($pred) then 1 else 0 end" 2>/dev/null || echo 0)"
+        ok="$(printf '%s' "$line" | jq -r "if ((.t // 0) >= $since) and ($pred) then 1 else 0 end" 2>/dev/null || echo 0)"
         if [ "$ok" = 1 ]; then
           printf 'replay: gate %s satisfied\n' "$cond" >&2
           return 0
         fi
       fi
     fi
-    sleep 1
   done
   printf 'replay: gate %s timed out after %ss\n' "$cond" "$timeout" >&2
   return 1

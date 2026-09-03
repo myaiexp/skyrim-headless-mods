@@ -301,11 +301,58 @@ collect_vanilla_bsas() {
   return 0
 }
 
-# base SKSE files every C++ test needs: Address Library + CrashLogger (+ its config)
-collect_base_skse() {
-  local src="$1/SKSE/Plugins" f
+# SKSE's own loose Papyrus scripts, present in $1/Scripts (case-insensitive).
+#
+# These are part of the SKSE *install*, not of any mod — SKSE64's archive drops them into
+# Data/Scripts, and every SKSE Papyrus native (UI.InvokeString, StringUtil, ModEvent, Input,
+# MiscUtil, and SKSE.GetVersion itself) is declared in them. The vanilla profile used to carry
+# only plugins/BSAs/SKSE-Plugins, so a test profile had SKSE running but none of its script
+# bindings: SkyUI then boots into "SKYUI ERROR CODE 1 — The Skyrim Script Extender (SKSE64)
+# is not running" (its detection calls SKSE.GetVersion), every MCM dies with it, and any
+# swf-driving mod loses UI.Invoke*. That reads as a mod bug and is a staging gap.
+#
+# The list is a literal because it is a fixed third-party manifest — the contents of one
+# SKSE64 archive, stable across releases — not a project-local set that drifts. Names are
+# matched case-insensitively: SKSE ships them lowercase, mods reference them capitalised.
+SKSE_SCRIPTS=(ActorValueInfo Form Game Input MiscUtil ModEvent SKSE SpawnerTask StringUtil UI UICallback Weather)
+collect_skse_scripts() {
+  local src="$1/Scripts" want f b
   [ -d "$src" ] || return 0
-  for f in "$src"/versionlib*.bin "$src"/CrashLogger*; do printf '%s\n' "$(basename "$f")"; done
+  local -A wantmap=()
+  for want in "${SKSE_SCRIPTS[@]}"; do wantmap["${want,,}.pex"]=1; done
+  for f in "$src"/*.pex; do
+    [ -e "$f" ] || continue
+    b=$(basename "$f")
+    [ -n "${wantmap[${b,,}]:-}" ] && printf '%s\n' "$b"
+  done
+  return 0
+}
+
+# base SKSE files every C++ test needs: Address Library + CrashLogger (+ its config), minus
+# anything listed in $BASE_SKSE_SKIP.
+#
+# The skip list exists because "base SKSE" is only base as long as it can LOAD. A CrashLogger
+# built for the previous game build doesn't degrade — it throws CommonLib's report_and_fail
+# modal and parks every boot (see gs_wait_ready). That used to be handled by renaming the link
+# inside the vanilla profile by hand, which worked only until the profile was next rebuilt;
+# the decision belongs in a file beside the profiles, where a rebuild can't lose it.
+BASE_SKSE_SKIP="$PROFILES/base-skse.skip"
+collect_base_skse() {
+  local src="$1/SKSE/Plugins" f b line
+  [ -d "$src" ] || return 0
+  local -A skip=()
+  if [ -f "$BASE_SKSE_SKIP" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"; line="${line%%#*}"; line="${line// /}"
+      [ -n "$line" ] && skip["${line,,}"]=1
+    done < "$BASE_SKSE_SKIP"
+  fi
+  for f in "$src"/versionlib*.bin "$src"/CrashLogger*; do
+    [ -e "$f" ] || continue
+    b="$(basename "$f")"
+    [ -n "${skip[${b,,}]:-}" ] && continue
+    printf '%s\n' "$b"
+  done
   return 0
 }
 
@@ -318,10 +365,18 @@ build_vanilla_profile() {
   while IFS= read -r b; do ln -s "$FULL/$b" "$VANILLA/$b"; done < <(collect_vanilla_plugins "$FULL")
   while IFS= read -r b; do ln -s "$FULL/$b" "$VANILLA/$b"; done < <(collect_vanilla_bsas "$FULL")
   while IFS= read -r f; do ln -s "$FULL/SKSE/Plugins/$f" "$VANILLA/SKSE/Plugins/$f"; done < <(collect_base_skse "$FULL")
+  mkdir -p "$VANILLA/Scripts"
+  while IFS= read -r f; do ln -s "$FULL/Scripts/$f" "$VANILLA/Scripts/$f"; done < <(collect_skse_scripts "$FULL")
 }
 
 build_test_profile() {
   local mod="$1" deps="${2:-}"
+  # Rebuild the vanilla farm every time rather than trusting the one `init` left behind. It is
+  # ~40 symlinks, so it costs nothing, and a frozen copy silently misses anything that changed
+  # in the full profile since migration — a new Address Library, an updated base DLL, or (the
+  # case that cost a run here) a newly-collected file class like SKSE's Papyrus scripts. A test
+  # profile that lags the real install by weeks is a stale-state trap, not a feature.
+  build_vanilla_profile
   rm -rf "$TEST"
   cp -a "$VANILLA/." "$TEST/"            # copy the vanilla symlink-farm (links preserved)
   if [ -f "$mod" ]; then
@@ -381,15 +436,61 @@ backup_plugins()  {
 }
 restore_plugins() { [ -f "$PROFILES/Plugins.txt.bak" ] && cp -f "$PROFILES/Plugins.txt.bak" "$PLUGINS_TXT"; return 0; }  # best-effort: a missing .bak must not abort a recovery chain under set -e
 
+# The plugins a plugin file declares as its masters, one per line. They live in the TES4
+# header's MAST subrecords as plain null-terminated filenames at the very start of the file,
+# so the first 4 KB plus `strings` is enough — no ESP parser, no Mutagen round-trip.
+plugin_masters() {
+  head -c 4096 -- "$1" 2>/dev/null | strings -n 5 2>/dev/null | grep -iE '\.es[pml]$' || true
+}
+
+# Emit a Data-shaped dir's plugin basenames with every master ahead of its dependents.
+#
+# find(1) returns filesystem order, which is arbitrary. Skyrim refuses to load a plugin whose
+# master sits below it, so an arbitrary order silently drops plugins — a voice pack ESP that
+# masters DBVO.esp came back in exactly the wrong order here, and the symptom (the mod is
+# simply absent in-game) points nowhere near Plugins.txt. Repeated-pass topological sort;
+# only masters that are themselves in this profile constrain anything, and a cycle or a
+# missing master degrades to "emit the rest as-is" rather than dropping a plugin.
+order_test_plugins() {
+  local mod="$1" f b m
+  local -a names=() pending=() emitted=() next=()
+  local -A present=() done_=()
+  while IFS= read -r -d '' f; do
+    b=$(basename "$f"); names+=("$b"); present["${b,,}"]="$f"
+  done < <(find "$mod" -maxdepth 2 -type f \( -iname '*.esp' -o -iname '*.esl' -o -iname '*.esm' \) -print0)
+  [ ${#names[@]} -gt 0 ] || return 0
+  # Seed ESMs first: Skyrim wants master-flagged files at the top of the load order, and the
+  # topo pass below preserves the seed order among plugins that are equally ready.
+  for b in "${names[@]}"; do [[ "${b,,}" == *.esm ]] && pending+=("$b"); done
+  for b in "${names[@]}"; do [[ "${b,,}" == *.esm ]] || pending+=("$b"); done
+  local changed=1
+  while [ ${#pending[@]} -gt 0 ] && [ "$changed" = 1 ]; do
+    changed=0; next=()
+    for b in "${pending[@]}"; do
+      local ready=1
+      while IFS= read -r m; do
+        m="${m%$'\r'}"; [ -n "$m" ] || continue
+        # A master outside this profile is not ours to order (base masters are implicit).
+        [ -n "${present[${m,,}]:-}" ] || continue
+        [ -n "${done_[${m,,}]:-}" ] || ready=0
+      done < <(plugin_masters "${present[${b,,}]}")
+      if [ "$ready" = 1 ]; then emitted+=("$b"); done_["${b,,}"]=1; changed=1
+      else next+=("$b"); fi
+    done
+    pending=("${next[@]}")
+  done
+  emitted+=("${pending[@]}")   # unresolvable (cycle / self-reference): keep them, order unchanged
+  printf '%s\n' "${emitted[@]}"
+}
+
 write_test_plugins() {
-  local mod="$1" f
+  local mod="$1" b
   {
     echo "# Generated by skytest (test profile) - do not keep"
     if [ -f "$mod" ]; then
       case "$mod" in *.es[mlp]) echo "*$(basename "$mod")" ;; esac
     else
-      while IFS= read -r -d '' f; do echo "*$(basename "$f")"; done \
-        < <(find "$mod" -maxdepth 2 -type f \( -iname '*.esp' -o -iname '*.esl' -o -iname '*.esm' \) -print0)
+      while IFS= read -r b; do echo "*$b"; done < <(order_test_plugins "$mod")
     fi
   } > "$PLUGINS_TXT"
 }

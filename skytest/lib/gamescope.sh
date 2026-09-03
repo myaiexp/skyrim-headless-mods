@@ -250,16 +250,29 @@ gs_wait_probe() {
   mkdir -p "$dir" 2>/dev/null || true
   echo "waiting for the probe to answer (timeout ${timeout}s)…" >&2
   local i=0 deadline=$((SECONDS + timeout))
+  # Same stale-plugin abort gs_wait_ready runs: a plugin that refuses this game build parks
+  # the boot on a modal, and the probe then never answers. Without this the SKYTEST_NO_AUTOLOAD
+  # path (which gates here, finding #29) reports a mute "probe never answered" timeout instead
+  # of naming the DLL — the exact confusion the ready-path check was added to kill.
+  local since; since="$(mktemp -t skytest-launch.XXXXXX)"
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if gs_session_dead; then echo "session died (gamescope pid not alive)." >&2; return 2; fi
+    if gs_session_dead; then rm -f "$since"; echo "session died (gamescope pid not alive)." >&2; return 2; fi
+    local fatal
+    if fatal="$(_gs_fatal_plugin_log "$since")"; then
+      rm -f "$since"
+      _gs_report_fatal_plugin "$fatal"
+      return 2
+    fi
     i=$((i + 1))
     printf '{"id":"waitprobe-%d","cmd":"status"}\n' "$i" >> "$cmds" 2>/dev/null || true
     if [ -f "$trace" ] && grep -qF '"src":"status"' "$trace" 2>/dev/null; then
+      rm -f "$since"
       echo "probe live (answering status)." >&2
       return 0
     fi
     sleep 1
   done
+  rm -f "$since"
   echo "timed out after ${timeout}s — probe never answered." >&2
   return 1
 }
@@ -273,22 +286,58 @@ gs_wait_probe() {
 # third-party DLL versus a newer runtime, which is exactly what a Skyrim update causes.
 # Scanning the SKSE plugin logs written by THIS boot turns that into an instant, named
 # error. Only logs newer than the launch count, so a stale log can't fail a good boot.
-# Echoes "<plugin>: <message>" and returns 0 when it finds one.
+# Echoes "<kind>\t<plugin>: <message>" and returns 0 when it finds one; <kind> is `parked`
+# (CommonLib's modal, unrecoverable) or `skse` (SKSE's own, dismissible — see below).
+#
+# There are TWO distinct refusal modals and they behave differently, so they are reported
+# differently. SKSE version-checks every plugin BEFORE loading it and pops its own win32
+# MessageBox listing the rejects ("<dll>: must be recompiled for new address library",
+# "<dll>: disabled, incompatible with current version of the game"). That box is NOT a game
+# menu — a coordinate `drive click` cannot reach it (finding #25 covers in-game modals only);
+# its button mnemonic does, so `skytest drive tap n` = No = "continue loading without them".
+# A CommonLib report_and_fail modal, by contrast, has no way forward at all.
 _gs_fatal_plugin_log() {
   local since="$1" dir f
   dir="$MYGAMES/SKSE"
   [ -d "$dir" ] || return 1
+  # SKSE's own pre-load refusal — recorded in skse64.log, never in a plugin's own log
+  # (the plugin never runs, so it never opens one). Name every reject, not just the first.
+  local sksel="$dir/skse64.log" names
+  if [ -f "$sksel" ] && [ "$sksel" -nt "$since" ]; then
+    names="$(grep -E 'must be recompiled for new address library|disabled, incompatible with current version of the game' "$sksel" 2>/dev/null \
+             | sed -E 's/^plugin ([^ ]+) .*/\1/' | paste -sd, - || true)"
+    if [ -n "$names" ]; then
+      printf 'skse\t%s\n' "$names"
+      return 0
+    fi
+  fi
   for f in "$dir"/*.log; do
     [ -f "$f" ] || continue
     [ "$f" -nt "$since" ] || continue
     local hit
     hit="$(grep -m1 -E 'Unsupported address library format|failed to open address library file' "$f" 2>/dev/null || true)"
     if [ -n "$hit" ]; then
-      printf '%s: %s\n' "$(basename "$f" .log)" "${hit##*] }"
+      printf 'parked\t%s: %s\n' "$(basename "$f" .log)" "${hit##*] }"
       return 0
     fi
   done
   return 1
+}
+
+# Print the operator-facing report for a _gs_fatal_plugin_log hit ("<kind>\t<detail>").
+_gs_report_fatal_plugin() {
+  local kind="${1%%$'\t'*}" detail="${1#*$'\t'}"
+  if [ "$kind" = skse ]; then
+    echo "FATAL: SKSE refused these plugins on this game build -> $detail" >&2
+    echo "  They predate the installed Skyrim/Address Library. The boot is sitting on SKSE's own" >&2
+    echo "  win32 'A DLL plugin has failed to load correctly' box, which a coordinate click cannot" >&2
+    echo "  reach. To continue WITHOUT them:  skytest drive tap n   (then re-run 'skytest ready')." >&2
+    echo "  To fix it properly, update or drop those DLLs from the profile." >&2
+  else
+    echo "FATAL: an SKSE plugin refused this game build -> $detail" >&2
+    echo "  That plugin predates the installed Skyrim/Address Library. Update or remove it;" >&2
+    echo "  the boot is parked on its modal and will never reach the world." >&2
+  fi
 }
 
 # gs_wait_ready [timeout=180] — block until the probe reports inWorld:true.
@@ -313,9 +362,7 @@ gs_wait_ready() {
     local fatal
     if fatal="$(_gs_fatal_plugin_log "$since")"; then
       rm -f "$since"
-      echo "FATAL: an SKSE plugin refused this game build -> $fatal" >&2
-      echo "  That plugin predates the installed Skyrim/Address Library. Update or remove it;" >&2
-      echo "  the boot is parked on its modal and will never reach the world." >&2
+      _gs_report_fatal_plugin "$fatal"
       return 2
     fi
     # Ask the probe for fresh world state (no-op until the trace writer exists).
@@ -395,10 +442,9 @@ gs_keycode() {
 }
 
 # Printable char -> Linux evdev keycode, for typing literal text (the CONSOLE staging path).
-# Letters are case-FOLDED and every char is sent UNSHIFTED: the Skyrim console is
-# case-insensitive (`TGM` == `tgm`, hex ids too), and avoiding shift keeps the mapping
-# independent of which XKB layout gamescope hands the game. Shifted glyphs (`_`, `:`, `"`)
-# are therefore unsupported on purpose — no console verb needs one.
+# Letters are case-FOLDED: the Skyrim console is case-insensitive (`TGM` == `tgm`, hex ids too),
+# so folding keeps letters off the shift key. Glyphs that genuinely need shift go through
+# gs_shiftcode below instead.
 gs_charcode() {
   case "$1" in
     a) echo 30 ;;  b) echo 48 ;;  c) echo 46 ;;  d) echo 32 ;;  e) echo 18 ;;  f) echo 33 ;;
@@ -410,7 +456,30 @@ gs_charcode() {
     6) echo 7 ;;   7) echo 8 ;;   8) echo 9 ;;   9) echo 10 ;;  0) echo 11 ;;
     ' ') echo 57 ;;  .) echo 52 ;;  ,) echo 51 ;;  -) echo 12 ;;  '=') echo 13 ;;
     "'") echo 40 ;;  ';') echo 39 ;;  /) echo 53 ;;  '\') echo 43 ;;  '[') echo 26 ;;  ']') echo 27 ;;
-    *) echo "type: unsupported character '$1' (letters, digits, space . , - = ; ' / \\ [ ] only)" >&2; return 2 ;;
+    *) return 2 ;;   # not an unshifted glyph — the caller tries gs_shiftcode next
+  esac
+}
+
+# Shifted glyph -> the evdev keycode to press WITH left-shift (US layout).
+#
+# These were "unsupported on purpose" until a quoted console path needed them: Skyrim's console
+# splits an unquoted argument at `/` and `\`, so `player.speaksound dbvo/t1.fuz` reaches the
+# engine as just "dbvo" — the path has to be typed `"dbvo/t1.fuz"`, and `"` is shift+apostrophe.
+# DBVO's own Papyrus quotes it for exactly this reason. Underscores are the same story: every
+# real voice-line filename has them.
+#
+# The mapping is US-layout: shift+apostrophe is `"` there, and gamescope hands the game a US
+# XKB layout. If that ever changes, this table is the single place it breaks — the unshifted
+# table above stays layout-independent, which is why letters/digits still go through it.
+# `~` and the backtick are deliberately ABSENT: that key is the console toggle, so typing one
+# would close the console mid-line rather than emit a character.
+gs_shiftcode() {
+  case "$1" in
+    '_') echo 12 ;;  '"') echo 40 ;;  ':') echo 39 ;;  '?') echo 53 ;;  '+') echo 13 ;;
+    '(') echo 10 ;;  ')') echo 11 ;;  '*') echo 9 ;;   '|') echo 43 ;;  '<') echo 51 ;;
+    '>') echo 52 ;;  '!') echo 2 ;;   '@') echo 3 ;;   '#') echo 4 ;;   '$') echo 5 ;;
+    '%') echo 6 ;;   '^') echo 7 ;;   '&') echo 8 ;;   '{') echo 26 ;;  '}') echo 27 ;;
+    *) return 2 ;;
   esac
 }
 
@@ -450,8 +519,18 @@ gs_drive() {
            local lower args=() ch cc idx
            lower="$(printf '%s' "$text" | tr '[:upper:]' '[:lower:]')"
            for ((idx = 0; idx < ${#lower}; idx++)); do
-             ch="${lower:idx:1}"; cc="$(gs_charcode "$ch")" || return 2
-             args+=(tap "$cc" sleep "$tgap")
+             ch="${lower:idx:1}"
+             if cc="$(gs_charcode "$ch")"; then
+               args+=(tap "$cc" sleep "$tgap")
+             elif cc="$(gs_shiftcode "$ch")"; then
+               # Wrap the tap in a held LEFTSHIFT (evdev 42). The shift press/release get their
+               # own gaps: the game samples modifier state per key event, and a shift that lands
+               # in the same frame as the key it modifies comes out unshifted.
+               args+=(key 42 1 sleep "$tgap" tap "$cc" sleep "$tgap" key 42 0 sleep "$tgap")
+             else
+               echo "type: unsupported character '$ch' (letters, digits, space . , - = ; ' / \\ [ ] and shifted _ \" : ? + ( ) * | < > ! @ # \$ % ^ & { })" >&2
+               return 2
+             fi
            done
            "$EIDRIVER" "$GS_EIS_SOCK" "${args[@]}" ;;
     btn)   "$EIDRIVER" "$GS_EIS_SOCK" btn "$1" "$2" ;;   # mouse button hold/release (272=L 273=R), $2: 1=down 0=up

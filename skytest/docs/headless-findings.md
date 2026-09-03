@@ -591,3 +591,95 @@ Fixed in `_boot_test_session`: with `SKYTEST_NO_AUTOLOAD` set it gates on `gs_wa
 probe answering = the game is up at the menu) and returns in ~40 s, then prints the *verified*
 way in: `drive click 1177 496` (CONTINUE) → `drive tap enter` (confirm) → `skytest ready`.
 **Lesson for any new boot path: the readiness gate has to match where the boot is HEADED.**
+
+## 30. SKSE's OWN plugin-refusal box is a win32 MessageBox — a click can't reach it, `n` can
+
+2026-09-03, testing DBVO Dialogue Tweaks against DBVO 1.x on game 1.7.104. There are **two**
+different boot-parking modals and they behave nothing alike:
+
+- **CommonLibSSE's `report_and_fail`** (finding on the `versionlib` format, §"A stale plugin
+  parks the boot") is drawn by the plugin itself and there is no way past it.
+- **SKSE's own**, which is what a *version-locked* plugin gets. SKSE version-checks every DLL
+  **before** loading it, then pops a plain Windows message box listing the rejects:
+
+  ```
+  A DLL plugin has failed to load correctly. …
+  ConsoleUtilSSE.dll: must be recompiled for new address library
+  JContainers64.dll: disabled, incompatible with current version of the game
+  Continuing to load may result in lost save data … Exit game? (yes highly suggested)
+                                    [Yes]   [No]
+  ```
+
+**A coordinate `drive click` does NOT dismiss it.** Finding #25 is about *in-game* (Scaleform)
+modals; this one is a separate top-level wine window, and libei pointer events go to the game
+surface. What works is the button mnemonic: **`skytest drive tap n`** = "No" = continue loading
+without the refused plugins (`y` quits). Verified — after the `n` the game boots straight on to
+the main menu.
+
+The rejected plugin never writes its own log (it never runs), so the message lives **only in
+`skse64.log`**. `_gs_fatal_plugin_log` now greps that file too and reports the two cases
+differently — `skse` (dismissible, and the message says so) vs `parked` (unrecoverable) — and
+`gs_wait_probe` runs the same check `gs_wait_ready` did, so the `SKYTEST_NO_AUTOLOAD` boot path
+names the DLL instead of timing out mute (the gap finding #29 left).
+
+## 31. `drive type` now types SHIFTED glyphs — a console path argument has to be QUOTED
+
+Finding #27 closed with "shifted glyphs are unsupported by design — no console verb needs one."
+That is **false**, and it cost a run to discover. Skyrim's console splits an unquoted argument at
+`/` **and** `\`, so
+
+```
+player.speaksound dbvo/t1.fuz      -> the engine receives just "dbvo"   (nothing plays)
+player.speaksound "dbvo/t1.fuz"    -> the engine receives "dbvo/t1.fuz" (plays)
+```
+
+DBVO's own Papyrus quotes it for exactly this reason. `"` is shift+apostrophe, and `_` — in every
+real voice-line filename — is shift+minus. So `gs_charcode` grew a companion, `gs_shiftcode`:
+`type` wraps those taps in a held LEFTSHIFT (evdev 42), with its own gap either side, because the
+game samples modifier state per key event and a shift landing in the same frame comes out
+unshifted. Covers `_ " : ? + ( ) * | < > ! @ # $ % ^ & { }`.
+
+**`~` and the backtick are deliberately absent**: that key is the console toggle, so typing one
+would close the console mid-line. The map is US-layout (that is what gamescope hands the game);
+letters and digits still go through the unshifted table, which is layout-independent.
+
+## 32. A replay gate could be satisfied by a trace line written BEFORE it started
+
+Same session, and the nastiest of the lot because it makes an **assertion pass when it should
+fail**. `replay_wait_gate` sends its probe query, then greps `trace.jsonl` for the last line with
+the gate's `src`. But `trace.jsonl` is append-only for the whole session, so an *earlier step*
+that asked the same question leaves a matching line sitting in the file — and the grep answers
+from it, instantly, before the probe has replied at all.
+
+It surfaced on a two-part assertion whose setup step used the same query as its check: the check
+"passed" off a **44-second-old** observation, one poll later the real value was the opposite. It
+is finding #13's stale-trace false positive (which `gs_reset_io` fixes across *sessions*) at the
+scale of one step.
+
+Fixed: the gate records `date +%s%3N` at entry and the predicate now requires `.t >= since`, and
+the loop sleeps *before* reading rather than after, so a query always gets its poll interval to
+be answered. Any gate whose value was already correct still passes on the first real read.
+
+## 33. A DBVO-style menu callback is LOST if the console is open when the line ends
+
+The mod under test watches the player's voice line and, the instant it stops, calls back into the
+dialogue swf (`uiMovie->InvokeNoReturn("…dbvoOnPlayerLineEnded")`). If the **console is still
+open at that moment**, the callback does not take effect: the reply then fires on the swf's
+word-count backstop instead — i.e. the run looks exactly like the mod is not installed. Three
+replay attempts died on this before the ordering was pinned.
+
+So for any test that drives the console *during* a menu interaction: **close the console and gate
+on `until:!menu:Console` before the thing you are measuring happens**, not merely before the next
+input. It is a stronger form of #27's "close it before driving anything else" — here nothing was
+being driven, and it still mattered.
+
+## 34. The per-step filmstrip costs seconds per step — it breaks a TIMING test
+
+`replay`'s default per-step screenshot is worth having for a state-machine script, and fatal for a
+script whose steps must land inside an audio window. Each shot is a SIGUSR2 + AVIF→PNG round trip
+of several seconds, so ten steps between a topic click and a timed callback took ~45 s and the
+conversation timed out on its own — a failure with nothing to do with the mod.
+
+`mods/DBVODialogueTweaks/replyonlineend.steps` therefore documents `--no-shots` as **required**,
+not preferred, and keeps two explicit `shot` steps at the assertions. Rule of thumb: filmstrip on
+for "did it reach the right state", filmstrip off for "did it happen at the right time".
