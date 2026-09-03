@@ -569,29 +569,22 @@ Three follow-ups:
   `ConsoleUtilSSE.dll` 1.5.1.0 *"must be recompiled for new address library"* and `JContainers64.dll`
   *"disabled, incompatible with current version of the game"*. ConsoleUtil speaks the player's line;
   JContainers reads the voice-pack settings. (It is JContainers, not PapyrusUtil, that the shipped
-  DBVO script actually uses.) Newest upstream: ConsoleUtilSSE NG **1.6.1** (2026-08-22) and
-  JContainers SE **4.2.13.1** (2026-07-04) — neither installed here, and the Nexus API is read-only
-  so they cannot be fetched by a session. 4.2.13.1 predates the 1.7.104 patch, so it may not be
-  enough. Until then, any DBVO 1.x test is a test of the *mod's own tier* with the two Papyrus
-  stimuli synthesised (see `mods/DBVODialogueTweaks/replyonlineend.steps`), never end-to-end.
-- **Clean audio cut on skip** — the one feature DBVO 2 still lacks, because it never holds a sound
-  handle (no sound RTTI in either build; neither references Address Library 36541/37542;
-  `FireResponse` makes no audio call). Prefer **upstreaming** it to MathiewMay over a DLL-only
-  successor: he now has the input handler and the skip path, and a successor would race his
-  `SkipInputHandler` on the same input. Confirm in-engine first that a DBVO 2 skip really does leave
-  the player line playing over the NPC — that claim is inferred, not observed.
-  **Now also check DBReV** (below) before assuming the gap is still open: it advertises audio effects
-  and SmartTalk skip compatibility but says nothing about cutting the player's line.
-
-- **Compare Dragonborn ReVoiced against DBVO 2 and our mod — analysis only, not a patch.** DBReV
-  (Nexus 184221, v1.5, 2026-09-02, Raynor1511) is the DBVO 1.x takeover we were about to consider
-  building, already shipped and actively maintained. Open questions worth a dedicated session:
-  does it cut the player's line audio on skip (the last thing that might be ours)? How does its
-  timing engine compare to DBVO 2's `fuz-duration` base and to our line-end watcher? What does its
-  lip-sync driver do that DBVO 2's doesn't? Does it need ConsoleUtil/JContainers (its page implies
-  not — SKSE plugin + SkyUI MCM only)? Static analysis of its DLL, the same treatment
-  `docs/plans/dbvo-v2-compatibility-analysis.md` gave DBVO 2. Landscape + the "don't fork DBVO 1.x"
-  ruling: `docs/dbvo-landscape.md`.
+  DBVO script actually uses.) Newest upstream: ConsoleUtilSSE NG **1.6.1** (2026-08-22, "confirmed
+  working on 1.7.99" per its page) and JContainers **v4.3.2 pre-release on GitHub** (2026-08-29,
+  built for SKSE 2.3.1 / 1.7.104; Nexus still has 4.2.13.1) — neither installed here, and the Nexus
+  API is read-only so they cannot be fetched by a session. Until then, any DBVO 1.x test is a test
+  of the *mod's own tier* with the two Papyrus stimuli synthesised (see
+  `mods/DBVODialogueTweaks/replyonlineend.steps`), never end-to-end.
+- **Clean audio cut on skip — no longer a reason to do anything** (ruling 2026-09-03,
+  `docs/dbvo-landscape.md` → "The one thing still possibly ours"). DBVO 2 still lacks it
+  structurally (no sound handle). DBReV 1.5 holds the player line's XAudio2 voice, so it can cut
+  trivially; whether it does is unverifiable without its binary, and skip itself is SmartTalk's
+  feature there. Only if Mase wants it *offered upstream*: the natural recipient is now
+  Raynor1511 (DBReV — skip handler + held voice), else MathiewMay (DBVO 2 — skip handler, no
+  voice). Two loose ends if the question is ever reopened, both in
+  `docs/plans/dbrev-comparison-analysis.md` §5: the DBReV 1.5 DLL has never been on this machine
+  (a manual download would allow the DBVO 2 string-table treatment), and the DBVO 2 side still
+  needs its ImGui debug log to prove `SkipInputHandler` fired in our `speak-watch` runs.
 
 ## 2026-09-02 — Skyrim 1.7.104 fallout: what the move forward left open
 

@@ -16,7 +16,7 @@ All three voice the *player's* dialogue choices. They are mutually exclusive ins
 | --- | --- | --- | --- | --- |
 | **DBVO 1.x** | 84329 (OLD FILES) | 1.1.1, Aug 2023, unsupported | Papyrus + SkyUI MCM + JContainers + ConsoleUtil + a patched `dialoguemenu.swf` | **Yes — this is the only one.** And it does not run on 1.7.104 (below). |
 | **DBVO 2** | 84329 (main) | 2.0.1.6, 2026-08-30, MathiewMay | One SKSE DLL + SKSE Menu Framework. No esp, no Papyrus, **no swf** | **No.** Ships no swf and our patched one softlocks it. |
-| **Dragonborn ReVoiced (DBReV)** | 184221 | 1.5, 2026-09-02, Raynor1511 | SKSE DLL + SkyUI MCM, own lip-sync driver | **No.** Its page: *"Not compatible with any patches targeting the legacy DBVO mod … remove them if you have them!"* |
+| **Dragonborn ReVoiced (DBReV)** | 184221 | 1.5, 2026-09-02, Raynor1511 | SKSE DLL + ESL esp/Papyrus + SkyUI MCM + **JContainers** (no ConsoleUtil since 1.5), own audio + lip-sync driver, **no swf** | **No.** Its page: *"Not compatible with any patches targeting the legacy DBVO mod … remove them if you have them!"* |
 
 **Verified here via the Nexus API (2026-09-03):** DBVO 2 = 84329, v2.0.1.6, updated 2026-08-30,
 345,332 unique page downloads. DBReV = 184221, v1.5, published, updated 2026-09-02, 7,474 downloads
@@ -31,9 +31,11 @@ Established in-engine 2026-09-03 (see `mods/DBVODialogueTweaks/README.md` → Co
 (*"disabled, incompatible with current version of the game"*). ConsoleUtil speaks the line,
 JContainers reads the voice-pack settings — so DBVO 1.x produces no player voice at all.
 
-Newest upstream at the time of writing: ConsoleUtilSSE NG **1.6.1** (2026-08-22), JContainers SE
-**4.2.13.1** (2026-07-04). Neither is installed here and the Nexus API is read-only, so a session
-cannot fetch them; JContainers' newest predates the 1.7.104 patch, so it may not be enough.
+Newest upstream at the time of writing: ConsoleUtilSSE NG **1.6.1** (2026-08-22, its file page says
+*"Confirmed working on 1.7.99"*), and for JContainers a **GitHub-only pre-release v4.3.2**
+(2026-08-29, *"SKSE 2.3.1 / SAE 1.7.104"*) — Nexus still serves 4.2.13.1 (2026-07-04), which
+predates the patch. Neither is installed here and the Nexus API is read-only, so a session cannot
+fetch them; whether the pair revives DBVO 1.x on 1.7.104 is untested and not worth a session.
 
 ## Why not take DBVO 1.x over
 
@@ -49,8 +51,12 @@ DBReV **is** that takeover, shipped. From its own page (quoted, not verified in-
   used by DBVO 2"*.
 - Fixes the long-dialogue-path CTD (legacy packs name files after full dialogue lines, which blows
   the Windows 260-char path limit).
-- Claims compatibility with 1.5.97, 1.6.1170 and **1.7.140** — ahead of the build we test on.
+- Author-tested on 1.5.97, 1.6.1170 and **1.7.104** (the page text says "1.7.140" — a typo; the
+  1.5 file description and the author's sticky both say 1.7.104). On 1.7.x it needs a
+  **GitHub pre-release JContainers** (v4.3.2) — JContainers is still a hard requirement.
 - Built on alandtse's CommonLibSSE-NG v4.39.3, forked to support 1.7.x.
+- **No skip input of its own** — the author: *"The skipping should work with SmartTalk's feature
+  (it's not a native game function)."* Skip is SmartTalk's; DBReV fast-forwards when it fires.
 
 So a takeover would mean rebuilding, from behind, a timing engine that already exists, against an
 author who also ships a voice-pack maker app and locale mappings for 500+ mods.
@@ -75,20 +81,41 @@ itself** — which is the one configuration that no longer works on 1.7.104, and
 successors are actively migrating people off. That audience is not the 305k; it is a shrinking
 subset with two maintained exits.
 
-## The one thing still possibly ours
+## The one thing still possibly ours — resolved 2026-09-03: it is not structurally ours any more
 
 **Clean audio cut on skip.** DBVO 2 structurally cannot do it — it never holds a sound handle (no
 sound RTTI in either build, neither references Address Library 36541/37542, `FireResponse` makes no
 audio call; see `docs/plans/dbvo-v2-compatibility-analysis.md`). Our stack holds that handle because
 it hooks `Actor::SpeakSoundFunction`.
 
-**Whether DBReV closes that gap is UNKNOWN and is the open question.** It advertises audio effects,
-volume gain and its own lip-sync driver, and claims compatibility with SmartTalk's dialogue-skip
-features — but says nothing about cutting the player's line audio on skip. If the gap is real, the
-move is to offer it upstream (to Raynor1511 or MathiewMay), not to ship a competing framework.
+**DBReV: behaviour unknown, capability present.** Full treatment in
+`docs/plans/dbrev-comparison-analysis.md` (page, API article, 314 comments and two user-posted
+debug logs — the binary itself is not on this machine, so nothing there is disassembly). What it
+establishes:
+
+- Through 1.4.6 DBReV spoke the line via ConsoleUtil `Player.SpeakSound`, exactly like DBVO 1.x
+  and DBVO 2, with no sign of holding the handle — DBVO 2's gap, inferred.
+- **1.5 (2026-09-02) took the audio in-house**: it decodes the xWMA itself and plays through an
+  XAudio2 source voice it owns (captured from the engine, or its own as fallback — the log lines
+  `Armed XAudio2 for …` / `disarmed the XAudio2 hook and playing it ourselves`). It holds that
+  voice for the whole line, so a cut on skip is one call away. Its skip path exists
+  (`topicClicked() … fast-forwarding (skip)` → `kPlayerLineEnd … reason skipped`) but **no
+  statement anywhere says the audio is stopped**, and the only logged skip landed after the line
+  had already ended.
+- DBReV has **no skip input of its own** — skipping the player's line is SmartTalk's feature.
+
+So the differentiator that was *structural* against DBVO 2 is at most *behavioural* against
+DBReV 1.5, unverifiable from outside its binary, and a few lines for its author. **It is not a
+reason to keep the mod alive and not a reason to build anything.** If it is ever offered upstream,
+the natural recipient is now Raynor1511 (skip handler + held voice) rather than MathiewMay (skip
+handler, no voice). The only thing our mod does that DBReV lacks is a *native* skip key — a DBVO
+1.x-swf feature with no audience.
 
 ## Pointers
 
 - `mods/DBVODialogueTweaks/README.md` — the mod, its 1.7.104 verification, and the Compatibility section.
 - `docs/plans/dbvo-v2-compatibility-analysis.md` — the static analysis of DBVO 2's shipped DLLs.
+- `docs/plans/dbrev-comparison-analysis.md` — DBReV vs DBVO 2 vs our mod: architecture from its
+  logs, the six questions (skip/audio cut, timing, dependencies, lip-sync, packs, builds), and
+  why nothing is worth building. Evidence-tagged; no binary was available.
 - `docs/ideas.md` — the remaining open items.
