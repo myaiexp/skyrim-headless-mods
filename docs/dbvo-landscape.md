@@ -151,6 +151,14 @@ Two facts that make patches tractable:
   target's swf has to be fetched from Nexus by hand (the API download needs Premium) and
   decompiled here.
 
+Decompiled (ffdec) the four DBVO-page patches Mase downloaded on 2026-09-08 — Untarnished, DDDM
+white, DDDM warm, NordicUI. All four keep every Bethesda `DialogueMenu` function name plus DBVO's
+`initDBVO` / `startTopicClickedTimer` / `topicClicked`, and they fall into **two script
+families**: NordicUI's script is stock DBVO's to within 3 lines (the swf differs in layout
+assets only), while Untarnished and both DDDM variants share one CDUI-lineage script (~190
+lines from stock; DDDM warm and white are script-identical, Untarnished differs from them by 13
+lines, adds `topicsFadeIn`/`topicsFadeOut`). So our deltas port twice, not four times.
+
 Most likely match for "left → stock": the DDDM lineage (DDDM, Untarnished, Dragonbreaker), then
 DIR, then CDUI / Dragonborn Reskin. Priority if patches are built: **Untarnished → DDDM (white,
 warm) → DIR → CDUI (four looks) → Dragonborn Reskin**. Caveat from the sections above: this
