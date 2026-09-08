@@ -99,8 +99,11 @@ speak-sound hook (main thread, existing v3)              audio thread
 console** — no NPC, no topic click, no `ui-set`: the boost needs a player line, not a
 conversation, and every extra step is flake surface. `--no-shots` is not load-bearing here.
 
-1. Set the factor through the console (no SkyUI in the test stage): `cgf "DBVOTweaks.SetPlayerVoiceVolume" 2.5`
-   — `cgf` calls a Papyrus global; the native is registered by the DLL and `DBVOTweaks.pex` ships.
+1. Set the factor through the DLL's Papyrus native with SkytestProbe's `papyrus-call`
+   (`{"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[2.5]}`),
+   the direct-call form of a Papyrus global — added for this test, since on 1.7.104 the console
+   has neither `cgf` nor `callglobalfunction` ("Script command … not found", 2026-09-08). No SkyUI
+   in the stage; the native is registered by the DLL and `DBVOTweaks.pex` ships.
 2. Speak the staged line: `player.speaksound "dbvo/t1.fuz"`; close the console.
 3. **Assertion**: a new skytest gate `until:log:DBVODialogueTweaks|voice boost x2.50` — the DLL
    logs `voice boost x2.50: voice V -> V×2.5 (sound N)`; the substring pins the *multiplier* (not

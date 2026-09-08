@@ -172,10 +172,12 @@ Run: `cd mods/DBVODialogueTweaks && ./build.sh 2>&1 | rg '\[2/5\]|\[3/5\]|error'
 **Contracts (`voiceboost.steps`):**
 - Header comment: what it proves, the exact run lines, why only the console is driven (spec, Testing), NO_AUTOLOAD note copied from `replyonlineend.steps`.
 - Steps: the five boot steps + `wait until:inworld` + `wait 3s` from `replyonlineend.steps`, then:
-  `tap tilde` / `wait until:menu:Console` / `type cgf "DBVOTweaks.SetPlayerVoiceVolume" 2.5` / `tap enter` / `wait 1s` /
-  `type player.speaksound "dbvo/t1.fuz"` / `tap enter` / `cmd {"cmd":"status"}` (timing witness) / `tap tilde` / `wait until:!menu:Console` /
+  `cmd {"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[2.5]}` / `wait 1s` /
+  `tap tilde` / `wait until:menu:Console` / `type player.speaksound "dbvo/t1.fuz"` / `tap enter` / `cmd {"cmd":"status"}` (timing witness) / `tap tilde` / `wait until:!menu:Console` /
   **assertion** `wait until:log:DBVODialogueTweaks|voice boost x2.50`.
-- `voiceboost-control.steps`: identical with `1.0` in the `cgf` line, then `wait 3s` and the assertion `wait until:!log:DBVODialogueTweaks|voice boost` (must PASS — no boost line at 100%).
+  (Changed 2026-09-08 from a console `cgf` line: on 1.7.104 neither `cgf` nor `callglobalfunction`
+  exists — verified live — so a `papyrus-call` command was added to SkytestProbe, a Task 1b.)
+- `voiceboost-control.steps`: identical with `[1.0]` in the papyrus-call args, then `wait 3s` and the assertion `wait until:!log:DBVODialogueTweaks|voice boost` (must PASS — no boost line at 100%).
 - Both are `replay_lint`-clean (`skytest replay --dry-run` if available, else the linter via the unit-test harness).
 
 **Test Cases (in-engine, the verification itself):**
