@@ -22,12 +22,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/variants/lib.sh"
 
 # --- release identity ---
-# VERSION is the MOD's release number and normally tracks plugin/src/main.cpp kVersion. 1.2.0 is
-# the first release where they diverge on purpose: it adds menu styles for UI overhauls, which are
-# swf-only — the DLL ships byte-identical to 1.1.0, so kVersion stays 1.1.0 rather than forcing a
-# rebuild whose sole change is a version constant. Bump kVersion again the next time the C++ moves.
+# VERSION is the MOD's release number and normally tracks plugin/src/main.cpp kVersion. 1.1.1 is
+# the first release where they legitimately differ in the last digit: it adds nothing to the mod's
+# behaviour — the DLL, both .pex and the .esp ship byte-identical to 1.1.0 — it only adds menu
+# styles for UI overhauls, which is a compatibility fix on the install side. Hence a patch bump and
+# an unchanged kVersion; a minor bump is for the next release that actually moves the C++.
 NAME="DBVO Dialogue Tweaks"
-VERSION="1.2.0"
+VERSION="1.1.1"
 AUTHOR="Mase"
 WEBSITE="https://github.com/myaiexp/skyrim-headless-mods"
 CATEGORY="Patches"
