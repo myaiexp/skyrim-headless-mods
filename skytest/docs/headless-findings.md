@@ -683,3 +683,46 @@ conversation timed out on its own — a failure with nothing to do with the mod.
 `mods/DBVODialogueTweaks/replyonlineend.steps` therefore documents `--no-shots` as **required**,
 not preferred, and keeps two explicit `shot` steps at the assertions. Rule of thumb: filmstrip on
 for "did it reach the right state", filmstrip off for "did it happen at the right time".
+
+## 35. RESOLVED — no `cgf` / `callglobalfunction` on 1.7.104: a Papyrus global is called with `papyrus-call`
+
+The obvious way to poke a mod's `Global Native` settings API from a script (`cgf
+"DBVOTweaks.SetPlayerVoiceVolume" 2.5`) does not exist on this build: the console answers
+`Script command "cgf" not found`, and the full name gets the same. Screenshot-verified 2026-09-08
+in a live session. SkytestProbe's `papyrus-call` is the direct-call form (a runtime-typed
+`IFunctionArguments` → `VirtualMachine::DispatchStaticCall`); its ack means *queued* and the
+`src:"papyrus-call"` trace line is the completion. One rule: the VM does no int↔float
+coercion, so a whole-number float is written `2.0`, never `2`. Also: `drive type` leaves an
+un-entered line in the console's input box — a second `type` appends to it. Send `enter` (or
+the exact line you meant) before typing the next command.
+
+## 36. A host-side gate for a plugin's OWN log: `until:log:<plugin>|<substring>`
+
+The DBVO boost has no UI state to read and no probe query to answer — its evidence is one line
+the DLL writes to `<My Games>/SKSE/DBVODialogueTweaks.log`. A log line is written once and never
+re-emitted, so the probe gates' gate-start window (#32) can never match it: the stimulus wrote it
+a second before the gate step began. The window is instead "since the session became ready": the
+boot path records every `SKSE/*.log` size once the probe answers (`logmarks` in the probe IO dir,
+cleared by `gs_reset_io`), the gate scans past that mark, and `!log:` asserts absence and fails
+fast on a hit. Within a session the window spans every step — pin the substring per stimulus.
+
+## 37. OPEN — one headless session died at a `cmd` step, unreproducibly
+
+`voiceboost-control.steps` died at its first `cmd` (a `papyrus-call`, ~20 s after in-world) on
+2026-09-08. The same command with the same value was then sent three times into a live session
+(1.0, 2.5, 1.0) with the session alive after each, and the script passed on a fresh boot. Nothing
+survived to explain it: CrashLogger is disabled on 1.7.104 (stale for format 5), the gamescope
+log was overwritten by the next boot, and the probe log simply ends at the dispatch. Treat a
+single "session died" on a `cmd` step as a re-run first; if it recurs, capture
+`/tmp/skytest-gamescope.log` BEFORE the next launch.
+
+## 38. SkytestProbe's speak-watch hook DOES install beside DBVODialogueTweaks' — MinHook is per-DLL
+
+The probe header and README say the two detours on `Actor::SpeakSoundFunction` are exclusive
+("MinHook allows one hook per target — whichever loads second loses"). The 2026-09-08 sessions
+show both installed in the same boot: DBVODialogueTweaks' `speak-sound entry hook installed
+(MinHook)` at load, then the probe's `speak-sound observer hook installed (read-only)` at
+kDataLoaded, and the DBVO hook demonstrably fired afterwards. Each DLL links its own MinHook, so
+the second instance simply relocates the first's `jmp` into its trampoline and chains. What is NOT
+yet shown is the observer *armed* in that chain (`speak-watch` was never turned on with the mod
+present); until it is, treat the two as chainable-but-unverified rather than exclusive.

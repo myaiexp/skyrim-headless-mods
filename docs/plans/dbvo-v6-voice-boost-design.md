@@ -1,6 +1,8 @@
 # DBVO Dialogue Tweaks v6 — player-voice boost (above 100%)
 
-**Status: approved 2026-09-08 (range 0–300%), building.** Ships as mod version **1.2.0** — not
+**Status: SHIPPED as 1.2.0, verified in-engine on 1.7.104 (2026-09-08, `voiceboost.steps` +
+control + no-DLL A/B, all as predicted; the DLL read the voice back at 2.5× the engine's value).**
+Approved 2026-09-08 at range 0–300%. Ships as mod version **1.2.0** — not
 1.1.0: the Nexus page's main version was already bumped to 1.1.1 while the uploaded file stayed
 1.0.1, so 1.2.0 is the first number that is unambiguous on both. The release also adds, on the
 Nexus page and each file's description, **which Skyrim builds each uploaded file runs on**
