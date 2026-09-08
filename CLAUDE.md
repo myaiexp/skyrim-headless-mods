@@ -96,12 +96,16 @@ What this means for anything you touch here:
   the boot. A *version-locked* plugin is refused by SKSE itself, before loading, behind a win32
   message box that a coordinate click cannot dismiss — `skytest drive tap n` continues without it,
   and the message appears only in `skse64.log` (skytest scans it and names the DLL). This is what
-  currently kills **DBVO 1.x**: SKSE refuses ConsoleUtilSSE and JContainers64, so DBVO speaks no
-  player line at all. Assume any un-updated framework DLL is in one of those two states.
-  **Both of those now have 1.7.104 builds (2026-09-08): ConsoleUtilSSE NG 1.6.1 and JContainers SE
-  4.3.2 — take JContainers' 2026-09-04 MAIN file, NOT the newer-dated 09-07 upload, which is a
-  re-upload of the old 1.6.1170 build.** So the DBVO 1.x end-to-end test is unblocked by two
-  downloads; nothing here has installed them.
+  killed **DBVO 1.x** here: SKSE refused ConsoleUtilSSE and JContainers64, so DBVO spoke no player
+  line at all. Assume any un-updated framework DLL is in one of those two states.
+  **RESOLVED for DBVO 1.x (2026-09-09, verified end-to-end in-engine):** ConsoleUtilSSE NG 1.6.1 +
+  JContainers SE **4.3.2** revive it on 1.7.104 — take JContainers' 2026-09-04 MAIN file, NOT the
+  newer-dated 09-07 upload, which is a re-upload of the old 1.6.1170 build. Stage and replay it
+  with `mods/DBVODialogueTweaks/stage-dbvo1x-profile.sh` + `dbvo1x-{endtoend,control}.steps`; two
+  traps that each cost a boot are findings #39 (JContainers needs its whole `JCData/` tree or the
+  game dies with `skse64.log` still saying "loaded correctly") and #40 (a SkyUI-carrying profile
+  pops SKYUI ERROR CODE 4, which eats the activation key — click OK at 639 479). The *live* game
+  still has the old DLLs; installing them there is a managing-repo job (`docs/ideas.md`).
 
 ## Testing a mod you built — which mode?
 

@@ -1,0 +1,61 @@
+# DBVO Dialogue Tweaks — the CONTROL half of the end-to-end A/B (DBVO 1.x, no DLL of ours).
+#
+#   mods/DBVODialogueTweaks/stage-dbvo1x-profile.sh          # builds both stages
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvo1x-nodll \
+#       mods/DBVODialogueTweaks/dbvo1x-control.steps --headless --no-shots
+#
+# Same stage as `dbvo1x-endtoend.steps` minus exactly one file — SKSE/Plugins/DBVODialogueTweaks.dll
+# — and the assertion is inverted at the same measurement point: six seconds after the topic is
+# clicked the reply must ALREADY have fired, because with no DLL nothing cancels the swf's
+# word-count backstop (7 words -> 4100 ms). In the test half timerBool is still `true` at that
+# moment and only flips at line-end + the configured gap. Two runs, one file apart, opposite state.
+#
+# It also carries an independent witness: SkytestProbe's `speak-watch`, a read-only detour on the
+# same Actor::SpeakSoundFunction our DLL hooks. Whether the two can be armed together is still
+# unsettled (finding #38: they both install and chain, but the observer has never been armed with
+# the mod present), and the control sidesteps the question entirely — our DLL is not in this stage.
+# So this is the run where DBVO 1.x is caught speaking in its own right — path, duration and
+# natural end — instead of being inferred from our hook's log line.
+#
+# Read the witness after the run, on the live session:
+#   skytest trace --src speak
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait 4s
+click 602 409           # "Creations are currently loaded … continue?" -> Yes (#25). Harmless if absent.
+wait until:inworld
+wait 8s
+
+# --- dismiss SKYUI ERROR CODE 4 (see dbvo1x-endtoend.steps for why it is unavoidable) ---
+click 639 479
+wait 3s
+click 639 479
+wait 2s
+
+# --- arm the independent witness ----------------------------------------------------
+# Read-only detour on Actor::SpeakSoundFunction, DBVO/ prefix: emits src:"speak" start/stopped.
+cmd {"cmd":"speak-watch","on":true}
+
+# --- stage: a talkable NPC in front of the player -----------------------------------
+cmd {"cmd":"placeatme","base":"0x00013BA3","as":"hulda","d":110,"freeze":false}
+wait 6s
+tap e
+wait until:menu:Dialogue Menu
+
+# --- same topic as the test half ----------------------------------------------------
+tap down
+tap down
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.TopicListHolder.List_mc.selectedEntry.text|Where can I learn more about magic?
+tap e
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true
+
+# --- THE INVERTED ASSERTION ---------------------------------------------------------
+# Six seconds on from the click the backstop has already fired: the reply came from DBVO's
+# word-count guess, not from the end of the audio. If this gate ever hangs, the control is not a
+# control — something else is cancelling that timer.
+wait 6s
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|false
+shot /tmp/dbvo1x-control-replied.png

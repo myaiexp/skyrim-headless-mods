@@ -1,0 +1,92 @@
+# DBVO Dialogue Tweaks — the END-TO-END verification, with DBVO 1.x actually running.
+#
+# What it proves, hands-free, and what no other script here can: that DBVO 1.x's own Papyrus runs on
+# game 1.7.104 with the updated ConsoleUtilSSE NG + JContainers SE, and that this mod times the reply
+# off the line DBVO really spoke. `replyonlineend.steps` has to synthesise both of DBVO's stimuli
+# (the console speaks the line, a probe ui-invoke arms the swf) because those two dependencies were
+# refused by SKSE on 1.7.104; here nothing is synthesised — the topic click alone drives everything.
+#
+#   mods/DBVODialogueTweaks/stage-dbvo1x-profile.sh          # build both stages (once)
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvo1x \
+#       mods/DBVODialogueTweaks/dbvo1x-endtoend.steps --headless --no-shots
+#
+# The chain each gate below covers, in order:
+#   click a topic -> our swf's initDBVO fires the PlayDBVOTopic mod event
+#     -> DBVO's Papyrus reads the voice pack through JContainers   (JContainers64.dll must load)
+#     -> speaks the line through ConsoleUtil                        (ConsoleUtilSSE.dll must load)
+#     -> our DLL's speak-sound hook sees it                         (the `voice boost` log line)
+#     -> DBVO calls UI.InvokeString(… startTopicClickedTimer …)     (arms the swf's backstop)
+#     -> our DLL detects the line's real end -> dbvoOnPlayerLineEnded -> reply after the gap
+#
+# `--no-shots` is REQUIRED: this is a timing test and the per-step filmstrip costs seconds per step
+# (finding #34). The two `shot` steps below capture the frames that matter.
+#
+# NO_AUTOLOAD because the bundled po3_StartOnSave is stale for 1.7.104, so the script drives the
+# main menu itself. Pixel coordinates are for the headless default 1280x720.
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait 4s
+click 602 409           # "Creations are currently loaded … continue?" -> Yes (#25). Harmless if absent.
+wait until:inworld
+wait 8s                 # inworld fires before the player's 3D settles (#16); DBVO's and SkyUI's
+                        # quests also need a moment to register their MCMs before any dialogue.
+
+# --- dismiss SKYUI ERROR CODE 4 -----------------------------------------------------
+# "Your Papyrus INI settings are invalid" — SkyUI rejects this machine's own Skyrim.ini
+# ([Papyrus] iMaxAllocatedMemoryBytes=524288, a Bethini memory tweak). skytest deliberately only
+# touches SLocalSavePath in that file, so the modal is a fact of any stage that ships SkyUI — and
+# it EATS THE ACTIVATION KEY: without this click, `tap e` below does nothing and the run dies on
+# the Dialogue Menu gate with no other symptom. Clicked twice because it can appear late; an
+# in-world miss just swings a fist.
+click 639 479           # OK
+wait 3s
+click 639 479           # again, in case it arrived after the first
+wait 2s
+
+# --- turn the boost on: it doubles as the "DBVO really spoke" witness ---------------
+# The DLL logs `voice boost x2.50` only when its speak-sound hook fired on a PLAYER line whose path
+# starts with DBVO/ — i.e. only when DBVO's own Papyrus actually spoke through ConsoleUtil. That is
+# the end-to-end evidence, and it costs nothing but a slider value.
+cmd {"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[2.5]}
+wait 2s
+
+# --- stage: a talkable NPC in front of the player -----------------------------------
+# freeze:false is load-bearing — a frozen NPC opens the topic list and then never replies (#26).
+cmd {"cmd":"placeatme","base":"0x00013BA3","as":"hulda","d":110,"freeze":false}
+wait 6s
+tap e
+wait until:menu:Dialogue Menu
+
+# --- set a gap no other code path in the stack would produce ------------------------
+# 15000 ms, after the menu is up (both MCMs push their own value on open). Only
+# dbvoOnPlayerLineEnded — the DLL's callback — ever reads it.
+cmd {"cmd":"ui-set","menu":"Dialogue Menu","path":"_root.DialogueMenu_mc.dbvoPadMs","value":15000}
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.dbvoPadMs|15000.000000
+
+# --- pick a topic that the voice pack actually has a line for -----------------------
+# "Where can I learn more about magic?" — entry 2, and the Karat pack ships
+# sound/dbvo/danagis_karatvoice/where_can_i_learn_more_about_magic_.fuz for it. A topic with no
+# recorded line would leave DBVO silent, which is indistinguishable here from DBVO being broken.
+# Keyboard, not a pixel click, so this script also runs against the compatibility variants' layouts.
+tap down
+tap down
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.TopicListHolder.List_mc.selectedEntry.text|Where can I learn more about magic?
+tap e
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true    # the topic armed the swf
+
+# --- ASSERTION 1: DBVO 1.x lives on 1.7.104 ----------------------------------------
+# JContainers resolved the pack, ConsoleUtil spoke the line, and our hook saw it. If either DLL had
+# been refused by SKSE this gate is what times out.
+wait until:log:DBVODialogueTweaks|voice boost x2.50
+
+# --- ASSERTION 2 (two halves): the reply is ours, not the word-count backstop -------
+# 1. Past the backstop (7 words -> 4100 ms), the reply must NOT have fired yet.
+wait 6s
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true
+shot /tmp/dbvo1x-still-waiting.png
+# 2. …and it must then fire on its own, at line-end + the 15000 ms gap.
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|false
+shot /tmp/dbvo1x-replied.png

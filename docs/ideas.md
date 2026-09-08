@@ -352,10 +352,12 @@ shipped, verified in-game. Deferred:
   run each: `mods/DBVODialogueTweaks/variants/README.md`, priority in `docs/dbvo-landscape.md`.
   Read the new mod's Nexus permissions first — the four shipped ones were cleared that way
   (2026-09-09) and each menu's author is credited on the page, in the README and in the installer.
-- **Try DBVO 1.x end-to-end on 1.7.104.** Both refused dependencies now have 1.7.104 builds on
-  Nexus (ConsoleUtilSSE NG 1.6.1, JContainers SE 4.3.2 since 2026-09-07). Nobody has tried the
-  pair; it is two downloads in the managing repo and would let `replyonlineend.steps` drop its two
-  synthesised stimuli. Also what to ask first of any 1.7.104 user reporting silence.
+- **Install the revived DBVO 1.x chain in the LIVE game** (the end-to-end test itself is done —
+  2026-09-09, ConsoleUtilSSE NG 1.6.1 + JContainers SE 4.3.2, `docs/dbvo-landscape.md`). The live
+  install still has the old ConsoleUtilSSE and its DBVO voice pack switched off, so this is a
+  managing-repo job: drop both updated DLLs in, re-enable the pack, and the full profile gets its
+  dialogue voice back. Note the full profile is still dead for other reasons (every other
+  third-party SKSE DLL predates format 5).
 - **SkytestProbe nits** (seen 2026-09-08, untouched): `main.cpp`'s load line still says
   "SkytestProbe 0.2.0 loaded" while `SKSEPluginInfo` is 0.4.0; the root `README.md` probe row and
   `docs/plans/skytest-probe-design.md`'s command table predate `ui-*` and `papyrus-call`.

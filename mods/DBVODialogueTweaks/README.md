@@ -91,10 +91,29 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   1.7.104 build still targets SE + AE the same way, but only 1.7.104 has been re-tested since the
   rebuild.
 
-- **⚠ DBVO 1.x itself does not currently run on 1.7.104 — and that, not this mod, is what blocks
-  you.** Checked in-engine on 2026-09-03 with the DBVO 1.x install that worked on 1.6.1170. SKSE
-  2.3.1 refuses **both** of the SKSE plugins DBVO 1.x's `DBVO_Script_MCM` calls into, before they
-  ever load, and puts up its own modal saying so:
+- **DBVO 1.x runs on 1.7.104 again — update its two dependencies, and the whole chain works.**
+  **Verified end-to-end in-engine on 2026-09-09** (game 1.7.104, SKSE 2.3.1) with
+  **ConsoleUtilSSE NG 1.6.1** and **JContainers SE 4.3.2**: both load (`plugin ConsoleUtilSSE.dll
+  (… 01060010) loaded correctly`, `plugin JContainers64.dll … loaded correctly`), and clicking a
+  topic drove the *entire* real chain — DBVO's Papyrus took the mod event, resolved the voice pack
+  through JContainers, spoke the line through ConsoleUtil
+  (`DBVO/Danagis_KaratVoice/Where_can_I_learn_more_about_magic_.fuz`, 1784 ms, natural end,
+  observed by SkytestProbe's read-only `speak-watch`), armed this mod's menu via
+  `UI.InvokeString(… startTopicClickedTimer …)`, and the reply landed at the line's real end plus
+  the configured gap. A/B'd against the same stage minus only `DBVODialogueTweaks.dll`, where the
+  reply instead fired on the word-count backstop. Replayable: `dbvo1x-endtoend.steps` +
+  `dbvo1x-control.steps` (see [Testing](#testing)).
+
+  Two gotchas that are worth knowing before you blame anything else: JContainers needs its whole
+  `SKSE/Plugins/JCData/` folder (without `JCData/Domains/` it throws during registration and the
+  game dies at boot, while `skse64.log` still says it "loaded correctly"), and SkyUI may greet you
+  with *"SKYUI ERROR CODE 4 — Your Papyrus INI settings are invalid"* if your `Skyrim.ini` carries
+  a `[Papyrus]` memory tweak — that modal swallows the activation key until you dismiss it.
+
+  <details><summary>What was broken before those builds existed (checked 2026-09-03)</summary>
+
+  SKSE 2.3.1 refused **both** of the SKSE plugins DBVO 1.x's `DBVO_Script_MCM` calls into, before
+  they ever loaded, and put up its own modal saying so:
 
   ```
   ConsoleUtilSSE.dll: must be recompiled for new address library      (1.5.1.0)
@@ -102,14 +121,14 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   ```
 
   ConsoleUtil is what speaks your line (`Player.SpeakSound "DBVO/…"`) and JContainers is what reads
-  DBVO's voice-pack settings, so with those two refused DBVO 1.x produces no player voice at all —
-  and this mod, which exists to time the reply to that voice, has nothing to time. **Update both
-  before blaming this mod**: ConsoleUtilSSE NG 1.6.1 (2026-08-22, its page says "confirmed working
-  on 1.7.99") and JContainers SE **4.3.2** (built for SKSE 2.3.1 / 1.7.104; on Nexus since
-  2026-09-07 — before that only a GitHub pre-release, and the older Nexus 4.2.13.1 is refused).
-  Neither was the build installed here, and whether the pair is enough for 1.7.104 is untested. (Note it
-  is JContainers, not PapyrusUtil, that DBVO 1.x's shipped script actually uses, whatever the mod
-  page's requirement list says.)
+  DBVO's voice-pack settings, so with those two refused DBVO 1.x produced no player voice at all —
+  and this mod, which exists to time the reply to that voice, had nothing to time. The older builds
+  are still refused: it is ConsoleUtilSSE NG **1.6.1**+ (2026-08-22) and JContainers SE **4.3.2**+
+  (on Nexus since 2026-09-07; 4.2.13.1 is refused) that fix it. (Note it is JContainers, not
+  PapyrusUtil, that DBVO 1.x's shipped script actually uses, whatever the mod page's requirement
+  list says.)
+
+  </details>
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
 - **UI overhauls that replace the dialogue menu — pick your menu in the installer.** This mod ships
@@ -306,8 +325,29 @@ All five passed on game 1.7.104 (2026-09-08): **stock**, **untarnished**, **dddm
 assertion gates. `variants/menu.steps` is the companion pass that just photographs a variant's open
 dialogue menu, which is how a new overhaul's layout is eyeballed before trusting it.
 
-Because DBVO 1.x's Papyrus cannot run on 1.7.104 (see [Compatibility](#compatibility)), the script
-supplies the two stimuli that Papyrus would have: the console runs the same
+**The end-to-end pair — DBVO 1.x actually running** (2026-09-09, the verification behind the
+Compatibility bullet above). Needs the two updated dependency archives in `~/Downloads`
+(ConsoleUtilSSE NG, JContainers SE); everything else is lifted from the live full profile, and the
+staged DBVO settings are a copy with the voice pack switched on, so your own install is untouched:
+
+```bash
+./stage-dbvo1x-profile.sh        # ~/.cache/skytest-dbvo1x{,-nodll}
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvo1x \
+    mods/DBVODialogueTweaks/dbvo1x-endtoend.steps --headless --no-shots   # must PASS
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvo1x-nodll \
+    mods/DBVODialogueTweaks/dbvo1x-control.steps --headless --no-shots    # must PASS (inverted)
+skytest trace --src speak        # the control's witness: DBVO's own line, path and duration
+```
+
+Nothing is synthesised there: the topic click alone drives DBVO's Papyrus, JContainers, ConsoleUtil
+and this mod's DLL in sequence. The control is the same stage minus one file and asserts the
+opposite state at the same moment — six seconds after the click the reply has already fired,
+because nothing cancelled the word-count backstop. `--variant <id>` stages a compatibility menu
+instead of the stock one.
+
+The scripts below need none of that. Because DBVO 1.x's Papyrus could not run on 1.7.104 when they
+were written (see [Compatibility](#compatibility)), each supplies the two stimuli DBVO would have:
+the console runs the same
 `Player.SpeakSound "DBVO/…"` ConsoleUtil would, and a SkytestProbe `ui-invoke` makes the same
 `UI.InvokeString(… startTopicClickedTimer …)` call. Everything downstream of those two is the
 mod's own code. Neither script covers the skip or interrupt-cut features — those ride the same

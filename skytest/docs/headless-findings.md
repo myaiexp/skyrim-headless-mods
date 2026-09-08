@@ -726,3 +726,36 @@ kDataLoaded, and the DBVO hook demonstrably fired afterwards. Each DLL links its
 the second instance simply relocates the first's `jmp` into its trampoline and chains. What is NOT
 yet shown is the observer *armed* in that chain (`speak-watch` was never turned on with the mod
 present); until it is, treat the two as chainable-but-unverified rather than exclusive.
+
+## 39. JContainers boot-kills a test profile if `SKSE/Plugins/JCData/` is not staged
+
+Staging JContainers SE as "the DLL plus its `Scripts/*.pex`" — the obvious reading of its archive
+— makes the game die during boot, after the main menu's UI starts loading, with **nothing in
+`skse64.log` to explain it**: that log says `plugin JContainers64.dll … loaded correctly`, because
+the failure comes later, out of `Registering functions`. The reason is only in the plugin's own
+`SKSE/JContainers64.log`:
+
+```
+JC Domains folder must exist! (…/Data/SKSE/Plugins/JCData/Domains/)
+'Registering functions' throws 'boost::filesystem::directory_iterator::construct: Path not found'
+```
+
+Stage the whole `Data/SKSE/Plugins/JCData/` tree (it ships an empty `Domains/.force-install`
+marker some mod managers strip). General rule this is an instance of: **when a session dies at
+boot with a "loaded correctly" line in `skse64.log`, read the per-plugin `SKSE/<Plugin>.log`
+files** — CrashLogger is disabled on 1.7.104 (finding #35), so those are the only witnesses left.
+
+## 40. Any stage carrying SkyUI eats the first activation key: SKYUI ERROR CODE 4
+
+A profile that ships `SkyUI_SE.esp`/`.bsa` — needed whenever a mod under test has an MCM, and by
+DBVO 1.x, whose `DBVO_Script_MCM` extends `SKI_ConfigBase` and cannot be instantiated without it —
+pops a modal a few seconds after the save loads: *"SKYUI ERROR CODE 4 — Your Papyrus INI settings
+are invalid."* SkyUI is objecting to this machine's own `Skyrim.ini` (`[Papyrus]
+iMaxAllocatedMemoryBytes=524288`, a Bethini memory tweak), and skytest deliberately touches only
+`SLocalSavePath` in that file, so the modal is a fact of life rather than a bug to fix in the
+harness — the live game shows it too.
+
+It **swallows keyboard input**, so a `tap e` aimed at an NPC does nothing and the run dies much
+later on an unrelated gate (`until:menu:Dialogue Menu` timing out) with no visible cause. Dismiss
+it with a coordinate click on OK at **639 479** (1280x720, finding #25), twice with a few seconds
+between in case it arrives late; an in-world miss only swings a fist.

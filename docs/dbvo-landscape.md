@@ -23,7 +23,24 @@ All three voice the *player's* dialogue choices. They are mutually exclusive ins
 / 3,404 unique. DBVO NG = 181906, **wastebinned / unavailable**, v1.1.9, last updated 2026-06-12,
 same author as DBReV.
 
-## Why DBVO 1.x is dead on 1.7.104
+## Why DBVO 1.x was dead on 1.7.104 — and is not any more (2026-09-09)
+
+> **Settled in-engine: DBVO 1.1.1 runs on game 1.7.104 with ConsoleUtilSSE NG 1.6.1 +
+> JContainers SE 4.3.2.** Both load; a topic click drives the real chain (mod event → JContainers
+> → ConsoleUtil `SpeakSound` → `startTopicClickedTimer` → our reply-on-line-end), witnessed
+> independently by SkytestProbe's `speak-watch`
+> (`DBVO/Danagis_KaratVoice/Where_can_I_learn_more_about_magic_.fuz`, 1784 ms, natural end).
+> Replayable: `mods/DBVODialogueTweaks/{stage-dbvo1x-profile.sh,dbvo1x-endtoend.steps,
+> dbvo1x-control.steps}`. Two traps that cost a boot each: JContainers needs its whole
+> `SKSE/Plugins/JCData/` tree or it throws during registration and the game dies with
+> `skse64.log` still saying "loaded correctly", and any SkyUI-carrying profile pops
+> **SKYUI ERROR CODE 4** which swallows the activation key (findings #39/#40).
+>
+> **This does not reopen the takeover question below.** What changed is that a DBVO 1.x user can
+> stay on 1.7.104 — the audience is no longer pinned to downgraded 1.6.1170 — not that DBVO 1.x
+> gained a maintainer. The section below is kept as the record of what was broken.
+
+## What was broken (2026-09-03)
 
 Established in-engine 2026-09-03 (see `mods/DBVODialogueTweaks/README.md` → Compatibility). SKSE
 2.3.1 refuses both SKSE plugins DBVO 1.x's `DBVO_Script_MCM` calls into, before loading them:
@@ -31,12 +48,11 @@ Established in-engine 2026-09-03 (see `mods/DBVODialogueTweaks/README.md` → Co
 (*"disabled, incompatible with current version of the game"*). ConsoleUtil speaks the line,
 JContainers reads the voice-pack settings — so DBVO 1.x produces no player voice at all.
 
-Newest upstream at the time of writing: ConsoleUtilSSE NG **1.6.1** (2026-08-22, its file page says
-*"Confirmed working on 1.7.99"*), and JContainers SE **4.3.2** (*"SKSE 2.3.1 / SAE 1.7.104"*;
-a GitHub-only pre-release from 2026-08-29 until Nexus caught up on **2026-09-07** — checked via
-the API 2026-09-08). Neither is installed here and the Nexus API is read-only, so a session cannot
-fetch them; whether the pair revives DBVO 1.x on 1.7.104 is untested. With both on Nexus now it is
-a cheap thing for Mase to try in the managing repo, and the first thing to ask of a 1.7.104 user.
+The fix, both from their own authors: ConsoleUtilSSE NG **1.6.1** (2026-08-22) and JContainers SE
+**4.3.2** (*"SKSE 2.3.1 / SAE 1.7.104"*; a GitHub-only pre-release from 2026-08-29 until Nexus
+caught up on 2026-09-07). Mase downloaded both on 2026-09-09 and the pair was verified here the
+same day — see the box above. The older builds are still refused, so "update those two" remains the
+first thing to ask of a 1.7.104 user reporting silence.
 
 ## Why not take DBVO 1.x over
 
