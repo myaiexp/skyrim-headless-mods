@@ -25,7 +25,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 - **Clean cut on skip & interrupt**: skipping fades your in-flight line out cleanly (no click);
   picking a new topic while an NPC is mid-reply cuts that reply too.
 - **Player-voice volume**: attenuate _just_ your own DBVO line, 0–100% (100% = unchanged), without
-  touching any other audio. Attenuation only — it cannot amplify above the source volume.
+  touching any other audio. Attenuation only — it cannot amplify above the source volume: the
+  engine clamps its per-sound volume at 1.0 (tested at 150%, identical to 100%). For a pack that is
+  mastered too quiet, lower the game's **Voice** slider instead (the DBVO player line is not in that
+  category, so only NPCs get quieter) or gain-normalize the pack's audio offline.
 - **Configurable gap**: the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
 - **Native SkyUI MCM**: a single screen, no MCM Helper dependency.
 
@@ -107,6 +110,17 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   page's requirement list says.)
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
+- **UI overhauls that replace the dialogue menu (Dialogue Interface ReShaped, Dear Diary, Nordic
+  UI, Untarnished UI, …) — one swf has to lose.** This mod ships the *whole* `dialoguemenu.swf`
+  (DBVO's own, script recompiled — the layout is DBVO's, untouched: the only positioning lines in
+  the script are Bethesda's exit-button and PAL-SD nudges, byte-identical to stock DBVO), so
+  installing it over a UI overhaul's DBVO-patched swf reverts the topic list to the stock
+  placement. That is the "my dialogue options moved" report (Nexus, 2026-09-08). Either let this
+  mod's swf win (skip + reply-on-line-end + volume, stock layout) or let the UI overhaul's win
+  (its layout + DBVO's own timing; the **volume slider still works**, because it is the DLL's
+  speak-sound hook and needs nothing from the swf — the DLL's `dbvoOnPlayerLineEnded` invoke is a
+  silent no-op on a swf that lacks it, and the cut events are never sent). Only a swf that carries
+  *both* sets of script edits would give both, and none is built.
 - **⚠ Dragonborn ReVoiced (DBReV) — also incompatible, and it is where DBVO 1.x users are going.**
   [DBReV](https://www.nexusmods.com/skyrimspecialedition/mods/184221) (mod 184221, v1.5, 2026-09-02)
   is an independent successor that *does* eat DBVO 1.0 voice packs, computes reply timing natively
