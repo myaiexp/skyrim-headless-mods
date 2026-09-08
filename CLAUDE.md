@@ -106,7 +106,10 @@ What this means for anything you touch here:
   `drive tap tilde` + `drive type '<line>'` + `drive tap enter` (a `type` step exists in
   `.steps`), verified on 1.7.104 with `tmm 1`, `coc riverwood` and `player.speaksound`. The
   console's **command table** is fine; only the probe's *programmatic* `exec` is broken (CommonLib
-  mis-binds `CompileAndRun` — findings #18/#27). **Quote any path argument** — the console splits
+  mis-binds `CompileAndRun` — findings #18/#27). **The console has no `cgf`/`callglobalfunction`
+  on 1.7.104** ("Script command … not found", verified 2026-09-08) — a mod's Papyrus global (its
+  `Global Native` settings API) is called with the probe's `papyrus-call`; its ack means queued,
+  the `src:"papyrus-call"` trace line is the completion. **Quote any path argument** — the console splits
   an unquoted one at the first `/` (`type` holds SHIFT for `"` and `_` since finding #31).
   **Close the console** before driving anything else *and before the thing you're measuring
   happens*: open, it eats keys, turns clicks into console ref-picks, and swallows a mod's

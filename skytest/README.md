@@ -308,7 +308,7 @@ a ten-step run past the thing it is trying to measure (finding #34).
 
 | Step                                     | Meaning                                                                                                                                                                                                                                                                           |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cmd <json>`                             | **The staging path.** Send a direct-call probe command (the whole rest of the line, a JSON object) and block on its ack before the next step: `cmd {"cmd":"placeatme","base":"0x..","as":"ally","d":250}`, `make-teammate`, `cast`, `give-spell`, `set-av`. Use this, not `exec`. |
+| `cmd <json>`                             | **The staging path.** Send a direct-call probe command (the whole rest of the line, a JSON object) and block on its ack before the next step: `cmd {"cmd":"placeatme","base":"0x..","as":"ally","d":250}`, `make-teammate`, `cast`, `give-spell`, `set-av`, and `papyrus-call` for a mod's own Papyrus global (`{"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[2.5]}` — its ack means *queued*; the `src:"papyrus-call"` trace line is the completion). Use this, not `exec`. |
 | `exec <console>`                         | Run the rest of the line as a console command **through the probe**. **⚠ Broken by design-defect, not the staging path**: programmatic `CompileAndRun` is mis-bound (finding #18). To run a console line, `tap tilde` + `type` + `tap enter` instead (#27).                       |
 | `type <text>`                            | Type the rest of the line as literal keystrokes — how you reach the in-game **console** (open it with `tap tilde` first, close it after). Verbatim like `exec`/`cmd`, so no trailing `#` comment.                                                                               |
 | `tap <KEY>`                              | One keypress (`gs_keycode` names: `tilde` `m` `q` `e` `up`/`down`/… ).                                                                                                                                                                                                            |
@@ -372,6 +372,14 @@ Gates poll SkytestProbe (never a blind sleep; `until:log:` polls a file on the h
 > world staging the probe has no command for, direct-call probe commands (`placeatme`,
 > `give-spell`, `set-av`, …) where one exists** — they are main-thread, null-safe and acked — and
 > the drive layer for input. `exec` stays in the probe (SEH-guarded, harmless).
+>
+> **A mod's Papyrus API is probe-only.** The console's `cgf` / `callglobalfunction` do not exist
+> on 1.7.104 (`Script command … not found`, verified in-engine 2026-09-08), so a `Global Native`
+> like `DBVOTweaks.SetPlayerVoiceVolume(Float)` is reached with the probe's **`papyrus-call`**
+> (`{"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[2.5]}`).
+> Match the declared parameter types in the JSON (`2.0` is a Float, `2` an Int — the VM does not
+> coerce), and treat the ack as *queued*: the `src:"papyrus-call"` trace line written when the
+> call returns is the completion signal (`skytest trace --src papyrus-call`).
 > Background: `../docs/plans/skytest-replay-handoff.md`. Example: `examples/format-demo.steps`.
 
 ## Driving the probe from the CLI (`io` / `cmd` / `trace` / `wait-probe` / `restart`)
@@ -424,7 +432,8 @@ in the same dir: arm engine event sinks (`trace`), dump an actor's state incl. c
 per-render-frame read-only (`facegen-observe`) / force a parameterized facegen reset
 (`facegen-close`) — these accept a `speaker` ref (the live dialogue NPC), and every facegen line
 carries a `paused`/`gt` guard so a frozen sample is never mistaken for live data — run a console
-line (`exec`), `anim-trace`, `marker`, `status`; F11 drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
+line (`exec`), call a mod's Papyrus global (`papyrus-call`), `anim-trace`, `marker`, `status`; F11
+drops a marker + auto-dump. It kills the probe-recompile-restart loop when debugging the C++
 mods, and it is what `skytest ready` polls. Passive until armed, never crashes on bad input. Built
 from `../mods/SkytestProbe` (`./build.sh`); skytest reads the **DLL** from that build output
 (`build/SkytestProbe.dll`) and the **ini** from the source dir (`SkytestProbe.ini`, alongside

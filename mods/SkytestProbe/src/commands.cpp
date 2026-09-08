@@ -57,6 +57,38 @@ namespace
 		}
 		return v;
 	}
+	// Mixed-type argument array (papyrus-call). Unlike JStrArr this cannot skip what it doesn't
+	// understand: a dropped element would shift every later argument into the wrong Papyrus
+	// parameter, so any element that isn't a number/bool/string fails the whole command, naming
+	// its index. JSON integral -> int, any other number -> float (the VM does not coerce).
+	bool JArgArr(const json& j, const char* k, std::vector<engine::PapyrusArg>& a_out, std::string& a_err)
+	{
+		auto it = j.find(k);
+		if (it == j.end()) {
+			return true;  // no args
+		}
+		if (!it->is_array()) {
+			a_err = "\"" + std::string(k) + "\" must be an array";
+			return false;
+		}
+		std::size_t i = 0;
+		for (const auto& e : *it) {
+			if (e.is_number_integer()) {
+				a_out.emplace_back(static_cast<std::int32_t>(e.get<std::int64_t>()));
+			} else if (e.is_number()) {
+				a_out.emplace_back(e.get<float>());
+			} else if (e.is_boolean()) {
+				a_out.emplace_back(e.get<bool>());
+			} else if (e.is_string()) {
+				a_out.emplace_back(e.get<std::string>());
+			} else {
+				a_err = "unsupported arg type at index " + std::to_string(i);
+				return false;
+			}
+			++i;
+		}
+		return true;
+	}
 
 	// Marshal engine work onto the main thread. The closure runs a later frame; it
 	// captures only owned data (strings/ids), never raw engine pointers.
@@ -413,6 +445,45 @@ namespace
 					break;
 				case engine::InvokeResult::kFailed:
 					trace::Ack(id, false, "ui: the movie rejected the variable path: " + path);
+					break;
+				}
+			});
+			return;
+		}
+
+		if (c == "papyrus-call") {
+			// Direct-call substitute for a Papyrus GLOBAL function — a mod's own `Global Native`
+			// settings API (DBVOTweaks.SetPlayerVoiceVolume) in a stage with no MCM to reach it
+			// through. Same idea as ui-invoke for UI.InvokeString; the console is not an option,
+			// since 1.7.104 has no `cgf`/`callglobalfunction`. The ack means QUEUED only: the VM
+			// runs the function on a script stack later and the src:"papyrus-call" trace line
+			// written on return is the completion signal a replay gate should wait for.
+			const std::string cls = JStr(cmd, "class");
+			const std::string fn  = JStr(cmd, "function");
+			if (cls.empty() || fn.empty()) {
+				trace::Ack(id, false, "papyrus-call: needs \"class\" and \"function\"");
+				return;
+			}
+			std::vector<engine::PapyrusArg> args;
+			std::string                     err;
+			if (!JArgArr(cmd, "args", args, err)) {
+				trace::Ack(id, false, "papyrus-call: " + err);
+				return;
+			}
+			if (args.size() > 6) {
+				trace::Ack(id, false, "papyrus-call: at most 6 args");
+				return;
+			}
+			EnqueueMain([id, cls, fn, args]() {
+				switch (engine::DispatchPapyrusStatic(cls, fn, args)) {
+				case engine::PapyrusCallResult::kOk:
+					trace::Ack(id, true);
+					break;
+				case engine::PapyrusCallResult::kNoVM:
+					trace::Ack(id, false, "papyrus-call: no VM");
+					break;
+				case engine::PapyrusCallResult::kRefused:
+					trace::Ack(id, false, "papyrus-call: dispatch refused (script or function not found?)");
 					break;
 				}
 			});

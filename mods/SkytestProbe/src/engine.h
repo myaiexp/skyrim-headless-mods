@@ -12,3 +12,4 @@
 #include "facegen_ramp.h"
 #include "mcm.h"
 #include "uimenu.h"
+#include "papyrus_call.h"
