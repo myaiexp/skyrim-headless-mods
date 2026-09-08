@@ -102,10 +102,11 @@ conversation, and every extra step is flake surface. `--no-shots` is not load-be
 1. Set the factor through the console (no SkyUI in the test stage): `cgf "DBVOTweaks.SetPlayerVoiceVolume" 2.5`
    — `cgf` calls a Papyrus global; the native is registered by the DLL and `DBVOTweaks.pex` ships.
 2. Speak the staged line: `player.speaksound "dbvo/t1.fuz"`; close the console.
-3. **Assertion**: a new skytest gate `until:log:DBVODialogueTweaks|voice boost: 1.000 -> 2.500`
-   — the DLL logs the readback with the slider value, so the substring pins *this* stimulus, and
+3. **Assertion**: a new skytest gate `until:log:DBVODialogueTweaks|voice boost x2.50` — the DLL
+   logs `voice boost x2.50: voice V -> V×2.5 (sound N)`; the substring pins the *multiplier* (not
+   the readback, which depends on the profile's master volume) and so pins *this* stimulus, and
    the gate proves the vtable hook fired on the player's sound, the thread check passed, and
-   XAudio2 accepted a gain above 1.0.
+   XAudio2 accepted a gain above 1.0. (The plan is the authority on the exact log format.)
 4. **Control**: the same script with `cgf … 1.0`, ending on `wait until:!log:DBVODialogueTweaks|voice boost`
    — no boost line may exist. Audible confirmation is Mase's in the real game — the only honest
    check for "louder".
