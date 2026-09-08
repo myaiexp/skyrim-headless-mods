@@ -27,7 +27,7 @@ skytest replay <mod> <s.steps> # boot, then run a .steps script to snap to a tar
 skytest ready [secs]           # block until the session is in-world (probe poll)
 skytest shot [out.png]         # screenshot the session       [cropWxH+X+Y] [scaleWxH]
 skytest drive <cmd> …          # inject input (tap|seq|key|type|click|abs|rel|raw)
-skytest stop                   # tear down the session + restore Data → full
+skytest stop                   # tear down the session + restore Data → full (also restores after a hand-closed session)
 skytest play                   # launch the FULL modded game over the fast direct path (blocking)
 skytest play agent [--headless]# FULL modded profile under a DRIVABLE gamescope session (for the agent)
 skytest status                 # show profile + live test session (also the no-arg default)
