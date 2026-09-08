@@ -750,15 +750,41 @@ files** — CrashLogger is disabled on 1.7.104 (finding #35), so those are the o
 A profile that ships `SkyUI_SE.esp`/`.bsa` — needed whenever a mod under test has an MCM, and by
 DBVO 1.x, whose `DBVO_Script_MCM` extends `SKI_ConfigBase` and cannot be instantiated without it —
 pops a modal a few seconds after the save loads: *"SKYUI ERROR CODE 4 — Your Papyrus INI settings
-are invalid."* It is this machine's own `Skyrim.ini`, and the cause is the opposite of the obvious
-guess: `SKI_Main.psc:199` errors if **any** of `iMinMemoryPageSize`, `iMaxMemoryPageSize`,
-`iMaxAllocatedMemoryBytes` under `[Papyrus]` reads `<= 0`, and the file here defines only the third
-(`=524288`) — the two missing keys read 0. Nothing is wrong with the value that IS set. skytest
-touches only `SLocalSavePath` in that file, so this is a property of the live setup rather than a
-harness bug — the real game shows it too (recorded in the managing repo,
-`~/Downloads/skyrim-mods/00-docs/skyui-error-code-4.md`, with the two lines that fix it).
+are invalid."* skytest touches only `SLocalSavePath` in `Skyrim.ini`, so it is a property of this
+setup, not a harness bug.
+
+**The cause is unresolved — do not repeat the two wrong guesses.** `SKI_Main.psc:199` (the only
+site that raises error 4) errors if **any** of `iMinMemoryPageSize`, `iMaxMemoryPageSize`,
+`iMaxAllocatedMemoryBytes` under `[Papyrus]` reads `<= 0`. Measured 2026-09-09:
+
+- The console reports all three **positive**: `getini` gives 128, 512 and 524288 (the first two are
+  engine defaults — they are absent from `Skyrim.ini`; the third is the only one the file sets). So
+  the values are not "invalid" in any visible sense, and the guess "the memory tweak is bad" is out.
+- Skyrim's shipped `Skyrim_Default.ini` defines **no** memory keys under `[Papyrus]` at all, so a
+  stock INI has none of the three and SkyUI's install base would all see this if a missing key were
+  enough. The guess "the two missing keys read 0" is out too.
+- Nothing ties it to 1.7.x: every community report of error 4 is from 2013–2015 and describes
+  hand-edited "Papyrus memory tweaks".
+
+What would settle it is SkyUI's own read — `Utility.GetINIInt` — which cannot currently be
+measured here (finding #41). Until then, dismiss it and don't diagnose it.
 
 It **swallows keyboard input**, so a `tap e` aimed at an NPC does nothing and the run dies much
 later on an unrelated gate (`until:menu:Dialogue Menu` timing out) with no visible cause. Dismiss
 it with a coordinate click on OK at **639 479** (1280x720, finding #25), twice with a few seconds
 between in case it arrives late; an in-world miss only swings a fist.
+
+## 41. `papyrus-call` into a VANILLA native kills the session (reproducible)
+
+`{"cmd":"papyrus-call","class":"Utility","function":"GetINIInt","args":["<key>:Papyrus"]}` killed
+the game at the dispatch step **2/2** on 2026-09-09 (different key each run, so it is not the
+argument). The probe's own mod globals dispatch fine in the same sessions — `DBVOTweaks
+.SetPlayerVoiceVolume` with a float arg ran repeatedly, live and in `voiceboost.steps` — so what is
+untested-and-now-suspect is dispatching a **vanilla** script's native, or a native taking a
+**string** argument, or one with a non-void **return**. `papyrus-call` has only ever been used
+against our own mod's `Global Native` API, which is what it was built for.
+
+This is distinct from finding #37 (a single unreproducible death on a `papyrus-call` of our own
+global): that one did not recur, this one recurs on demand. If a test needs a vanilla native,
+drive the console instead — `getini "<key>:<section>"` printed the same values fine and the answer
+is readable off a `shot` (that is how the numbers in #40 were obtained).

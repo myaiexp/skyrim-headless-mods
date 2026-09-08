@@ -107,9 +107,11 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   Two gotchas that are worth knowing before you blame anything else: JContainers needs its whole
   `SKSE/Plugins/JCData/` folder (without `JCData/Domains/` it throws during registration and the
   game dies at boot, while `skse64.log` still says it "loaded correctly"), and SkyUI may greet you
-  with *"SKYUI ERROR CODE 4 — Your Papyrus INI settings are invalid"* — that is your `Skyrim.ini`'s
-  `[Papyrus]` block missing `iMinMemoryPageSize` / `iMaxMemoryPageSize` (SkyUI wants all three
-  memory keys present and positive), and the modal swallows the activation key until dismissed.
+  with *"SKYUI ERROR CODE 4 — Your Papyrus INI settings are invalid"*, which is SkyUI complaining
+  about your `Skyrim.ini` and has nothing to do with this mod or the patch — but **dismiss it before
+  trying to talk to anyone**, because the modal swallows the activation key. (Seen on this machine;
+  the actual trigger is unresolved — the three `[Papyrus]` keys SkyUI checks all read positive here.
+  Notes: `skytest/docs/headless-findings.md` #40.)
 
   <details><summary>What was broken before those builds existed (checked 2026-09-03)</summary>
 
