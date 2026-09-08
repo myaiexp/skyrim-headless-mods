@@ -7,7 +7,7 @@ Scriptname DBVODialogueTweaksMCM extends SKI_ConfigBase
 Float Property PAD_DEFAULT = 250.0 AutoReadOnly
 
 Float Property fPadMs = 250.0 Auto    ; ms gap after the line ends (0 = instant); seed must match PAD_DEFAULT
-Float Property fPlayerVoiceVol = 100.0 Auto    ; percent; 100 = unchanged
+Float Property fPlayerVoiceVol = 100.0 Auto    ; percent; 100 = unchanged, below attenuates, above boosts (v6, to 300)
 
 Int _padOID    ; option-IDs captured in OnPageReset for dispatch
 Int _volOID
@@ -59,10 +59,22 @@ Event OnOptionSliderOpen(Int oid)
 		SetSliderDialogInterval(25)
 		SetSliderDialogStartValue(fPadMs)
 	ElseIf oid == _volOID
-		SetSliderDialogRange(0, 100)
+		; 0-300: below 100 the DLL attenuates the sound handle (engine-clamped at 1.0), above 100 it
+		; multiplies the XAudio2 voice's gain after the engine's own push (v6). 100 = pass-through.
+		SetSliderDialogRange(0, 300)
 		SetSliderDialogDefaultValue(100)
 		SetSliderDialogInterval(5)
 		SetSliderDialogStartValue(fPlayerVoiceVol)
+	EndIf
+EndEvent
+
+; Info text for the highlighted option (SkyUI renders it under the option list). ASCII only:
+; Skyrim's UI fonts do not reliably carry en/em dashes or other typographic glyphs.
+Event OnOptionHighlight(Int oid)
+	If oid == _volOID
+		SetInfoText("Your own DBVO line only. 100 = as the pack was mastered. Above 100 amplifies: a loud pack will clip, a quiet one (some vampire packs) wants 200-300.")
+	ElseIf oid == _padOID
+		SetInfoText("Pause between the end of your voiced line and the NPC's reply.")
 	EndIf
 EndEvent
 
