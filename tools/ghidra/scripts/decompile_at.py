@@ -52,10 +52,16 @@ def A(v):
 for va in addrs:
     ui = A(va)
     print("\n==================== 0x%x ====================" % va)
-    if listing.getInstructionAt(ui) is None:
+    # Gate on "is there a FUNCTION here", not "is there an instruction": an earlier
+    # DisassembleCommand(followFlow=True) on a caller already laid instructions over every
+    # callee, so the instruction check skipped the transaction and no function was ever
+    # formed -> "no function formed" on a perfectly good call target (FUN_140cd5410 was
+    # the first casualty).
+    if fm.getFunctionAt(ui) is None:
         txid = prog.startTransaction("disasm")
         try:
-            DisassembleCommand(ui, None, True).applyTo(prog, mon)
+            if listing.getInstructionAt(ui) is None:
+                DisassembleCommand(ui, None, True).applyTo(prog, mon)
             CreateFunctionCmd(ui).applyTo(prog, mon)
         finally:
             prog.endTransaction(txid, True)

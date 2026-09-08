@@ -25,12 +25,36 @@ EXE = os.environ.get(
     "/home/mse/.local/share/Steam/steamapps/common/Skyrim Special Edition/SkyrimSE.exe",
 )
 SCRATCH_LOC = os.path.join(REPO, "tools/ghidra/projects")
-SCRATCH_NAME = "SkyrimScratch"
+# Tagged with the unpacked exe's md5 by ghidra.sh (GHIDRA_SCRATCH_NAME), so a re-unpacked
+# exe imports into a FRESH project: open_program() reuses an existing program of the same
+# name without re-importing, which is how a June project kept answering for a September exe.
+SCRATCH_NAME = os.environ.get("GHIDRA_SCRATCH_NAME", "SkyrimScratch")
 OUT = os.environ.get("GHIDRA_OUT", os.path.join(REPO, "tools/ghidra/out"))
 
 UPDATEIMPL_SLOT = 0xAB
 TARGETS = ["FlameProjectile", "BeamProjectile", "ConeProjectile",
            "MissileProjectile", "ArrowProjectile"]
+
+# Generalised in 2026-09 for the DBVO volume-boost RE: any class, any vfunc slot(s).
+#   find_via_rtti.py                                  -> the original projectile UpdateImpl sweep
+#   find_via_rtti.py BSXAudio2GameSound:0x18,0x0E     -> that class, those slots
+#   find_via_rtti.py Foo Bar:0x05                     -> Foo at the default slot, Bar at 0x05
+# Each (class, slot) pair dumps <Class>_slot0x<N>.{asm,c} (the default sweep keeps its
+# historical <Class>_UpdateImpl names).
+import sys
+
+def _parse_targets(argv):
+    if not argv:
+        return [(cls, UPDATEIMPL_SLOT, "UpdateImpl") for cls in TARGETS]
+    out = []
+    for arg in argv:
+        cls, _, slots = arg.partition(":")
+        for s in (slots.split(",") if slots else [hex(UPDATEIMPL_SLOT)]):
+            n = int(s, 0)
+            out.append((cls, n, "slot0x%02X" % n))
+    return out
+
+JOBS = _parse_targets(sys.argv[1:])
 
 os.makedirs(OUT, exist_ok=True)
 pyghidra.start()
@@ -86,8 +110,8 @@ with pyghidra.open_program(EXE, project_location=SCRATCH_LOC, project_name=SCRAT
 
     print("image base = 0x%x" % base)
 
-    for cls in TARGETS:
-        print("\n### %s" % cls)
+    for cls, SLOT, TAG in JOBS:
+        print("\n### %s slot 0x%X" % (cls, SLOT))
         name = (".?AV%s@@" % cls).encode("ascii")
         td_names = find_all(list(name))
         if not td_names:
@@ -123,9 +147,9 @@ with pyghidra.open_program(EXE, project_location=SCRATCH_LOC, project_name=SCRAT
             print("  vft @ %s (COL %s, subobj-offset %d)" % (vft, col, off))
         vft = vftables[0][1]
 
-        slot = vft.add(UPDATEIMPL_SLOT * 8)
+        slot = vft.add(SLOT * 8)
         ui = A(mem.getLong(slot))
-        print("  primary vft %s -> slot[0x%X] -> UpdateImpl @ %s" % (vft, UPDATEIMPL_SLOT, ui))
+        print("  primary vft %s -> slot[0x%X] -> %s @ %s" % (vft, SLOT, TAG, ui))
 
         # Disassemble on demand (no auto-analysis ran), via the same commands the analyzer
         # uses. Write ops need a transaction.
@@ -142,11 +166,11 @@ with pyghidra.open_program(EXE, project_location=SCRATCH_LOC, project_name=SCRAT
             print("  !! could not form a function at %s" % ui)
             continue
 
-        apath = os.path.join(OUT, "%s_UpdateImpl.asm" % cls)
+        apath = os.path.join(OUT, "%s_%s.asm" % (cls, TAG))
         with open(apath, "w") as fh:
             for ins in listing.getInstructions(func.getBody(), True):
                 fh.write("%s  %s\n" % (ins.getAddress(), ins))
-        cpath = os.path.join(OUT, "%s_UpdateImpl.c" % cls)
+        cpath = os.path.join(OUT, "%s_%s.c" % (cls, TAG))
         res = ifc.decompileFunction(func, 180, mon)
         with open(cpath, "w") as fh:
             if res and res.decompileCompleted():

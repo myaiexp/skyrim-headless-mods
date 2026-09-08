@@ -49,14 +49,19 @@ are idempotent — safe to re-run.
 
 **Fast path (preferred for targeted work) — no auto-analysis at all.** `find_via_rtti.py`
 imports the unpacked exe with `analyze=False` (seconds), walks MSVC RTTI by hand to find a
-class's vtable, reads a vfunc slot, and disassembles that function on demand. This is how
-we read `FlameProjectile::UpdateImpl` without ever paying for whole-program analysis:
+class's vtable, reads a vfunc slot, and disassembles that function on demand. Any class, any
+slot(s): `find_via_rtti.py 'BSXAudio2GameSound:0x18,0x0E' Foo` (no args = the original
+projectile `UpdateImpl` sweep). This is how we read `FlameProjectile::UpdateImpl` without ever
+paying for whole-program analysis:
 
 ```
-GHIDRA_INSTALL_DIR=/opt/ghidra GHIDRA_BINARY=<unpacked> \
-  tools/ghidra/.venv/bin/python tools/ghidra/scripts/find_via_rtti.py
-tools/ghidra/ghidra.sh query decompile_at.py 0x1407ecbf0 0x140851dc0   # chase the callees
+tools/ghidra/ghidra.sh query find_via_rtti.py 'BSXAudio2GameSound:0x18'
+GHIDRA_PROJECT=scratch tools/ghidra/ghidra.sh query decompile_at.py 0x140cd5410   # chase the callees
 ```
+
+The scratch project it imports into is md5-tagged (see the staleness section below), and
+`GHIDRA_PROJECT=scratch` points the follow-up queries at that same image. The vtable it finds
+should equal `addrlib.py id <VTABLE id>` — a cheap cross-check that library and image agree.
 
 Both write full dumps to `tools/ghidra/out/` (gitignored) and print a compact index. They
 disassemble single functions via `DisassembleCommand`/`CreateFunctionCmd` in a transaction
@@ -72,7 +77,39 @@ tools/ghidra/ghidra.sh query dump_updateimpl.py
 `analyze` writes a project under `tools/ghidra/projects/` (gitignored). Useful when you want
 whole-program xrefs/symbols; overkill when you already know the class+slot you're after.
 
-## The two gotchas (both cost real time — don't rediscover them)
+## ⚠️ After a game patch, EVERYTHING here is stale — and it fails quietly
+
+The unpacked exe and every Ghidra project are made once and then reused: `find_via_rtti.py`'s
+`open_program()` reuses an existing program of the same name without re-importing, and the
+analysed project is never touched again. Steam meanwhile swaps `SkyrimSE.exe` underneath
+(2026-09-01: 1.6.1170 → 1.7.104). The failure is **not an error**: an Address-Library ID
+resolved against the new `versionlib` lands on the old image's bytes, and the decompiler
+returns a plausible-looking function that is simply the wrong one (`BSSoundHandle::SetVolume`
+came back as a global float lerp; a call target "had no instructions"). It cost most of a
+session on 2026-09-08 before the mtimes gave it away.
+
+Now guarded: `unpack` stamps the md5 of the Steam exe it decrypted
+(`.steamless/unpacked.src.md5`) and keeps the previous unpacked exe as
+`SkyrimSE.exe.unpacked.<md5[:8]>.exe`; `analyze` stamps `projects/<name>.src.md5`; **`status`
+and `query` say STALE out loud** when the live exe, the unpacked exe and the project disagree.
+Scratch projects are named `SkyrimScratch-<md5[:8] of the unpacked exe>`, so a re-unpack
+imports into a fresh one, and `GHIDRA_PROJECT=scratch` is shorthand for it:
+
+```
+tools/ghidra/ghidra.sh unpack                                   # after any game patch
+tools/ghidra/ghidra.sh query find_via_rtti.py 'BSXAudio2GameSound:0x18'   # fresh scratch import, seconds
+GHIDRA_PROJECT=scratch tools/ghidra/ghidra.sh query decompile_at.py 0x140cdad60
+tools/ghidra/ghidra.sh analyze                                  # only when whole-program xrefs are needed
+```
+
+**Bridging IDs and addresses**: `scripts/addrlib.py id 67626` maps an Address-Library ID to
+this exe's offset/VA (format 5, no Ghidra needed) and `addrlib.py offset 0xcd5410` does the
+reverse, which answers "can the DLL reach the function Ghidra found through the library?"
+(a hit = call it by `REL::ID`; a miss = vtable or pattern). `proginfo.py` prints which exe a
+project really holds (path, md5, creation date) plus raw bytes at addresses; `disasm_at.py`
+prints instructions when `decompile_at.py` cannot form a function.
+
+## The gotchas (all cost real time — don't rediscover them)
 
 1. **Heap: use 8 GB, not Arch's 2 GB default.** Arch ships `analyzeHeadless` with
    `MAXMEM_DEFAULT=2G`. A 37 MB PE GC-thrashes that heap (thousands of young GCs, multi-second
@@ -122,7 +159,8 @@ decompile `UpdateImpl`, with a per-function call-site index).
 | Path                          | Holds                                                          |
 | ----------------------------- | ------------------------------------------------------------- |
 | `tools/ghidra/ghidra.sh`      | the driver (verbs: `setup`/`analyze`/`query`/`gui`/`status`)   |
-| `tools/ghidra/scripts/`       | PyGhidra query scripts (committed)                            |
+| `tools/ghidra/scripts/`       | PyGhidra query scripts (committed): `find_via_rtti.py` (class:slot → decompile), `decompile_at.py`, `disasm_at.py`, `xref_to.py`, `proginfo.py`; `addrlib.py` (ID ↔ offset, plain Python) |
+| `tools/ghidra/.steamless/`    | unpacked exe(s) + `unpacked.src.md5` provenance stamp (gitignored)  |
 | `tools/ghidra/.venv/`         | PyGhidra venv (gitignored; rebuilt by `setup`)               |
 | `tools/ghidra/projects/`      | Ghidra project data (gitignored — third-party disassembly)   |
 | `tools/ghidra/out/`           | query dumps (gitignored)                                      |

@@ -55,6 +55,32 @@ UNPACKED="$STEAMLESS_DIR/SkyrimSE.exe.unpacked.exe"
 # unpacking hasn't run yet — so a stale-binary mistake is loud, not silent garbage.
 GHIDRA_BINARY="${GHIDRA_BINARY:-$( [[ -f "$UNPACKED" ]] && echo "$UNPACKED" || echo "$STEAM_EXE" )}"
 
+# Provenance. The unpacked exe and every Ghidra project are created once and then REUSED,
+# while Steam silently swaps SkyrimSE.exe underneath (2026-09-01: 1.6.1170 -> 1.7.104). The
+# first symptom is NOT an error — it is Address-Library addresses decompiling to plausible
+# nonsense, because the library on disk describes the new exe and the project still holds
+# the old bytes (cost a session on 2026-09-08). So: `unpack` stamps the md5 of the Steam exe
+# it decrypted, `analyze` stamps the md5 of the binary it imported, and `status`/`query`
+# compare those against what is live now and say STALE out loud.
+UNPACK_STAMP="$STEAMLESS_DIR/unpacked.src.md5"      # md5 of the Steam exe `unpack` consumed
+_md5() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+_live_md5() { _md5 "$STEAM_EXE"; }
+# 0 = the unpacked exe was decrypted from a DIFFERENT Steam exe than the live one (or has no
+# stamp at all, which is the pre-2026-09 state and must be treated as unknown -> stale).
+_unpack_stale() {
+  [[ -f "$UNPACKED" ]] || return 1
+  [[ -f "$UNPACK_STAMP" ]] || return 0
+  [[ "$(cat "$UNPACK_STAMP")" != "$(_live_md5)" ]]
+}
+# Scratch projects (the RTTI fast path imports with analyze=False) are tagged with the
+# unpacked exe's md5, so a fresh unpack lands in a fresh project instead of the old bytes.
+UNPACKED_TAG="$( [[ -f "$UNPACKED" ]] && _md5 "$UNPACKED" | cut -c1-8 || echo none )"
+SCRATCH_NAME="SkyrimScratch-$UNPACKED_TAG"
+# `GHIDRA_PROJECT=scratch` is shorthand for that tagged scratch project (the one
+# find_via_rtti.py just populated) — decompile_at/disasm_at/proginfo then read the same
+# image the RTTI walk did, without a full analyze.
+[[ "$GHIDRA_PROJECT" == "scratch" ]] && GHIDRA_PROJECT="$SCRATCH_NAME"
+
 die() { echo "ghidra.sh: $*" >&2; exit 1; }
 
 cmd_setup() {
@@ -94,13 +120,26 @@ cmd_unpack() {
     (cd "$STEAMLESS_DIR" && for z in *.zip; do unzip -o -q "$z" -d steamless; done)
     cp "$STEAMLESS_DIR/steamless/Plugins/Steamless.API.dll" "$STEAMLESS_DIR/steamless/"  # JIT needs it adjacent
   fi
+  # Keep the previous unpacked exe (tagged by its md5) rather than overwrite it: the old
+  # projects were built from it, and an A/B against the previous build is sometimes the
+  # question ("did this function move?").
+  if [[ -f "$UNPACKED" ]]; then
+    local prev="$STEAMLESS_DIR/SkyrimSE.exe.unpacked.$UNPACKED_TAG.exe"
+    [[ -f "$prev" ]] || mv "$UNPACKED" "$prev"
+    echo "kept previous unpacked exe as $(basename "$prev")"
+  fi
   cp -f "$STEAM_EXE" "$STEAMLESS_DIR/SkyrimSE.exe"
   echo "unpacking SteamStub via Steamless under wine…"
   ( cd "$STEAMLESS_DIR/steamless" \
     && WINEPREFIX="${WINEPREFIX_PAPYRUS:-$HOME/.cache/papyrus-wine}" WINEDEBUG=-all \
        wine Steamless.CLI.exe ../SkyrimSE.exe ) 2>&1 | rg -i 'packed with|decrypt|Saved As|Successfully|error' | tail -8
   [[ -f "$UNPACKED" ]] || die "unpack produced no output ($UNPACKED)"
+  _live_md5 > "$UNPACK_STAMP"
   echo "unpacked -> $UNPACKED ($(stat -c%s "$UNPACKED") bytes). analyse/query now use it."
+  echo "stamped   $(basename "$UNPACK_STAMP") = $(cat "$UNPACK_STAMP") (the live Steam exe it came from)"
+  echo "NB: the analysed project ($GHIDRA_PROJECT) still holds the OLD exe — re-run 'ghidra.sh analyze'"
+  echo "    for whole-program work, or use the RTTI fast path (find_via_rtti.py), which imports"
+  echo "    this exe into a fresh scratch project on its own."
 }
 
 cmd_analyze() {
@@ -121,6 +160,7 @@ cmd_analyze() {
     -scriptPath "$SCRIPTS_DIR" \
     -log "$SCRIPT_DIR/analyze.log" \
     -scriptlog "$SCRIPT_DIR/analyze-script.log"
+  _md5 "$binary" > "$PROJ_DIR/$GHIDRA_PROJECT.src.md5"   # provenance for `status`
   echo "analysis done."
 }
 
@@ -132,11 +172,25 @@ cmd_query() {
   [[ -f "$script" ]] || script="$SCRIPTS_DIR/$script"
   [[ -f "$script" ]] || die "query script not found: $script"
   [[ -x "$PY" ]] || die "venv missing — run: ghidra.sh setup"
-  [[ -d "$PROJ_DIR/$GHIDRA_PROJECT.rep" ]] || die "no analysed project — run: ghidra.sh analyze"
+  # find_via_rtti.py creates its own (scratch) project; everything else needs one to exist.
+  [[ "$(basename "$script")" == "find_via_rtti.py" || -d "$PROJ_DIR/$GHIDRA_PROJECT.rep" ]] \
+    || die "no project '$GHIDRA_PROJECT' — run: ghidra.sh analyze, or find_via_rtti.py first and query with GHIDRA_PROJECT=scratch"
   mkdir -p "$OUT_DIR"
+  if _unpack_stale; then
+    echo "ghidra.sh: WARNING — the unpacked exe is STALE (the live SkyrimSE.exe is not the one it was decrypted from; run: ghidra.sh unpack). Address-Library offsets will NOT match this image." >&2
+  fi
+  local stamp="$PROJ_DIR/$GHIDRA_PROJECT.src.md5"
+  if [[ -d "$PROJ_DIR/$GHIDRA_PROJECT.rep" && "$GHIDRA_PROJECT" != SkyrimScratch-* ]]; then
+    if [[ ! -f "$stamp" ]]; then
+      echo "ghidra.sh: WARNING — project '$GHIDRA_PROJECT' has no provenance stamp (analysed before 2026-09); if the exe has been patched since, its bytes are the OLD build. Re-run: ghidra.sh analyze" >&2
+    elif [[ "$(cat "$stamp")" != "$(_md5 "$UNPACKED")" ]]; then
+      echo "ghidra.sh: WARNING — project '$GHIDRA_PROJECT' was analysed from a different exe than the current unpacked one. Re-run: ghidra.sh analyze" >&2
+    fi
+  fi
   # Query scripts read these so they carry no hardcoded paths.
-  GHIDRA_INSTALL_DIR="$GHIDRA_INSTALL_DIR" \
-  GHIDRA_PROJ_LOC="$PROJ_DIR" GHIDRA_PROJ_NAME="$GHIDRA_PROJECT" GHIDRA_OUT="$OUT_DIR" \
+  GHIDRA_INSTALL_DIR="$GHIDRA_INSTALL_DIR" GHIDRA_BINARY="$GHIDRA_BINARY" \
+  GHIDRA_PROJ_LOC="$PROJ_DIR" GHIDRA_PROJ_NAME="$GHIDRA_PROJECT" GHIDRA_SCRATCH_NAME="$SCRATCH_NAME" \
+  GHIDRA_OUT="$OUT_DIR" \
     "$PY" "$script" "$@"
 }
 
@@ -150,13 +204,26 @@ cmd_status() {
   echo "install : $(command -v ghidra-analyzeHeadless >/dev/null 2>&1 && echo "$(pacman -Q ghidra 2>/dev/null)" || echo "MISSING — ghidra.sh setup")"
   echo "venv    : $([[ -x "$PY" ]] && echo ready || echo "MISSING — ghidra.sh setup")"
   echo "unpacked: $([[ -f "$UNPACKED" ]] && echo "ready ($UNPACKED)" || echo "MISSING — ghidra.sh unpack (SteamStub-encrypted otherwise)")"
+  if _unpack_stale; then
+    echo "          ^ STALE: the live SkyrimSE.exe ($(date -r "$STEAM_EXE" +%F)) is not the exe this was decrypted from"
+    echo "            ($(date -r "$UNPACKED" +%F)). Address-Library offsets will not match it. Run: ghidra.sh unpack"
+  elif [[ -f "$UNPACK_STAMP" ]]; then
+    echo "          matches the live Steam exe (md5 $(cut -c1-8 "$UNPACK_STAMP")…)"
+  fi
   echo "binary  : $GHIDRA_BINARY $([[ -f "$GHIDRA_BINARY" ]] && echo "($(stat -c%s "$GHIDRA_BINARY") bytes)" || echo "(NOT FOUND)")"
   [[ "$GHIDRA_BINARY" == "$STEAM_EXE" ]] && echo "          ^ WARNING: this is the ENCRYPTED Steam exe — run ghidra.sh unpack first"
   if [[ -d "$PROJ_DIR/$GHIDRA_PROJECT.rep" ]]; then
     echo "project : $PROJ_DIR/$GHIDRA_PROJECT ($(du -sh "$PROJ_DIR/$GHIDRA_PROJECT.rep" 2>/dev/null | cut -f1) analysed)"
+    local stamp="$PROJ_DIR/$GHIDRA_PROJECT.src.md5"
+    if [[ ! -f "$stamp" ]]; then
+      echo "          ^ no provenance stamp (analysed before 2026-09) — holds whatever exe was current THEN"
+    elif [[ -f "$UNPACKED" && "$(cat "$stamp")" != "$(_md5 "$UNPACKED")" ]]; then
+      echo "          ^ STALE: analysed from a different exe than the current unpacked one — ghidra.sh analyze"
+    fi
   else
     echo "project : not analysed — ghidra.sh analyze"
   fi
+  echo "scratch : $SCRATCH_NAME $([[ -d "$PROJ_DIR/$SCRATCH_NAME.rep" ]] && echo '(present — query with GHIDRA_PROJECT=scratch)' || echo '(not yet — find_via_rtti.py creates it)')"
   echo "heap    : $GHIDRA_HEADLESS_MAXMEM"
   echo "scripts : $(ls "$SCRIPTS_DIR" 2>/dev/null | tr '\n' ' ')"
 }
