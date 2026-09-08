@@ -36,25 +36,41 @@ The June Ghidra image was 1.6.1170; the same functions decompile identically on 
 ```
 speak-sound hook (main thread, existing v3)              audio thread
   factor = slider/100                                      message → BSGameSound::SetVolume(min(factor,1))
-  a_handle->SetVolume(min(factor, 1.0))   ───────────►         clamp → SetVolumeImpl(this)
-  g_playerLine = *a_handle (existing)                            │
-  g_boost = max(factor, 1.0)                                     ▼ (our vfunc hook)
-                                                           original(this)            // voice = effective (≤1)
+  1. g_playerLine = *a_handle (existing, mutex)                  clamp → SetVolumeImpl(this)
+  2. g_boostSoundID = a_handle->soundID  (atomic)   PUBLISH        │
+  3. g_boost = max(factor, 1.0)          (atomic)   FIRST          ▼ (our vfunc hook)
+  4. a_handle->SetVolume(min(factor, 1.0))  ──────────►  original(this)            // voice = effective (≤1)
                                                            if boost > 1 && IsPlayerLine(this):
                                                                v = voice->GetVolume()
                                                                voice->SetVolume(v × boost, 0)
-                                                               log once per line: "voice v → v×boost"
+                                                               log once per soundID: "voice v → v×boost"
 ```
 
 - **Hook**: `REL::Relocation<uintptr_t>{ RE::VTABLE_BSXAudio2GameSound[0] }.write_vfunc(0x18, thunk)`,
   installed at load next to the MinHook detour (precedent: `AutoFireBow`, `SkytestProbe/facegen_ramp.cpp`).
   Address-Library-resolved for SE and AE, so the one-DLL story is unchanged.
-- **IsPlayerLine(this)**: `mgr = BSAudioManager::GetSingleton()`; require
-  `GetCurrentThreadId() == mgr->ownerThreadID` (field +0xF4), then
-  `mgr->activeSounds.find(g_playerLine.soundID)` (id → `BSGameSound*`, CommonLib `BSTHashMap`) and
-  compare the pointer to `this`. The map is owned by the audio thread; the thread check is what
-  makes reading it from a hook safe, and any other thread is a pass-through. `g_playerLine` is the
-  handle v4 already retains (mutex-guarded copy); its `soundID` is read under that mutex.
+- **Publish before send.** `SetVolume` is a *queued* message. The speak hook stores the new
+  line's `soundID` and the boost (both atomics) **before** it calls `a_handle->SetVolume`;
+  otherwise the audio thread can service the message against the previous line's id, pass
+  through, and nothing re-pushes that sound's volume — an intermittent silent no-boost. (v3's
+  code sends first and retains after; the order is reversed here on purpose.)
+- **IsPlayerLine(this) — atomics only, no mutex on the audio thread.** `mgr =
+  BSAudioManager::GetSingleton()`; require `GetCurrentThreadId() == mgr->ownerThreadID` (+0xF4),
+  then `mgr->activeSounds.find(g_boostSoundID.load())` (id → `BSGameSound*`, CommonLib
+  `BSTHashMap`) and compare the pointer to `this`. The map is owned by the audio thread; the
+  thread check is what makes reading it from a hook safe, and any other thread is a pass-through.
+  The hook must **never take `g_playerLineMtx`**: the poll thread holds that mutex while calling
+  into the audio manager (`IsPlaying` every 30 ms) and so does `CutPlayerLine`
+  (`FadeOutAndRelease`); if the audio thread held a manager-internal lock while servicing the
+  volume message and then blocked on our mutex, that is a lock-order inversion. Hence the
+  separate `g_boostSoundID` atomic — the hook reads nothing else of ours.
+- **Thread check is logged, not assumed.** That `ownerThreadID` is the thread servicing message
+  0xD is inferred from CommonLib's field name, not from a decompile. On the first entry for a
+  boosted line the hook logs `GetCurrentThreadId()` against `mgr->ownerThreadID`, so a mismatch
+  reads as a named line in the log ("boost skipped: hook on thread X, audio owner Y") instead of a
+  silent no-boost.
+- **Log latch**: one "voice boost" line per `soundID` (a fade re-applies the volume several times;
+  those re-applies are boosted but not logged).
 - **Readback, not formula**: `GetVolume` returns the value the engine just set with
   `XAUDIO2_COMMIT_NOW`, so the multiplier composes with whatever master/category/attenuation the
   engine computed, and every later engine re-apply (a fade, a category change) passes through the
@@ -62,8 +78,8 @@ speak-sound hook (main thread, existing v3)              audio thread
 - **Split at 100**: the slider maps to `factor = value/100`; the handle gets `min(factor, 1.0)`
   (exactly today's path — at ≤100 the hook's boost branch is never taken), the hook gets
   `max(factor, 1.0)`. 100 stays "unchanged"; a saved slider value from 1.0.x needs no migration.
-- **MCM**: range 0–300, default 100, interval 5, label unchanged; the slider's info text says
-  above 100 amplifies and can clip a loud pack.
+- **MCM**: range 0–300, default 100, interval 5, label unchanged; a new `OnOptionHighlight` →
+  `SetInfoText` handler (the MCM has none today) says above 100 amplifies and can clip a loud pack.
 
 ## Error handling
 
@@ -79,20 +95,33 @@ speak-sound hook (main thread, existing v3)              audio thread
 
 ## Testing
 
-`mods/DBVODialogueTweaks/voiceboost.steps`, same boot + staging as `replyonlineend.steps`:
+`mods/DBVODialogueTweaks/voiceboost.steps`, the boot of `replyonlineend.steps` and then **only the
+console** — no NPC, no topic click, no `ui-set`: the boost needs a player line, not a
+conversation, and every extra step is flake surface. `--no-shots` is not load-bearing here.
 
 1. Set the factor through the console (no SkyUI in the test stage): `cgf "DBVOTweaks.SetPlayerVoiceVolume" 2.5`
    — `cgf` calls a Papyrus global; the native is registered by the DLL and `DBVOTweaks.pex` ships.
 2. Speak the staged line: `player.speaksound "dbvo/t1.fuz"`; close the console.
-3. **Assertion**: a new skytest gate `until:log:DBVODialogueTweaks|voice boost` polls
-   `<My Games>/SKSE/DBVODialogueTweaks.log` for a line written after the gate started. The DLL logs
-   the readback (`voice boost: 1.000 -> 2.500 (slider 250%)`), so the gate proves the vtable hook
-   fired on the player's sound, the thread check passed, and XAudio2 accepted a gain above 1.0.
-4. **Control**: the same script with `cgf … 1.0` must fail the gate (no boost line). Audible
-   confirmation is Mase's in the real game — the only honest check for "louder".
+3. **Assertion**: a new skytest gate `until:log:DBVODialogueTweaks|voice boost: 1.000 -> 2.500`
+   — the DLL logs the readback with the slider value, so the substring pins *this* stimulus, and
+   the gate proves the vtable hook fired on the player's sound, the thread check passed, and
+   XAudio2 accepted a gain above 1.0.
+4. **Control**: the same script with `cgf … 1.0`, ending on `wait until:!log:DBVODialogueTweaks|voice boost`
+   — no boost line may exist. Audible confirmation is Mase's in the real game — the only honest
+   check for "louder".
 
-The `until:log:` gate is a general addition to `skytest/lib/replay.sh` (any SKSE plugin's log
-becomes assertable); `until:!log:` negates like every other gate.
+**The `until:log:<plugin>|<substring>` gate** is a *host-side* addition to `skytest/lib/replay.sh`:
+it reads `$MYGAMES/SKSE/<plugin>.log`, not the probe, so it is a new branch in `replay_wait_gate`
+(and `_lint_gate`) beside the probe-query path, not a `resolve_gate` row. Its **window** is "bytes
+written since the session became ready": the launch path records each `SKSE/*.log`'s size once
+the probe answers (the plugin has truncated and written its load lines by then) into the probe IO
+dir, which `gs_reset_io` already clears per launch; the gate scans only past that mark (a file
+smaller than its mark was re-truncated → scan from 0). This is why the gate can be evaluated
+*after* the stimulus: a log line is written once and never re-emitted, so a gate-start window
+(what the probe gates use, because each poll re-asks the probe) would never match. Within one
+session the window covers every step, so a script that stimulates twice must pin the substring
+(the slider value, above). `until:!log:` = no matching line in the window, evaluated per poll —
+an assertion that resolves immediately when the line is absent.
 
 ## Why this shape
 
@@ -108,6 +137,17 @@ becomes assertable); `until:!log:` negates like every other gate.
   a member above 1.0 is flattened. Only a write after the engine's own push can exceed unity.
 - **Not re-encoding packs / a custom output model** (v3's deferred options): a slider that
   boosts at runtime is what the user asked for and what DBVO 2 / DBReV advertise.
+
+## Release sweep (1.2.0)
+
+Everything that says "attenuation only" or carries a version: `README.md` (feature bullet,
+Configuration table row, Requirements), `src/papyrus/DBVOTweaks.psc` comment ("factor 0.0–2.0"),
+`package.sh` `VERSION`, `plugin/CMakeLists.txt` `project(… VERSION)` (stale at 1.0.0), `kVersion`,
+`stage-test-profile.sh` (hardcodes `dist/… 1.0.1.zip` — make it pick the newest zip), the two
+boost entries in `docs/ideas.md` (ship → ruling moves to the README, entries deleted),
+`docs/dbvo-landscape.md` if it calls the slider attenuate-only, and `docs/dbvo-page.bbcode`
+(feature, configuration, changelog **and the per-file Skyrim-build text**). Pasting the page and
+the per-file descriptions onto Nexus is **Mase's manual step** (`tools/nexus` is read-only).
 
 ## References
 
