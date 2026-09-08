@@ -24,11 +24,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   vanilla-dialogue style.
 - **Clean cut on skip & interrupt**: skipping fades your in-flight line out cleanly (no click);
   picking a new topic while an NPC is mid-reply cuts that reply too.
-- **Player-voice volume**: attenuate _just_ your own DBVO line, 0–100% (100% = unchanged), without
-  touching any other audio. Attenuation only — it cannot amplify above the source volume: the
-  engine clamps its per-sound volume at 1.0 (tested at 150%, identical to 100%). For a pack that is
-  mastered too quiet, lower the game's **Voice** slider instead (the DBVO player line is not in that
-  category, so only NPCs get quieter) or gain-normalize the pack's audio offline.
+- **Player-voice volume**: _just_ your own DBVO line, **0–300%** (100% = as the pack was mastered),
+  without touching any other audio. Below 100 attenuates; above 100 **amplifies** (since 1.2.0) — for
+  a pack mastered far quieter than the NPCs, such as some vampire packs. Gain above unity can clip a
+  pack that is already loud, so raise it only as far as it needs.
 - **Configurable gap**: the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
 - **Native SkyUI MCM**: a single screen, no MCM Helper dependency.
 
@@ -83,7 +82,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   | with the DLL | at the line's real end **+ the configured gap** (15 s gap → 20.3 s after the line started; predicted 20.0 s) |
   | without it | at the swf backstop, 4.1 s after the timer was armed — the gap ignored |
 
-  Replayable as `replyonlineend.steps` (see [Testing](#testing) below). v1.0.0 does **not** load on
+  Replayable as `replyonlineend.steps` (see [Testing](#testing) below). The 1.2.0 **volume boost** is
+  verified the same way (2026-09-08, `voiceboost.steps`): at 250% the plugin's log shows the XAudio2
+  voice's gain read back at 2.5× the engine's value for the player's line; at 100% no such line is
+  written; with the DLL removed the assertion fails. v1.0.0 does **not** load on
   1.7.99/1.7.104: those builds changed the Address Library database to format 5 and 1.0.0's
   CommonLibSSE-NG predates that, so it aborts with *"Unsupported address library format: 5"*. The
   1.7.104 build still targets SE + AE the same way, but only 1.7.104 has been re-tested since the
@@ -154,7 +156,7 @@ Tune everything under **MCM → DBVO Dialogue Tweaks**.
 | Option                       | Range     | Meaning                                                            |
 | ---------------------------- | --------- | ------------------------------------------------------------------ |
 | **Gap after your line ends** | 0–1000 ms | Pause between your line ending and the NPC's reply. `0` = instant. |
-| **Player voice volume**      | 0–100%    | Volume of your own DBVO voice line only. `100` = unchanged.        |
+| **Player voice volume**      | 0–300%    | Volume of your own DBVO voice line only. `100` = unchanged; above amplifies (can clip a loud pack). |
 
 ## How it works
 
@@ -185,7 +187,11 @@ just in case the plugin isn't running.
 
 The same hook powers the rest:
 
-- **Volume**: it scales your line's handle to the MCM slider.
+- **Volume**: below 100% it scales your line's sound handle to the slider. The engine clamps that
+  path at 1.0 and caps its XAudio2 push at 0 dB, so above 100% a second, tiny hook on the engine's
+  own volume-apply virtual (`BSXAudio2GameSound::SetVolumeImpl`, the one place the XAudio2 voice's
+  gain is written) lets the engine set its value and then multiplies the voice's gain for your line
+  only — matched by sound id on the audio thread, so no other sound is ever touched.
 - **Skip / interrupt**: the swf sends mod events when you skip or pick a new topic; the plugin turns
   those into clean audio cuts (a short fade on the player line, plus a fade and dialogue-pause on an
   interrupted NPC reply).
@@ -222,8 +228,9 @@ goes to MathiewMay.**
 
 ## Testing
 
-`replyonlineend.steps` is the in-engine verification of the reply-on-line-end feature, replayable
-and hands-free. Build its two profiles once, then run each half:
+Two in-engine verifications, replayable and hands-free: `replyonlineend.steps` for the
+reply-on-line-end feature and `voiceboost.steps` (+ `voiceboost-control.steps`) for the volume
+boost. Build the two profiles once (after `./package.sh`), then run each half:
 
 ```bash
 ./stage-test-profile.sh          # ~/.cache/skytest-dbvotweaks{,-nodll}: identical but the DLL
@@ -231,7 +238,18 @@ SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
     mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots     # must PASS
 SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nodll \
     mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots     # must FAIL
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
+    mods/DBVODialogueTweaks/voiceboost.steps --headless --no-shots         # must PASS
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
+    mods/DBVODialogueTweaks/voiceboost-control.steps --headless --no-shots # must PASS (100% = no boost line)
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nodll \
+    mods/DBVODialogueTweaks/voiceboost.steps --headless --no-shots         # must FAIL
 ```
+
+The boost script sets the slider through the mod's own Papyrus native (SkytestProbe's
+`papyrus-call`), speaks a staged line, and asserts on the plugin's log (`until:log:`): the DLL
+writes `voice boost x2.50: voice V -> V×2.5 (sound N)` only when its hook fired on the player's
+sound, on the audio thread, and XAudio2 accepted the gain.
 
 The last two steps are the assertion: the reply must **not** have fired once the swf's word-count
 backstop would have expired, and must then fire on its own at line-end + the configured gap. The
@@ -241,8 +259,8 @@ Because DBVO 1.x's Papyrus cannot run on 1.7.104 (see [Compatibility](#compatibi
 supplies the two stimuli that Papyrus would have: the console runs the same
 `Player.SpeakSound "DBVO/…"` ConsoleUtil would, and a SkytestProbe `ui-invoke` makes the same
 `UI.InvokeString(… startTopicClickedTimer …)` call. Everything downstream of those two is the
-mod's own code. It does **not** cover the skip, interrupt-cut, or volume features — those ride the
-same hook, but each needs its own in-engine test.
+mod's own code. Neither script covers the skip or interrupt-cut features — those ride the same
+hook, but each needs its own in-engine test.
 
 ## Design notes
 

@@ -358,27 +358,6 @@ shipped, verified in-game. Deferred:
   *their* swf as the base; packaging as FOMOD options. Needs its own design (base-swf
   parameterisation of the build, per-variant verification, whether the MCM/DLL half is shared).
 
-## 2026-06-11 — DBVODialogueTweaks v3 volume-slider follow-ups
-
-- **Boost-clamp: RESOLVED → slider capped at 0–100%.** In-game 150% testing confirmed
-  `BSSoundHandle::SetVolume(>1.0)` does **not** amplify — 150% was indistinguishable from 100% (engine
-  handle volumes are 0.0–1.0 multipliers). Attenuation works fully (50% quieter, 0% silent, NPC reply
-  unchanged, survives save/reload). The slider now caps at 100%. See
-  `docs/plans/dbvo-v3-player-voice-volume-design.md` → "Value mapping & the boost caveat".
-- **Voice _boost_ (above 100%) — now requested.** First Nexus ask, 2026-09-08: a vampire voice pack
-  is mastered far quieter than NPC VO and the user "hoped 50 = unchanged". The clamp is the
-  engine's, not XAudio2's: `BSGameSound::SetVolume` does `min(max(v, 1e-5), 1.0)` before
-  `SetVolumeImpl` (CommonLib `src/RE/B/BSGameSound.cpp`), but the `IXAudio2SourceVoice*` under it
-  (`BSXAudio2GameSound::sourceVoice`, +0x128) takes gain above 1.0 natively. Candidate path, untested:
-  resolve the retained handle's `soundID` through `BSAudioManager::activeSounds` to its
-  `BSXAudio2GameSound`, and hook `SetVolumeImpl` (vtable slot 0x18) so that after the engine's own
-  apply, the player line's voice gets `sourceVoice->SetVolume(engine × boost)` — hooking the impl
-  rather than poking the voice once means the engine's later re-applies (attenuation/output-model
-  updates) pass through the multiplier instead of clobbering it. Then widen the MCM to 0–200 (or
-  higher; a quiet pack may want ×3). User-side workarounds until then are in the README's feature
-  list (lower the game's Voice slider — the SpeakSound line is not in that category — or
-  gain-normalize the pack offline).
-
 ## 2026-06-11 — SkytestProbe (runtime-commandable debug instrumentation)
 
 State: **v1 designed** (`docs/plans/skytest-probe-design.md`), no separate plan — implementation

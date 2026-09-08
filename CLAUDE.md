@@ -72,9 +72,11 @@ What this means for anything you touch here:
   Re-verified as *functional* there so far, each by A/B and each replayable:
   **OneClickTravel** (2026-09-03, against `test --vanilla`, `mods/OneClickTravel/oneclick.steps`)
   and **DBVODialogueTweaks**' reply-on-line-end (2026-09-03, against the same profile minus its
-  DLL, `mods/DBVODialogueTweaks/replyonlineend.steps`). AutoFireBow, AutoCastSpell and GhostAllies
-  are still load-only — re-run each mod's own in-engine test before claiming otherwise, and note
-  DBVODialogueTweaks' skip / interrupt-cut / volume features are also still untested here.
+  DLL, `mods/DBVODialogueTweaks/replyonlineend.steps`) and its 1.2.0 volume boost (2026-09-08,
+  `voiceboost.steps` + `voiceboost-control.steps`, asserted on the DLL's own log through the
+  `until:log:` gate). AutoFireBow, AutoCastSpell and GhostAllies are still load-only — re-run each
+  mod's own in-engine test before claiming otherwise, and note DBVODialogueTweaks' skip /
+  interrupt-cut features are also still untested here.
 - **A third-party mod can be dead on 1.7.104 in two different ways, and only one is loud.**
   A CommonLibSSE plugin too old for the format-5 Address Library throws its own modal and parks
   the boot. A *version-locked* plugin is refused by SKSE itself, before loading, behind a win32
