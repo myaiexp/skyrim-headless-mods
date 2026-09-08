@@ -344,6 +344,20 @@ shipped, verified in-game. Deferred:
 - **v1 fallback to fold in:** if E/activate can't be routed from the swf during `TOPIC_CLICKED`, v1
   ships left-click-only and the keyboard skip moves to a v3 SKSE input hook.
 
+## 2026-09-08 — DBVODialogueTweaks: compatibility builds for UI overhauls
+
+- **Ship our swf edits on top of the UI overhauls' DBVO-patched `dialoguemenu.swf`.** The first
+  Nexus feedback lost its left-aligned dialogue because our swf (stock-DBVO layout) overwrote the
+  overhaul's. Which overhauls, where their DBVO 1.x patch lives, popularity and priority
+  (Untarnished → Dear Diary Dark Mode white/warm → DIR → CDUI → Dragonborn Reskin) are in
+  `docs/dbvo-landscape.md` → "UI overhauls that carry a DBVO 1.x-patched dialoguemenu.swf". Four
+  patch archives are already downloaded (Untarnished, DDDM white, DDDM warm, NordicUI — Nordic is
+  centre-aligned, included by download count). Shape of the work: every patch is named-function
+  edits on Bethesda's `DialogueMenu` class, the same shape as `src/__Packages/DialogueMenu.as`, so
+  it is our deltas ported onto each target's decompiled script and `build.sh` importing against
+  *their* swf as the base; packaging as FOMOD options. Needs its own design (base-swf
+  parameterisation of the build, per-variant verification, whether the MCM/DLL half is shared).
+
 ## 2026-06-11 — DBVODialogueTweaks v3 volume-slider follow-ups
 
 - **Boost-clamp: RESOLVED → slider capped at 0–100%.** In-game 150% testing confirmed
