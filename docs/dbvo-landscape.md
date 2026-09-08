@@ -111,6 +111,52 @@ the natural recipient is now Raynor1511 (skip handler + held voice) rather than 
 handler, no voice). The only thing our mod does that DBReV lacks is a *native* skip key — a DBVO
 1.x-swf feature with no audience.
 
+## UI overhauls that carry a DBVO 1.x-patched `dialoguemenu.swf` (researched 2026-09-08)
+
+Context: the first Nexus feedback on our mod said "my dialogue options moved from the left to
+the right". Our swf is stock-DBVO layout (vanilla: bottom-centre), so the user had been running a
+UI overhaul's DBVO-patched swf, and ours overwrote it. Which overhauls those are, where their
+DBVO patch lives, and how their menu is placed — all from the Nexus API (`tools/nexus`, total
+downloads) and the mod pages. A compatibility patch = our script deltas re-applied on top of
+*their* DBVO-patched swf.
+
+| UI mod (Nexus ID) | DL / endorse | Topic list | DBVO 1.x-patched swf lives in |
+| --- | --- | --- | --- |
+| Dear Diary Dark Mode (60837) | 2.27M / 13.8k | left (CDUI-based, configurable) | DBVO page Old files: "Dear Diary Dark Mode Patch" white + warm, v1.1.0 2023-07-19 |
+| Untarnished UI (75188) | 1.49M / 7.3k | left (dialogue remade on DDDM) | DBVO Old files "Untarnished UI Patch" v1.1.0; **121096** "DBVO – Untarnished UI Patch" v1.1.1 2024-06-04, 11.1k DL (the strongest single patch-demand signal) |
+| Dialogue Interface ReShaped (46546) | 524k / 7.8k | **left** (its page: "Aligns menu to the left side") | DBVO Old files "Dialogue Interface ReShaped Patch" v1.1.0; **86808** "Dragonborn voice over-DIR patch" 3.4k DL |
+| Convenient Dialogue UI (57943) | 457k / 4.7k | left by default (`bRightSidedList`, `interface/dialoguemenu.txt`) | DBVO Old files: four "Convenient Dialogue UI Patch – {Vanilla, Minimalist, NordicUI, DIR} look" v1.1.0 |
+| Dragonborn Reskin – Dialogue Menu (157643) | 162k / 406 | left or right, configurable | its **own** main file "Version for DBVO" v1.2 2025-10-12 — the only patch still maintained |
+| Dragonbreaker UI (73208) | 71k / 663 | left edge | bundled since 1.4.3 (2023-03-29); also DBVO Old files |
+| NORDIC UI (49881) | 2.61M / 24.4k | **centre** (vanilla-like) | DBVO Old files "NordicUI Patch" v1.1.0; 87378 (21:9) |
+| Edge UI (130983) | 709k / 5.0k | **right** | bundled in its FOMOD ("DBVO compatibility" option) |
+| Oathvein UI (160916) | 368k / 1.8k | **right** | FOMOD with/without DBVO; also via 182554 |
+| Vel'dun UI (176230) | 201k / 1.3k | unknown | **removed** in 1.0.6 ("no longer needed with DBVO 2 or DBReV") |
+
+Not relevant: SkyHUD (hudmenu only), Dear Diary paper (no dialogue menu), Better Dialogue
+Controls (vanilla placement). **Every DBVO-page patch sits under Old files, all v1.1.0 dated
+2023-07-19, all DBVO 1.x** — DBVO 2 and DBReV need an *unpatched* swf.
+
+Two facts that make patches tractable:
+
+- **The patches are all applied by function name onto Bethesda's `DialogueMenu` class**
+  (`onSelectionClick` → `initDBVO`, plus appended `initDBVO`/`startTopicClickedTimer`/
+  `topicClicked`), spelled out in the "DBVO Automatic SWF Patcher" article (mod 182554, a
+  Python + JPEXS regex patcher, "tested on Oathvein, Vel'dun, NordicUI"). Our
+  `src/__Packages/DialogueMenu.as` has exactly that shape, so a compat build is our named-function
+  deltas ported onto each target's decompiled script, then `build.sh`'s ffdec import against
+  *their* swf as the base instead of `stock/`.
+- **No third-party patched swf has public source** (GitHub code search for the DBVO hook names
+  hits only this repo); Nordic and Untarnished credit JPEXS, i.e. decompiled edits. So each
+  target's swf has to be fetched from Nexus by hand (the API download needs Premium) and
+  decompiled here.
+
+Most likely match for "left → stock": the DDDM lineage (DDDM, Untarnished, Dragonbreaker), then
+DIR, then CDUI / Dragonborn Reskin. Priority if patches are built: **Untarnished → DDDM (white,
+warm) → DIR → CDUI (four looks) → Dragonborn Reskin**. Caveat from the sections above: this
+audience is DBVO 1.x, which does not run on 1.7.104 today; it is the downgraded-1.6.1170
+population.
+
 ## Pointers
 
 - `mods/DBVODialogueTweaks/README.md` — the mod, its 1.7.104 verification, and the Compatibility section.
