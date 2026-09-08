@@ -1029,7 +1029,23 @@ cmd_restart() {
 }
 
 cmd_stop() {
-  gs_session_alive || die "no live test session to stop" "skytest status"
+  if ! gs_session_alive; then
+    # The game was closed by hand (Mase alt-F4s a visible session when he has heard enough)
+    # and its EXIT trap never ran, so Data is still parked on the test profile — exactly
+    # the state `stop` exists to undo. Refusing here ("no live session") left the live game
+    # pointed at the test profile until someone remembered `skytest normal` (2026-09-08).
+    # Only when no game process survives: a straggler still reading `test` must not have
+    # Data swapped under it.
+    if [ -L "$DATA" ] && [ "$(readlink "$DATA")" = "$TEST" ] && [ -z "$(running_game_pids | head -1)" ]; then
+      say "no live test session, but Data is still on the test profile (closed by hand?) — restoring"
+      point_data full
+      restore_plugins
+      deisolate_saves
+      say "restored: Data -> full, Plugins.txt restored"
+      return 0
+    fi
+    die "no live test session to stop" "skytest status"
+  fi
   # Capture gs_stop's rc: it returns non-zero when a process from the test session
   # survived the kill (the gamescope leader OR its wine/SkyrimSE.exe child). If ANY
   # straggler is still alive we must NOT swap Data -> full — that surviving game would
