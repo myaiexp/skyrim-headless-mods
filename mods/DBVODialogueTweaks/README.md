@@ -105,9 +105,9 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   DBVO's voice-pack settings, so with those two refused DBVO 1.x produces no player voice at all —
   and this mod, which exists to time the reply to that voice, has nothing to time. **Update both
   before blaming this mod**: ConsoleUtilSSE NG 1.6.1 (2026-08-22, its page says "confirmed working
-  on 1.7.99") and, for JContainers, the **GitHub pre-release v4.3.2** (2026-08-29, built for SKSE
-  2.3.1 / 1.7.104 — the Nexus copy, 4.2.13.1, predates the patch and is version-locked). Neither
-  was the build installed here, and whether the pair is enough for 1.7.104 is untested. (Note it
+  on 1.7.99") and JContainers SE **4.3.2** (built for SKSE 2.3.1 / 1.7.104; on Nexus since
+  2026-09-07 — before that only a GitHub pre-release, and the older Nexus 4.2.13.1 is refused).
+  Neither was the build installed here, and whether the pair is enough for 1.7.104 is untested. (Note it
   is JContainers, not PapyrusUtil, that DBVO 1.x's shipped script actually uses, whatever the mod
   page's requirement list says.)
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
@@ -127,8 +127,8 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   [DBReV](https://www.nexusmods.com/skyrimspecialedition/mods/184221) (mod 184221, v1.5, 2026-09-02)
   is an independent successor that *does* eat DBVO 1.0 voice packs, computes reply timing natively
   in its own SKSE plugin (from the `.fuz` header, like DBVO 2), plays the line and drives lip-sync
-  itself since 1.5, and adds volume/pitch/reverb. It still needs JContainers (a GitHub pre-release
-  on 1.7.x) and has no skip key of its own (skip is SmartTalk's). Its page is explicit: *"Not
+  itself since 1.5, and adds volume/pitch/reverb. It still needs JContainers (4.3.2 or newer on
+  1.7.x) and has no skip key of its own (skip is SmartTalk's). Its page is explicit: *"Not
   compatible with any patches targeting the legacy DBVO mod … remove them if you have them!"* —
   that includes this mod's `dialoguemenu.swf`. So on 1.7.104 a DBVO 1.x user has two working
   exits (DBVO 2 in Legacy Mode, or DBReV) and **both require uninstalling this mod**. Full

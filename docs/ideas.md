@@ -574,9 +574,10 @@ Three follow-ups:
   *"disabled, incompatible with current version of the game"*. ConsoleUtil speaks the player's line;
   JContainers reads the voice-pack settings. (It is JContainers, not PapyrusUtil, that the shipped
   DBVO script actually uses.) Newest upstream: ConsoleUtilSSE NG **1.6.1** (2026-08-22, "confirmed
-  working on 1.7.99" per its page) and JContainers **v4.3.2 pre-release on GitHub** (2026-08-29,
-  built for SKSE 2.3.1 / 1.7.104; Nexus still has 4.2.13.1) — neither installed here, and the Nexus
-  API is read-only so they cannot be fetched by a session. Until then, any DBVO 1.x test is a test
+  working on 1.7.99" per its page) and JContainers SE **4.3.2** (built for SKSE 2.3.1 / 1.7.104;
+  on Nexus since 2026-09-07, GitHub-only before that) — neither installed here, and the Nexus
+  API is read-only so they cannot be fetched by a session. Both are one Nexus download away now,
+  so the end-to-end test is Mase's call in the managing repo. Until then, any DBVO 1.x test is a test
   of the *mod's own tier* with the two Papyrus stimuli synthesised (see
   `mods/DBVODialogueTweaks/replyonlineend.steps`), never end-to-end.
 - **Clean audio cut on skip — no longer a reason to do anything** (ruling 2026-09-03,

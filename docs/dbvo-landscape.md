@@ -32,10 +32,11 @@ Established in-engine 2026-09-03 (see `mods/DBVODialogueTweaks/README.md` → Co
 JContainers reads the voice-pack settings — so DBVO 1.x produces no player voice at all.
 
 Newest upstream at the time of writing: ConsoleUtilSSE NG **1.6.1** (2026-08-22, its file page says
-*"Confirmed working on 1.7.99"*), and for JContainers a **GitHub-only pre-release v4.3.2**
-(2026-08-29, *"SKSE 2.3.1 / SAE 1.7.104"*) — Nexus still serves 4.2.13.1 (2026-07-04), which
-predates the patch. Neither is installed here and the Nexus API is read-only, so a session cannot
-fetch them; whether the pair revives DBVO 1.x on 1.7.104 is untested and not worth a session.
+*"Confirmed working on 1.7.99"*), and JContainers SE **4.3.2** (*"SKSE 2.3.1 / SAE 1.7.104"*;
+a GitHub-only pre-release from 2026-08-29 until Nexus caught up on **2026-09-07** — checked via
+the API 2026-09-08). Neither is installed here and the Nexus API is read-only, so a session cannot
+fetch them; whether the pair revives DBVO 1.x on 1.7.104 is untested. With both on Nexus now it is
+a cheap thing for Mase to try in the managing repo, and the first thing to ask of a 1.7.104 user.
 
 ## Why not take DBVO 1.x over
 
@@ -52,8 +53,8 @@ DBReV **is** that takeover, shipped. From its own page (quoted, not verified in-
 - Fixes the long-dialogue-path CTD (legacy packs name files after full dialogue lines, which blows
   the Windows 260-char path limit).
 - Author-tested on 1.5.97, 1.6.1170 and **1.7.104** (the page text says "1.7.140" — a typo; the
-  1.5 file description and the author's sticky both say 1.7.104). On 1.7.x it needs a
-  **GitHub pre-release JContainers** (v4.3.2) — JContainers is still a hard requirement.
+  1.5 file description and the author's sticky both say 1.7.104). On 1.7.x it needs
+  JContainers **4.3.2** (on Nexus since 2026-09-07) — JContainers is still a hard requirement.
 - Built on alandtse's CommonLibSSE-NG v4.39.3, forked to support 1.7.x.
 - **No skip input of its own** — the author: *"The skipping should work with SmartTalk's feature
   (it's not a native game function)."* Skip is SmartTalk's; DBReV fast-forwards when it fires.
