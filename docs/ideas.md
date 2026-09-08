@@ -351,12 +351,23 @@ shipped, verified in-game. Deferred:
   overhaul's. Which overhauls, where their DBVO 1.x patch lives, popularity and priority
   (Untarnished → Dear Diary Dark Mode white/warm → DIR → CDUI → Dragonborn Reskin) are in
   `docs/dbvo-landscape.md` → "UI overhauls that carry a DBVO 1.x-patched dialoguemenu.swf". Four
-  patch archives are already downloaded (Untarnished, DDDM white, DDDM warm, NordicUI — Nordic is
-  centre-aligned, included by download count). Shape of the work: every patch is named-function
+  patch archives are already downloaded, in `~/Downloads/`: `DBVO Untarnished UI Patch-84329-1-1-0-1689786891.zip`,
+  `Dear Diary Dark Mode Patch - white color-84329-1-1-0-1689793417.zip`, `… - warm color-84329-1-1-0-1689793385.zip`,
+  `DBVO NordicUI Patch-84329-1-1-0-1689786811.zip` (Nordic is centre-aligned, included by download
+  count). Each holds one `dialoguemenu.swf` (paths differ: `Data/interface/`, `interface/`,
+  `<colour>/interface/`); `ffdec -export script <out> <swf>` re-derives the scripts in a minute
+  (the 2026-09-08 decompiles lived in a session scratchpad). Shape of the work: every patch is named-function
   edits on Bethesda's `DialogueMenu` class, the same shape as `src/__Packages/DialogueMenu.as`, so
   it is our deltas ported onto each target's decompiled script and `build.sh` importing against
   *their* swf as the base; packaging as FOMOD options. Needs its own design (base-swf
   parameterisation of the build, per-variant verification, whether the MCM/DLL half is shared).
+- **Try DBVO 1.x end-to-end on 1.7.104.** Both refused dependencies now have 1.7.104 builds on
+  Nexus (ConsoleUtilSSE NG 1.6.1, JContainers SE 4.3.2 since 2026-09-07). Nobody has tried the
+  pair; it is two downloads in the managing repo and would let `replyonlineend.steps` drop its two
+  synthesised stimuli. Also what to ask first of any 1.7.104 user reporting silence.
+- **SkytestProbe nits** (seen 2026-09-08, untouched): `main.cpp`'s load line still says
+  "SkytestProbe 0.2.0 loaded" while `SKSEPluginInfo` is 0.4.0; the root `README.md` probe row and
+  `docs/plans/skytest-probe-design.md`'s command table predate `ui-*` and `papyrus-call`.
 
 ## 2026-06-11 — SkytestProbe (runtime-commandable debug instrumentation)
 
