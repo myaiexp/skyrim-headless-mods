@@ -1,6 +1,6 @@
 # DBVO Dialogue Tweaks v6 — Voice Boost Implementation Plan
 
-**Goal:** Let the player-voice slider go above 100% (to 300%) by multiplying the XAudio2 voice's gain after the engine's own push, shipped as mod 1.2.0 with an in-engine replay that proves the gain landed.
+**Goal:** Let the player-voice slider go above 100% (to 300%) by multiplying the XAudio2 voice's gain after the engine's own push, shipped as mod 1.1.0 with an in-engine replay that proves the gain landed.
 
 **Architecture:** A vtable hook on `BSXAudio2GameSound::SetVolumeImpl` runs the engine's push, then for the player's current DBVO line (identified by sound ID through the audio manager's map, on the audio thread only) re-applies `readback × boost` to the `IXAudio2SourceVoice`. The existing speak-sound hook publishes the line's sound ID and the boost (atomics) *before* it sends the queued `SetVolume`. skytest gains a host-side `until:log:` gate over SKSE plugin logs so the DLL's readback line is the assertion.
 
@@ -19,11 +19,11 @@
 | `skytest/skytest` | call `gs_mark_plugin_logs` where a launched session becomes ready (replay/test verbs) |
 | `skytest/lib/replay.test.sh` | unit tests for the gate (pure, no game) |
 | `skytest/README.md` | gate table entry |
-| `mods/DBVODialogueTweaks/plugin/src/main.cpp` | boost state, publish order, `SetVolumeImplHook`, version 1.2.0 |
-| `mods/DBVODialogueTweaks/plugin/CMakeLists.txt` | project version 1.2.0 |
+| `mods/DBVODialogueTweaks/plugin/src/main.cpp` | boost state, publish order, `SetVolumeImplHook`, version 1.1.0 |
+| `mods/DBVODialogueTweaks/plugin/CMakeLists.txt` | project version 1.1.0 |
 | `mods/DBVODialogueTweaks/src/papyrus/DBVODialogueTweaksMCM.psc` | slider 0–300, info text |
 | `mods/DBVODialogueTweaks/src/papyrus/DBVOTweaks.psc` | native contract comment |
-| `mods/DBVODialogueTweaks/package.sh`, `stage-test-profile.sh` | 1.2.0, newest-zip staging |
+| `mods/DBVODialogueTweaks/package.sh`, `stage-test-profile.sh` | 1.1.0, newest-zip staging |
 | `mods/DBVODialogueTweaks/voiceboost.steps`, `voiceboost-control.steps` | the in-engine test and its control |
 | `mods/DBVODialogueTweaks/README.md`, `docs/dbvo-page.bbcode`, `docs/ideas.md`, `docs/dbvo-landscape.md`, `CLAUDE.md` | release sweep |
 
@@ -98,7 +98,7 @@ Run: `bash -n skytest/skytest skytest/lib/gamescope.sh skytest/lib/replay.sh`.
 
 **Files:**
 - Modify: `mods/DBVODialogueTweaks/plugin/src/main.cpp`
-- Modify: `mods/DBVODialogueTweaks/plugin/CMakeLists.txt` (`project(DBVODialogueTweaks VERSION 1.2.0 …)`)
+- Modify: `mods/DBVODialogueTweaks/plugin/CMakeLists.txt` (`project(DBVODialogueTweaks VERSION 1.1.0 …)`)
 
 **Contracts (all in the anonymous namespace of `main.cpp`):**
 - `std::atomic<float> g_dbvoVolume{1.0f}` — unchanged meaning: the factor sent to the handle, **≤ 1.0**.
@@ -118,7 +118,7 @@ Run: `bash -n skytest/skytest skytest/lib/gamescope.sh skytest/lib/replay.sh`.
   7. `float v = 0.f; a_this->sourceVoice->GetVolume(&v); a_this->sourceVoice->SetVolume(v * boost, 0);`
   8. If `g_boostLoggedID.exchange(id) != id`: `SKSE::log::info("voice boost x{:.2f}: voice {:.3f} -> {:.3f} (sound {})", boost, v, v * boost, id)`.
   - The hook **never** takes `g_playerLineMtx`, never calls into `BSSoundHandle`, never touches `g_playerLine`. Comment block must carry the lock-order reason from the spec.
-- `kVersion = REL::Version{ 1, 2, 0 }`.
+- `kVersion = REL::Version{ 1, 1, 0 }`.
 - Includes: `RE/Skyrim.h` already covers `BSXAudio2GameSound`, `BSAudioManager`, `IXAudio2Voice`; `REX::W32::GetCurrentThreadId` is in `REX/W32/KERNEL32.h` (pulled by `SKSE/SKSE.h`).
 
 **Test Cases:** none host-side (cross-compiled engine code). The in-engine assertion is Task 4; the build is the compile-time check:
@@ -161,10 +161,10 @@ Run: `cd mods/DBVODialogueTweaks && ./build.sh 2>&1 | rg '\[2/5\]|\[3/5\]|error'
 
 ---
 
-### Task 4: packaging at 1.2.0, the replay test and its control, run both `[Mode: Direct]`
+### Task 4: packaging at 1.1.0, the replay test and its control, run both `[Mode: Direct]`
 
 **Files:**
-- Modify: `mods/DBVODialogueTweaks/package.sh` (`VERSION="1.2.0"`)
+- Modify: `mods/DBVODialogueTweaks/package.sh` (`VERSION="1.1.0"`)
 - Modify: `mods/DBVODialogueTweaks/stage-test-profile.sh` (`DIST` = the newest `dist/DBVO Dialogue Tweaks *.zip` by version sort, error if none)
 - Create: `mods/DBVODialogueTweaks/voiceboost.steps`
 - Create: `mods/DBVODialogueTweaks/voiceboost-control.steps`
@@ -210,7 +210,7 @@ Also read `$MYGAMES/SKSE/DBVODialogueTweaks.log` after the first run: it must co
 
 **Files:**
 - Modify: `mods/DBVODialogueTweaks/README.md` — feature bullet (boost, clipping caveat, remove "attenuation only" + the workaround sentence added 2026-09-08), Configuration row `0–300%`, Requirements version note (`1.0.1 or newer` stays), Compatibility "reply timing verified" bullet gains the boost verification + `voiceboost.steps`, Testing section lists both new scripts, How-it-works "Volume" bullet describes the two-path split.
-- Modify: `docs/dbvo-page.bbcode` — the same four spots in BBCode, a `[b]1.2.0[/b]` changelog entry, and a new `[heading]Files and Skyrim builds[/heading]` section with one line per uploaded file to paste into each file's Nexus description: `1.0.0 — Skyrim SE 1.5.97 through AE 1.6.1170 (Address Library formats 1 and 2)`; `1.0.1 — those plus 1.7.99 / 1.7.104 (format 5); no feature change`; `1.2.0 — same builds as 1.0.1; adds the boost`. Also fix the DBVO 2 paragraph's claim that `dialogue_volume` "is the volume" if it does not amplify (unknown → phrase as "its volume setting").
+- Modify: `docs/dbvo-page.bbcode` — the same four spots in BBCode, a `[b]1.1.0[/b]` changelog entry, and a new `[heading]Files and Skyrim builds[/heading]` section with one line per uploaded file to paste into each file's Nexus description: `1.0.0 — Skyrim SE 1.5.97 through AE 1.6.1170 (Address Library formats 1 and 2)`; `1.0.1 — those plus 1.7.99 / 1.7.104 (format 5); no feature change`; `1.1.0 — same builds as 1.0.1; adds the boost`. Also fix the DBVO 2 paragraph's claim that `dialogue_volume` "is the volume" if it does not amplify (unknown → phrase as "its volume setting").
 - Modify: `docs/ideas.md` — delete the two boost bullets under "2026-06-11 — DBVODialogueTweaks v3 volume-slider follow-ups" (the ruling now lives in the README + design doc); keep the section if anything else remains, else delete the heading.
 - Modify: `docs/dbvo-landscape.md` — grep `attenuat|0–100|volume slider`; fix any attenuate-only statement.
 - Modify: `CLAUDE.md` — the "Loading is not working" bullet: add the volume boost to the verified-functional list with the date and `voiceboost.steps`; the "skip / interrupt-cut / volume features are also still untested" clause drops `volume`.
@@ -221,9 +221,9 @@ Also read `$MYGAMES/SKSE/DBVODialogueTweaks.log` after the first run: it must co
 
 **Verification:** the `rg` above; `git diff --stat` touches exactly the listed files.
 
-**Commit after passing:** `docs(dbvo): 1.2.0 — boost documented, per-file Skyrim-build text for the Nexus page`
+**Commit after passing:** `docs(dbvo): 1.1.0 — boost documented, per-file Skyrim-build text for the Nexus page`
 
-**Manual (Mase):** paste `docs/dbvo-page.bbcode` onto the Nexus page, set the main version to 1.2.0, upload `dist/DBVO Dialogue Tweaks 1.2.0.zip` with its file description, and add the per-file build lines to the 1.0.0 and 1.0.1 file descriptions. Then listen: a quiet pack at 250–300% in a real conversation.
+**Manual (Mase):** paste `docs/dbvo-page.bbcode` onto the Nexus page, set the main version to 1.1.0, upload `dist/DBVO Dialogue Tweaks 1.1.0.zip` with its file description, and add the per-file build lines to the 1.0.0 and 1.0.1 file descriptions. Then listen: a quiet pack at 250–300% in a real conversation.
 
 ---
 ## Execution

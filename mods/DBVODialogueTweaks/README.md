@@ -25,7 +25,7 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 - **Clean cut on skip & interrupt**: skipping fades your in-flight line out cleanly (no click);
   picking a new topic while an NPC is mid-reply cuts that reply too.
 - **Player-voice volume**: _just_ your own DBVO line, **0–300%** (100% = as the pack was mastered),
-  without touching any other audio. Below 100 attenuates; above 100 **amplifies** (since 1.2.0) — for
+  without touching any other audio. Below 100 attenuates; above 100 **amplifies** (since 1.1.0) — for
   a pack mastered far quieter than the NPCs, such as some vampire packs. Gain above unity can clip a
   pack that is already loud, so raise it only as far as it needs.
 - **Configurable gap**: the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
@@ -82,7 +82,7 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   | with the DLL | at the line's real end **+ the configured gap** (15 s gap → 20.3 s after the line started; predicted 20.0 s) |
   | without it | at the swf backstop, 4.1 s after the timer was armed — the gap ignored |
 
-  Replayable as `replyonlineend.steps` (see [Testing](#testing) below). The 1.2.0 **volume boost** is
+  Replayable as `replyonlineend.steps` (see [Testing](#testing) below). The 1.1.0 **volume boost** is
   verified the same way (2026-09-08, `voiceboost.steps`): at 250% the plugin's log shows the XAudio2
   voice's gain read back at 2.5× the engine's value for the player's line; at 100% no such line is
   written; with the DLL removed the assertion fails. v1.0.0 does **not** load on

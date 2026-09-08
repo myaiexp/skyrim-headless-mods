@@ -46,7 +46,7 @@ DBReV **is** that takeover, shipped. From its own page (quoted, not verified in-
 - *"built around an SKSE plugin to calculate dialogue timings in real time"* — **that is our
   headline feature, native.**
 - Volume gain to 300%, pitch, reverb, four audio post-processing effects — covers our volume slider
-  (which also reaches 300% since 1.2.0) and then some.
+  (which also reaches 300% since 1.1.0) and then some.
 - SkyUI **MCM**, explicitly *"as some people reported having issues with the SKSE Menu Framework
   used by DBVO 2"*.
 - Fixes the long-dialogue-path CTD (legacy packs name files after full dialogue lines, which blows

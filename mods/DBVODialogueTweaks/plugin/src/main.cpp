@@ -12,7 +12,7 @@
 
 namespace
 {
-	constexpr auto kVersion = REL::Version{ 1, 2, 0 };
+	constexpr auto kVersion = REL::Version{ 1, 1, 0 };
 
 	// Volume factor for the player's own DBVO voice line, pushed in from Papyrus via the
 	// SetPlayerVoiceVolume native (MCM slider) and split into two legs, because the engine's own

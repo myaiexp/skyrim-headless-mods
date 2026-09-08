@@ -1,11 +1,11 @@
 # DBVO Dialogue Tweaks v6 — player-voice boost (above 100%)
 
-**Status: SHIPPED as 1.2.0, verified in-engine on 1.7.104 (2026-09-08, `voiceboost.steps` +
+**Status: SHIPPED as 1.1.0, verified in-engine on 1.7.104 (2026-09-08, `voiceboost.steps` +
 control + no-DLL A/B, all as predicted; the DLL read the voice back at 2.5× the engine's value).**
-Approved 2026-09-08 at range 0–300%. Ships as mod version **1.2.0** — not
-1.1.0: the Nexus page's main version was already bumped to 1.1.1 while the uploaded file stayed
-1.0.1, so 1.2.0 is the first number that is unambiguous on both. The release also adds, on the
-Nexus page and each file's description, **which Skyrim builds each uploaded file runs on**
+Approved 2026-09-08 at range 0–300%. Ships as mod version **1.1.0** — a feature on the 1.0.x
+line. (It was briefly numbered 1.2.0 on a mix-up between DBVO's own 1.1.1 and ours; nothing was
+uploaded under that number.) The release also adds, on the Nexus page and each file's
+description, **which Skyrim builds each uploaded file runs on**
 (1.0.0: SE 1.5.97 through AE 1.6.1170; 1.0.1 and later: those plus 1.7.99 / 1.7.104, i.e.
 Address Library formats 1, 2 and 5 — one DLL).
 
@@ -144,7 +144,7 @@ an assertion that resolves immediately when the line is absent.
 - **Not re-encoding packs / a custom output model** (v3's deferred options): a slider that
   boosts at runtime is what the user asked for and what DBVO 2 / DBReV advertise.
 
-## Release sweep (1.2.0)
+## Release sweep (1.1.0)
 
 Everything that says "attenuation only" or carries a version: `README.md` (feature bullet,
 Configuration table row, Requirements), `src/papyrus/DBVOTweaks.psc` comment ("factor 0.0–2.0"),

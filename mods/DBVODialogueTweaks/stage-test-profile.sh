@@ -19,7 +19,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/tools/env.sh"
 FULL="$(dirname "$GAME_DATA")/.profiles/full"
 # The newest packaged release, by version sort — never a hardcoded number (1.0.1 was baked in
-# here once and would have staged the old build under 1.2.0's name).
+# here once and would have staged the old build under 1.1.0's name).
 DIST="$(ls "$REPO/mods/DBVODialogueTweaks/dist/DBVO Dialogue Tweaks "*.zip 2>/dev/null | sort -V | tail -1 || true)"
 A="$HOME/.cache/skytest-dbvotweaks"
 B="$HOME/.cache/skytest-dbvotweaks-nodll"
