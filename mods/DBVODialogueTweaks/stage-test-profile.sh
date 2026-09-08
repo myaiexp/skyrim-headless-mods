@@ -18,12 +18,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$REPO/tools/env.sh"
 FULL="$(dirname "$GAME_DATA")/.profiles/full"
-DIST="$REPO/mods/DBVODialogueTweaks/dist/DBVO Dialogue Tweaks 1.0.1.zip"
+# The newest packaged release, by version sort — never a hardcoded number (1.0.1 was baked in
+# here once and would have staged the old build under 1.2.0's name).
+DIST="$(ls "$REPO/mods/DBVODialogueTweaks/dist/DBVO Dialogue Tweaks "*.zip 2>/dev/null | sort -V | tail -1 || true)"
 A="$HOME/.cache/skytest-dbvotweaks"
 B="$HOME/.cache/skytest-dbvotweaks-nodll"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
-[ -f "$DIST" ]  || { echo "stage: missing $DIST (run ./package.sh)" >&2; exit 1; }
+[ -n "$DIST" ] && [ -f "$DIST" ] || { echo "stage: no packaged release in mods/DBVODialogueTweaks/dist/ (run ./package.sh)" >&2; exit 1; }
+echo "stage: using $(basename "$DIST")"
 [ -d "$FULL" ]  || { echo "stage: no full profile at $FULL (run skytest init --commit)" >&2; exit 1; }
 
 echo "stage: unpacking the shipped package"

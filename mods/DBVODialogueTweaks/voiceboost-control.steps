@@ -1,0 +1,40 @@
+# DBVO Dialogue Tweaks — the CONTROL for voiceboost.steps: slider at 100% must NOT boost.
+#
+# Same stage, same boot, same console stimulus as voiceboost.steps, with the slider at 1.0
+# (100%). The DLL must leave the XAudio2 voice alone and write no "voice boost" line at all; the
+# last step asserts that absence (a `!log:` gate fails fast if the line IS there).
+#
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
+#       mods/DBVODialogueTweaks/voiceboost-control.steps --headless --no-shots   # must PASS
+#
+# Together with voiceboost.steps this is the A/B on the slider semantics: the ONLY difference
+# between the two scripts is the number in the papyrus-call args. See voiceboost.steps for why
+# the probe (not the console) sets it and for the NO_AUTOLOAD note.
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait 4s
+click 602 409           # "Creations are currently loaded … continue?" -> Yes (#25). Harmless if absent.
+wait until:inworld
+wait 3s                 # inworld fires before the player's 3D settles (#16)
+
+# --- slider at 100% = pass-through ----------------------------------------------------
+cmd {"cmd":"papyrus-call","class":"DBVOTweaks","function":"SetPlayerVoiceVolume","args":[1.0]}
+wait 1s
+
+# --- speak the player's line ----------------------------------------------------------
+tap tilde
+wait until:menu:Console
+type player.speaksound "dbvo/t1.fuz"
+tap enter
+cmd {"cmd":"status"}
+tap tilde
+wait until:!menu:Console
+
+# --- THE ASSERTION: no boost line, ever, for this session -----------------------------
+# 3 s is longer than the message round-trip to the audio thread by orders of magnitude; if a
+# boost line were going to be written for this stimulus it exists by now.
+wait 3s
+wait until:!log:DBVODialogueTweaks|voice boost
