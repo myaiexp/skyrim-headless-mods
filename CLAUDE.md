@@ -60,9 +60,21 @@ What this means for anything you touch here:
   in-world timeout), and prints the drive-in recipe (`drive click 1177 496` → `drive tap enter` →
   `ready`). Restoring autoload needs Start On Save **2.8.0** (Nexus 50054, file 795157) dropped
   into `skytest/base-skse/`.
-- **`.profiles/full` — the real ~40-mod load order — is NOT usable.** Every third-party plugin in
+- **`.profiles/full` — the real 52-plugin load order — is NOT usable.** Every third-party plugin in
   it predates the patch. `skytest play` will hit the format-5 modal. Only `skytest test` (vanilla
-  + our own rebuilt DLLs) is known-good.
+  + our own rebuilt DLLs) is known-good. Surveyed 2026-09-08: **33 SKSE DLLs are rejected there, 23
+  have 1.7.104 builds and 10 are abandoned upstream**; the confirmed boot-parker is **Engine Fixes**,
+  not the 33 (a *rejected* plugin doesn't block the boot, it just goes missing). Per-mod
+  availability, the traps, and the load order itself:
+  `~/Downloads/skyrim-mods/00-docs/1.7.104-status.md`. **Standing plan (2026-09-08): the game gets
+  downgraded to 1.6.1170 for actual play, and 1.7.104 is kept for mod testing** — the runtime is
+  global, so those two cannot be live at once; check `skytest status`'s `runtime` line before
+  trusting any result here.
+- **"1.7.99" on a file is not a reason to skip it.** 1.7.99 (2026-08-20) and 1.7.104 (2026-08-27)
+  both ship Address Library **format 5**, and v13 covers both — the break was 1.6.1170 → 1.7.x, and
+  1.7.99 → 1.7.104 was *not* a second one. An address-library-independent CommonLibSSE-NG plugin
+  built for 1.7.99 loads on 1.7.104 unchanged (verified against several plugins' own version
+  declarations). Same corollary for our own builds: one NG rebuild covers both 1.7 runtimes.
 - **A full six-mod rebuild is slow on purpose-less duplication**: each mod's `FetchContent`
   compiles its own private CommonLibSSE-NG (~500 TUs, ~10 min), six times over, and `ccache` is
   not installed. See `docs/ideas.md` before you sit through it again.
@@ -84,6 +96,10 @@ What this means for anything you touch here:
   and the message appears only in `skse64.log` (skytest scans it and names the DLL). This is what
   currently kills **DBVO 1.x**: SKSE refuses ConsoleUtilSSE and JContainers64, so DBVO speaks no
   player line at all. Assume any un-updated framework DLL is in one of those two states.
+  **Both of those now have 1.7.104 builds (2026-09-08): ConsoleUtilSSE NG 1.6.1 and JContainers SE
+  4.3.2 — take JContainers' 2026-09-04 MAIN file, NOT the newer-dated 09-07 upload, which is a
+  re-upload of the old 1.6.1170 build.** So the DBVO 1.x end-to-end test is unblocked by two
+  downloads; nothing here has installed them.
 
 ## Testing a mod you built — which mode?
 
