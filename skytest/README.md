@@ -326,7 +326,8 @@ filmstrip you review in **one batch** instead of the slow take-shot → read →
 — often the most diagnostic frame. Verified working under `--headless` (real composited frames, not
 black — see `docs/headless-findings.md`). Disable with `--no-shots`.
 
-Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on session death:
+Gates poll SkytestProbe (never a blind sleep; `until:log:` polls a file on the host instead),
+180 s default, fast-fail on session death:
 
 - `until:inworld`: fully interactive (no main/loading menu + player 3D loaded).
 - `until:menu:<NAME>`: a UI menu open (CommonLib name: `Console`, `MapMenu`, `FavoritesMenu`, …).
@@ -341,6 +342,17 @@ Gates poll SkytestProbe (never a blind sleep), 180 s default, fast-fail on sessi
   values compare as the strings `ui-get` emits (numbers arrive as `15000.000000`). This is what
   makes a menu-side mod assertable: `mods/DBVODialogueTweaks/replyonlineend.steps` ends on two of
   them — the reply must NOT have fired yet, then must fire on its own.
+- `until:log:<plugin>|<substring>`: a line in **the plugin's own SKSE log** —
+  `<My Games>/SKSE/<plugin>.log`, read on the host, not through the probe — contains
+  `<substring>` (literal; the rest of the line, so spaces, `:` and `>` are fine). The window is
+  "written since the session became ready": the boot path records each log's size into the probe
+  IO dir once the probe answers (every load line is before it), and the gate scans past that
+  mark. A log line is matched once and never re-emitted, so within one session the window spans
+  every step — **pin the substring per stimulus** (include the value that stimulus produces:
+  `until:log:DBVODialogueTweaks|voice boost x2.50`, not `…|voice boost`). `until:!log:` asserts
+  absence, decided in one look: it fails fast if the line is present and passes at once if not —
+  so give the stimulus its settle time (`wait 2s`) before it, or a not-yet-written line passes
+  the control.
 - `until:charged`, `until:actorcount`: **not built**; added per the first script that needs them
   (one `resolve_gate` row + one direct-call probe handler, see `mods/SkytestProbe` `is-menu-open`).
 - **Any gate negates with a leading `!`** — `until:!menu:Console` = "wait until the console is

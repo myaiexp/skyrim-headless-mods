@@ -806,6 +806,12 @@ _boot_test_session() {
     gs_wait_ready || rc=$?
   fi
   [ "$rc" = 2 ] && die "test session died during boot - check $GS_LOG" "skytest stop"
+  # Ready (or timed out but live): record each SKSE plugin log's size NOW — the start of the
+  # window replay's host-side `until:log:` gate scans (lib/replay.sh). Every plugin's load lines
+  # are written by this point; whatever a later step stimulates lands past the mark. Not gated
+  # on rc 0: a timed-out session is still live and driven by hand, and its gates want the same
+  # window.
+  gs_mark_plugin_logs
   return "$rc"
 }
 

@@ -236,6 +236,9 @@ _lint_bad() { printf 'replay: step %d (%s): %s\n' "$1" "$2" "$3" >&2; }
 _lint_key()  { gs_keycode "$1" >/dev/null 2>&1; }                    # a key name -> a keycode
 _lint_gate() {                                                       # until:<COND> known, OR a duration
   case "$1" in
+    until:log:*|until:!log:*)                                        # host-side gate: its own parser,
+             local c="${1#until:}" _n _s                             # since resolve_gate rejects `log:`
+             _log_gate_parse "${c#!}" _n _s >/dev/null 2>&1 ;;
     until:*) local c="${1#until:}" _a _b _d
              [ -n "$c" ] && resolve_gate "$c" _a _b _d >/dev/null 2>&1 ;;
     *)       _replay_dur_secs "$1" >/dev/null 2>&1 ;;
@@ -261,6 +264,9 @@ _lint_num()  { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }         # an intege
 # The gate table, data-driven: each `until:<COND>` maps to a probe query + the trace
 # `src` it produces + a jq predicate that is true once the condition holds. Adding a
 # gate is ONE row here plus ONE probe-query handler in SkytestProbe — nothing else.
+# The one exception is a HOST-SIDE gate — `log:<plugin>|<substring>` reads an SKSE plugin's
+# own log file, not the probe — and that lives in replay_wait_gate's leading `case` (and
+# _lint_gate's), not in this table: there is no query to resolve.
 #
 #   cond          probe cmd (sans id)                          src      predicate (jq, true = satisfied)
 #   inworld       {"cmd":"status"}                             status   .world.inWorld == true
@@ -356,6 +362,8 @@ resolve_gate() {
 # launch apart. Caught by an assertion that "passed" off a 44-second-old line.
 replay_wait_gate() {
   local cond="${1:?replay_wait_gate: condition required}" timeout="${2:-180}"
+  # Host-side gates first: they have no probe query for resolve_gate to resolve.
+  case "$cond" in log:*|'!log:'*) _replay_wait_log_gate "$cond" "$timeout"; return $? ;; esac
   local cmd src pred
   resolve_gate "$cond" cmd src pred || return 2   # unknown/empty cond already messaged
 
@@ -383,6 +391,92 @@ replay_wait_gate() {
         fi
       fi
     fi
+  done
+  printf 'replay: gate %s timed out after %ss\n' "$cond" "$timeout" >&2
+  return 1
+}
+
+# --- the host-side log gate: until:log:<plugin>|<substring> -------------------
+#
+# An SKSE DLL writes its evidence to its own log (`<My Games>/SKSE/<plugin>.log`), and a log
+# line is written ONCE — never re-emitted the way a probe query is re-answered on every poll.
+# So the gate-start window the probe gates use ("only trace lines newer than this gate") can
+# never match it: the stimulus step wrote the line a second before the gate began. The window
+# here is instead "written since the session became READY": _boot_test_session records each
+# log's size once the probe answers (gs_mark_plugin_logs -> `<io-dir>/logmarks`), after every
+# plugin has truncated its log and written its load lines, and the gate scans only past that
+# mark. Within one session that window spans every step, so a script that stimulates twice
+# must pin the substring per stimulus (include the value the stimulus produces).
+
+# _log_gate_parse <cond> <name-var> <sub-var> — split `log:<plugin>|<substring>` (no `until:`,
+# no `!`) at the FIRST `|` into the two named vars. The substring is the rest of the line
+# verbatim — it may hold more `|`, spaces, `:`, `>` — and is matched literally (grep -F).
+# Either side empty -> message + return 2, the same contract as resolve_gate.
+_log_gate_parse() {
+  local __rest="${1#log:}" __n="" __s=""
+  local -n __name_ref="${2:?_log_gate_parse: name var}" __sub_ref="${3:?_log_gate_parse: sub var}"
+  case "$__rest" in *'|'*) __n="${__rest%%|*}"; __s="${__rest#*|}" ;; esac
+  if [ -z "$__n" ] || [ -z "$__s" ]; then
+    printf "replay: gate 'log:<plugin>|<substring>' needs both fields\n" >&2; return 2
+  fi
+  __name_ref="$__n"; __sub_ref="$__s"
+}
+
+# The SKSE log dir — overridable so the unit tests can point it at a temp dir.
+_log_gate_dir() { printf '%s' "${SKYTEST_SKSE_LOG_DIR:-$MYGAMES/SKSE}"; }
+
+# _log_gate_mark <plugin> — the byte offset gs_mark_plugin_logs recorded for <plugin>.log
+# (one `<plugin>\t<bytes>` line per log in `<io-dir>/logmarks`), or 0 when there is none — no
+# marks file, an unmarked plugin, a mangled value — i.e. "scan the whole file".
+_log_gate_mark() {
+  local marks p b; marks="$(_skytest_io_dir)/logmarks"
+  if [ -f "$marks" ]; then
+    while IFS=$'\t' read -r p b; do
+      [ "$p" = "$1" ] || continue
+      case "$b" in ''|*[!0-9]*) break ;; *) printf '%s' "$b"; return 0 ;; esac
+    done < "$marks"
+  fi
+  printf '0'
+}
+
+# _log_gate_check <plugin> <substring> — 0 iff some line of <plugin>.log PAST its mark contains
+# <substring>; 1 otherwise. A missing log is a miss, not an error (the plugin may not have
+# opened one). A file SMALLER than its mark was re-truncated by its writer: the mark points past
+# the end and would hide everything, so the whole file is scanned from byte 0.
+_log_gate_check() {
+  local f mark size; f="$(_log_gate_dir)/$1.log"
+  [ -f "$f" ] || return 1
+  mark="$(_log_gate_mark "$1")"
+  size="$(stat -c %s "$f" 2>/dev/null || echo 0)"
+  [ "$size" -lt "$mark" ] && mark=0
+  tail -c "+$((mark + 1))" "$f" 2>/dev/null | grep -qF -- "$2"
+}
+
+# _replay_wait_log_gate <cond> <timeout> — the log arm of replay_wait_gate. `log:…` polls
+# _log_gate_check once a second until the line appears (0) or the deadline (1), with the probe
+# path's session-death fast-fail (2) and its messages. `!log:…` is decided in ONE look: absence
+# is a snapshot assertion ("no such line in the window"), and a log line is never un-written —
+# if it is already there the gate can never come true, so polling to the deadline would only
+# look like a hang. Fail on the first hit instead. Neither arm sends a probe command.
+_replay_wait_log_gate() {
+  local cond="$1" timeout="$2" inner="$1" negate="" name sub
+  case "$inner" in '!'*) negate=1; inner="${inner#!}" ;; esac
+  _log_gate_parse "$inner" name sub || return 2
+  printf 'replay: waiting for gate %s (timeout %ss)…\n' "$cond" "$timeout" >&2
+  local deadline=$((SECONDS + timeout))
+  while :; do
+    if gs_session_dead; then
+      printf 'replay: session died while waiting for gate %s\n' "$cond" >&2
+      return 2
+    fi
+    if _log_gate_check "$name" "$sub"; then
+      [ -z "$negate" ] && { printf 'replay: gate %s satisfied\n' "$cond" >&2; return 0; }
+      printf 'replay: gate %s failed: line present\n' "$cond" >&2
+      return 1
+    fi
+    [ -n "$negate" ] && { printf 'replay: gate %s satisfied\n' "$cond" >&2; return 0; }
+    [ "$SECONDS" -lt "$deadline" ] || break
+    sleep 1
   done
   printf 'replay: gate %s timed out after %ss\n' "$cond" "$timeout" >&2
   return 1

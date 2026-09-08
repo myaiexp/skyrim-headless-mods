@@ -138,6 +138,13 @@ _probe_send() { printf '%s\n' "$1" >> "$(_skytest_io_dir)/commands.jsonl" 2>/dev
 #                     is up. Clearing it here means "no status line yet" => keep waiting.
 #   commands.jsonl  — a fresh probe re-reads it from offset 0 and re-runs the whole
 #                     history (re-faulting old execs, flooding the new trace).
+#   logmarks        — replay's host-side `until:log:` gate reads each SKSE plugin log only
+#                     PAST the size gs_mark_plugin_logs records once THIS launch is ready. A
+#                     prior launch's marks describe a file the plugin has since re-truncated,
+#                     so they would either expose its load lines to a gate or hide this
+#                     session's lines — the same stale-state class as the trace above.
+#                     Removed rather than truncated: "no marks file" means "scan from byte
+#                     0" until the boot path writes fresh marks.
 # Called by _boot_test_session before gs_launch — guards already ensured no live probe
 # holds these files, so the truncate can't race a writer.
 gs_reset_io() {
@@ -145,6 +152,30 @@ gs_reset_io() {
   mkdir -p "$dir" 2>/dev/null || true
   : > "$dir/commands.jsonl" 2>/dev/null || true
   : > "$dir/trace.jsonl"    2>/dev/null || true
+  rm -f "$dir/logmarks"     2>/dev/null || true
+}
+
+# gs_mark_plugin_logs — record the current size of every `$MYGAMES/SKSE/*.log` as
+# `<plugin>\t<bytes>` lines in `<io-dir>/logmarks` (the whole file rewritten each call). This
+# is the START of the window replay's host-side `until:log:<plugin>|<substring>` gate scans:
+# "written since the session became ready". _boot_test_session calls it once the probe
+# answers — by then every plugin has truncated its log and written its load lines, so those
+# can never satisfy a gate, while everything a later step stimulates can. Always returns 0:
+# the parent runs under `set -e`, and a mark that could not be written must not abort a boot
+# that succeeded — the gate then scans from byte 0, a WIDER window, which is warned about.
+gs_mark_plugin_logs() {
+  local dir out f
+  dir="$(_skytest_io_dir)"; out="$dir/logmarks"
+  mkdir -p "$dir" 2>/dev/null || true
+  if ! : > "$out" 2>/dev/null; then
+    say "WARNING: cannot write $out - until:log: gates will scan whole plugin logs (load lines included)"
+    return 0
+  fi
+  for f in "$MYGAMES/SKSE"/*.log; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\n' "$(basename "$f" .log)" "$(stat -c %s "$f" 2>/dev/null || echo 0)" >> "$out"
+  done
+  return 0
 }
 
 # Epoch milliseconds — the same clock SkytestProbe stamps every trace line's "t" with

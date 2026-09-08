@@ -190,6 +190,10 @@ check "wait duration + trailing comment" \
 check "hold gate + trailing comment" \
   'STEP hold target=LMB gate=200ms' \
   "$(replay_parse - <<<'hold LMB 200ms   # charge')"
+# …which is also what lets a `log:` gate carry a free-text substring (spaces, `:`, `>`)
+check "parse log gate whole line" \
+  'STEP wait gate=until:log:DBVODialogueTweaks|voice boost x2.50: 1.000 -> 2.500' \
+  "$(replay_parse - <<<'wait until:log:DBVODialogueTweaks|voice boost x2.50: 1.000 -> 2.500')"
 
 # a negated UNKNOWN gate is still an unknown gate (the inner resolve decides)
 gc='' gs='' gp=''
@@ -210,6 +214,110 @@ check_rc "resolve menu: empty name non-zero" 2 "$rc"
 bogus_err="$(replay_wait_gate "bogus" 2>&1)"; rc=$?
 check_rc  "wait bogus non-zero"     2 "$rc"
 contains  "wait bogus message" "replay: unknown gate condition 'bogus'" "$bogus_err"
+
+# =============================================================================
+# until:log:<plugin>|<substring> — the HOST-SIDE gate over an SKSE plugin's own log.
+# Placed BEFORE Task 3 on purpose: Task 3 replaces replay_wait_gate with a stub, and these
+# cases drive the real one (its log branch never touches the probe). The log dir and the probe
+# IO dir are both redirected to temp dirs, so nothing here reads the real My Games.
+# =============================================================================
+
+# parse: the FIRST `|` splits plugin from substring; the substring keeps everything after it
+n='' s=''; _log_gate_parse 'log:DBVODialogueTweaks|voice boost x2.50' n s
+check "log parse name" 'DBVODialogueTweaks' "$n"
+check "log parse sub"  'voice boost x2.50' "$s"
+n='' s=''; _log_gate_parse 'log:Foo|a|b: c' n s
+check "log parse sub keeps later pipes" 'a|b: c' "$s"
+_log_gate_parse 'log:Foo' n s 2>/dev/null;  check_rc "log parse no sub"     2 "$?"
+_log_gate_parse 'log:|x' n s 2>/dev/null;   check_rc "log parse no name"    2 "$?"
+_log_gate_parse 'log:Foo|' n s 2>/dev/null; check_rc "log parse empty sub"  2 "$?"
+e="$(_log_gate_parse 'log:Foo' n s 2>&1)"
+contains "log parse message" "replay: gate 'log:<plugin>|<substring>' needs both fields" "$e"
+
+# the log dir and the marks file
+LOGT="$(mktemp -d)"; IOT="$(mktemp -d)"
+export SKYTEST_SKSE_LOG_DIR="$LOGT"
+_skytest_io_dir() { printf '%s' "$IOT"; }
+check "log dir honours the env override" "$LOGT" "$(_log_gate_dir)"
+check "log mark: no marks file -> 0" 0 "$(_log_gate_mark Foo)"
+printf 'Foo\t7\nBar\t3\n' > "$IOT/logmarks"
+check "log mark: named plugin"         7 "$(_log_gate_mark Foo)"
+check "log mark: second plugin"        3 "$(_log_gate_mark Bar)"
+check "log mark: unmarked plugin -> 0" 0 "$(_log_gate_mark Baz)"
+
+# check against a mark: only lines PAST the mark count; a re-truncated file rescans from 0
+printf 'loaded\nvoice boost x2.50: 1.000 -> 2.500 (sound 42)\n' > "$LOGT/Foo.log"
+printf 'Foo\t0\n' > "$IOT/logmarks"
+_log_gate_check Foo 'voice boost x2.50'; check_rc "log check: mark 0 -> hit" 0 "$?"
+_log_gate_check Foo '-> 2.500';          check_rc "log check: substring starting with '-' -> hit" 0 "$?"
+printf 'Foo\t%s\n' "$(printf 'loaded\n' | wc -c)" > "$IOT/logmarks"
+_log_gate_check Foo 'voice boost x2.50'; check_rc "log check: line past the mark -> hit" 0 "$?"
+_log_gate_check Foo 'loaded';            check_rc "log check: load line before the mark is invisible" 1 "$?"
+printf 'Foo\t%s\n' "$(wc -c < "$LOGT/Foo.log")" > "$IOT/logmarks"
+_log_gate_check Foo 'voice boost x2.50'; check_rc "log check: nothing past the mark -> miss" 1 "$?"
+printf 'voice boost x2.50\n' > "$LOGT/Foo.log"      # rewritten smaller than its mark
+_log_gate_check Foo 'voice boost x2.50'; check_rc "log check: file smaller than mark -> rescanned from 0" 0 "$?"
+_log_gate_check Foo 'x9.99';             check_rc "log check: substring absent -> miss" 1 "$?"
+_log_gate_check Nope 'anything';         check_rc "log check: no log file -> miss, not an error" 1 "$?"
+
+# the real replay_wait_gate, log branch: no probe traffic, the same messages as the probe
+# path, session-death fast-fail, and `!log:` decided in ONE look (a line is never un-written)
+gs_session_dead() { return 1; }                                    # alive
+_probe_send()     { printf 'PROBE_SEND_CALLED\n' >&2; }            # the log branch must never send
+printf 'loaded\nvoice boost x2.50: 1.000 -> 2.500\n' > "$LOGT/Foo.log"
+printf 'Foo\t7\n' > "$IOT/logmarks"
+e="$(replay_wait_gate 'log:Foo|voice boost x2.50' 5 2>&1)"; rc=$?
+check_rc "wait log: present -> 0" 0 "$rc"
+contains "wait log: waiting msg"   "replay: waiting for gate log:Foo|voice boost x2.50 (timeout 5s)" "$e"
+contains "wait log: satisfied msg" "replay: gate log:Foo|voice boost x2.50 satisfied" "$e"
+check    "wait log: no probe traffic" 0 "$(case "$e" in *PROBE_SEND_CALLED*) echo 1 ;; *) echo 0 ;; esac)"
+e="$(replay_wait_gate 'log:Foo|x9.99' 1 2>&1)"; rc=$?
+check_rc "wait log: absent -> times out (1)" 1 "$rc"
+contains "wait log: timed out msg" "replay: gate log:Foo|x9.99 timed out after 1s" "$e"
+e="$(replay_wait_gate '!log:Foo|x9.99' 5 2>&1)"; rc=$?
+check_rc "wait !log: absent -> 0" 0 "$rc"
+contains "wait !log: satisfied msg" "replay: gate !log:Foo|x9.99 satisfied" "$e"
+SECONDS=0
+e="$(replay_wait_gate '!log:Foo|voice boost' 30 2>&1)"; rc=$?
+check_rc "wait !log: present -> fails fast (1)" 1 "$rc"
+contains "wait !log: failed msg" "replay: gate !log:Foo|voice boost failed: line present" "$e"
+check    "wait !log: present -> decided at once, not at the deadline" 1 "$([ "$SECONDS" -lt 5 ] && echo 1 || echo 0)"
+e="$(replay_wait_gate 'log:Foo' 5 2>&1)"; rc=$?
+check_rc "wait log: malformed -> 2" 2 "$rc"
+gs_session_dead() { return 0; }                                    # dead
+e="$(replay_wait_gate 'log:Foo|voice boost' 5 2>&1)"; rc=$?
+check_rc "wait log: dead session -> 2" 2 "$rc"
+contains "wait log: dead msg" "replay: session died while waiting for gate log:Foo|voice boost" "$e"
+gs_session_dead() { return 1; }
+
+# interpreter level: `wait until:log:…` / `wait until:!log:…` reach the real gate (shots off)
+e="$(replay_run - 5 0 <<<'wait until:log:Foo|voice boost x2.50' 2>&1)"; rc=$?
+check_rc "run wait until:log present -> 0" 0 "$rc"
+contains "run wait until:log step ok" "replay: step 1 ok: wait" "$e"
+e="$(replay_run - 5 0 <<<'wait until:!log:Foo|voice boost' 2>&1)"; rc=$?
+check_rc "run wait until:!log present -> 1" 1 "$rc"
+contains "run wait until:!log names the gate" "gate 'until:!log:Foo|voice boost' not reached" "$e"
+
+# gs_mark_plugin_logs (lib/gamescope.sh) writes the marks the gate reads; gs_reset_io drops
+# them per launch. gamescope.sh needs only SCRIPT_DIR at source time — source it in a SUBSHELL
+# so its real _skytest_io_dir / gs_session_dead don't replace the stubs above.
+MYT="$(mktemp -d)"; mkdir -p "$MYT/SKSE"
+printf 'loaded\n' > "$MYT/SKSE/Foo.log"; : > "$MYT/SKSE/Bar.log"
+gs_out="$( SCRIPT_DIR=/nonexistent MYGAMES="$MYT"
+           # shellcheck source=lib/gamescope.sh
+           source "$HERE/gamescope.sh" || { echo SOURCE_FAILED; exit 1; }
+           gs_mark_plugin_logs; sort "$MYT/SKSE/skytest/logmarks" )"
+check "gs_mark_plugin_logs records each log's size" $'Bar\t0\nFoo\t7' "$gs_out"
+_skytest_io_dir() { printf '%s' "$MYT/SKSE/skytest"; }
+check "replay reads the mark gamescope wrote" 7 "$(_log_gate_mark Foo)"
+gs_out="$( SCRIPT_DIR=/nonexistent MYGAMES="$MYT"
+           source "$HERE/gamescope.sh" || { echo SOURCE_FAILED; exit 1; }
+           gs_reset_io; [ -e "$MYT/SKSE/skytest/logmarks" ] && echo survived || echo gone )"
+check "gs_reset_io drops the marks" gone "$gs_out"
+
+rm -rf "$LOGT" "$IOT" "$MYT"
+unset SKYTEST_SKSE_LOG_DIR
+unset -f _skytest_io_dir gs_session_dead _probe_send   # back to the pre-section environment
 
 # =============================================================================
 # Task 3 — step interpreter (assert the emitted IO stream, no game)
@@ -317,6 +425,13 @@ contains "lint bad key-seq msg"   "step 1 (key): unknown key 'foo'" "$e"
 e="$(replay_parse - <<<'wait until:inwrld' | replay_lint 2>&1)"; rc=$?
 check_rc "lint bad gate -> 2"     2 "$rc"
 contains "lint bad gate msg"      "step 1 (wait): bad gate 'until:inwrld'" "$e"
+
+# the host-side log gate lints through its own parser (resolve_gate keeps rejecting `log:`)
+check "lint log gate ok"   0 "$(_lint_gate 'until:log:Foo|bar' >/dev/null 2>&1; echo $?)"
+check "lint !log gate ok"  0 "$(_lint_gate 'until:!log:Foo|bar' >/dev/null 2>&1; echo $?)"
+e="$(replay_parse - <<<'wait until:log:Foo' | replay_lint 2>&1)"; rc=$?
+check_rc "lint bad log gate -> 2" 2 "$rc"
+contains "lint bad log gate msg"  "bad gate 'until:log:Foo'" "$e"
 
 # a malformed duration is caught (the *s arm now validates the number too, via _replay_dur_secs)
 e="$(replay_parse - <<<'wait 500' | replay_lint 2>&1)"; rc=$?
