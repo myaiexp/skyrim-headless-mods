@@ -750,10 +750,13 @@ files** — CrashLogger is disabled on 1.7.104 (finding #35), so those are the o
 A profile that ships `SkyUI_SE.esp`/`.bsa` — needed whenever a mod under test has an MCM, and by
 DBVO 1.x, whose `DBVO_Script_MCM` extends `SKI_ConfigBase` and cannot be instantiated without it —
 pops a modal a few seconds after the save loads: *"SKYUI ERROR CODE 4 — Your Papyrus INI settings
-are invalid."* SkyUI is objecting to this machine's own `Skyrim.ini` (`[Papyrus]
-iMaxAllocatedMemoryBytes=524288`, a Bethini memory tweak), and skytest deliberately touches only
-`SLocalSavePath` in that file, so the modal is a fact of life rather than a bug to fix in the
-harness — the live game shows it too.
+are invalid."* It is this machine's own `Skyrim.ini`, and the cause is the opposite of the obvious
+guess: `SKI_Main.psc:199` errors if **any** of `iMinMemoryPageSize`, `iMaxMemoryPageSize`,
+`iMaxAllocatedMemoryBytes` under `[Papyrus]` reads `<= 0`, and the file here defines only the third
+(`=524288`) — the two missing keys read 0. Nothing is wrong with the value that IS set. skytest
+touches only `SLocalSavePath` in that file, so this is a property of the live setup rather than a
+harness bug — the real game shows it too (recorded in the managing repo,
+`~/Downloads/skyrim-mods/00-docs/skyui-error-code-4.md`, with the two lines that fix it).
 
 It **swallows keyboard input**, so a `tap e` aimed at an NPC does nothing and the run dies much
 later on an unrelated gate (`until:menu:Dialogue Menu` timing out) with no visible cause. Dismiss

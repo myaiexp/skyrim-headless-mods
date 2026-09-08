@@ -35,8 +35,9 @@ wait 8s                 # inworld fires before the player's 3D settles (#16); DB
                         # quests also need a moment to register their MCMs before any dialogue.
 
 # --- dismiss SKYUI ERROR CODE 4 -----------------------------------------------------
-# "Your Papyrus INI settings are invalid" — SkyUI rejects this machine's own Skyrim.ini
-# ([Papyrus] iMaxAllocatedMemoryBytes=524288, a Bethini memory tweak). skytest deliberately only
+# "Your Papyrus INI settings are invalid" — SkyUI errors when ANY of [Papyrus]
+# iMinMemoryPageSize / iMaxMemoryPageSize / iMaxAllocatedMemoryBytes reads <= 0
+# (SKI_Main.psc:199), and this machine's Skyrim.ini sets only the third. skytest deliberately only
 # touches SLocalSavePath in that file, so the modal is a fact of any stage that ships SkyUI — and
 # it EATS THE ACTIVATION KEY: without this click, `tap e` below does nothing and the run dies on
 # the Dialogue Menu gate with no other symptom. Clicked twice because it can appear late; an
