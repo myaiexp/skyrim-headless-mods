@@ -1,0 +1,32 @@
+# Open a dialogue menu in a variant's swf and photograph it — the coordinate-finding pass.
+#
+#   ./stage-test-profile.sh --variant <id>
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-<id> \
+#       mods/DBVODialogueTweaks/variants/menu.steps --headless --no-shots
+#   # then read /tmp/dbvo-menu.png: it shows WHERE that overhaul puts its topic list.
+#
+# Why it exists: the assertion script (../replyonlineend.steps) clicks a topic at a pixel, and
+# every overhaul puts the topic list somewhere else (left, centre, right). Run this first, read
+# the topic's position off the shot, and pass it in — see variants/README.md.
+#
+# It is also the cheapest proof that a ported swf renders at all: a variant whose script broke
+# the class shows no topic list here, before any timing is measured.
+#
+# Pixel coordinates below are for the headless default 1280x720.
+
+# --- boot: main menu -> the SkytestBase save (QASmoke) ------------------------------
+click 1177 496          # CONTINUE — a coordinate click; a bare `enter` here is unreliable (#25)
+wait 2s
+tap enter               # "Continue from your last saved game?" -> Yes
+wait 4s
+click 602 409           # "Creations are currently loaded … continue?" -> Yes (#25). Harmless if absent.
+wait until:inworld
+wait 3s                 # inworld fires before the player's 3D settles (#16)
+
+# --- stage: a talkable NPC in front of the player -----------------------------------
+cmd {"cmd":"placeatme","base":"0x00013BA3","as":"hulda","d":110,"freeze":false}
+wait 6s
+tap e
+wait until:menu:Dialogue Menu
+wait 2s                 # let the list finish its fade/slide in before the shot
+shot /tmp/dbvo-menu.png

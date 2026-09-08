@@ -114,6 +114,12 @@ handler, no voice). The only thing our mod does that DBReV lacks is a *native* s
 
 ## UI overhauls that carry a DBVO 1.x-patched `dialoguemenu.swf` (researched 2026-09-08)
 
+> **Four are BUILT and verified in-engine (2026-09-08): Untarnished UI, Dear Diary Dark Mode
+> white + warm, NORDIC UI.** They ship as a FOMOD "Dialogue menu style" choice. How a variant is
+> made, re-ported and added to — including the one merge conflict every CDUI-lineage base
+> produces — is `mods/DBVODialogueTweaks/variants/README.md`; the priority order for the
+> *remaining* overhauls is at the end of this section.
+
 Context: the first Nexus feedback on our mod said "my dialogue options moved from the left to
 the right". Our swf is stock-DBVO layout (vanilla: bottom-centre), so the user had been running a
 UI overhaul's DBVO-patched swf, and ours overwrote it. Which overhauls those are, where their
@@ -161,10 +167,25 @@ lines from stock; DDDM warm and white are script-identical, Untarnished differs 
 lines, adds `topicsFadeIn`/`topicsFadeOut`). So our deltas port twice, not four times.
 
 Most likely match for "left → stock": the DDDM lineage (DDDM, Untarnished, Dragonbreaker), then
-DIR, then CDUI / Dragonborn Reskin. Priority if patches are built: **Untarnished → DDDM (white,
-warm) → DIR → CDUI (four looks) → Dragonborn Reskin**. Caveat from the sections above: this
-audience is DBVO 1.x, which does not run on 1.7.104 today; it is the downgraded-1.6.1170
-population.
+DIR, then CDUI / Dragonborn Reskin. **Built 2026-09-08 (the first four of that priority list):
+Untarnished, DDDM white, DDDM warm, NordicUI** — each verified in-engine on 1.7.104 by replaying
+`replyonlineend.steps` against its own swf. **Still to build, in this order: DIR → CDUI (four
+looks) → Dragonborn Reskin**; each is a `variants/<id>/` directory plus one `port.sh` run.
+Caveat from the sections above: this audience is DBVO 1.x, which does not run on 1.7.104 today; it
+is the downgraded-1.6.1170 population.
+
+Three things the build pass established that the research above could not:
+
+- **Every third-party patch dropped stock DBVO's `this.timerBool = false;`** from
+  `startTopicClickedTimer`'s `voicePackID == "off"` branch — all four bases, identically. Left
+  as-is that hangs the topic list when the voice is off, so `port.sh` restores it as a fixup and
+  `check_offbranch` proves it survived the build. Expect the same in DIR/CDUI/Reskin.
+- **One conflict per CDUI-lineage base, always the same one**: they place the copied topic text at
+  `TextCopy_mc.textField._y = 3.75 - _loc3_` where stock DBVO uses `6.25`, right where our
+  `CutNpcDBVOReply` line is inserted. Keep their offset, take our line.
+- **The DLL and MCM half is layout-agnostic.** Every base keeps Bethesda's `_root.DialogueMenu_mc`,
+  which is the only path the DLL (`dbvoOnPlayerLineEnded`) and the MCM (`dbvoPadMs`) address — so a
+  variant is one swf and nothing else, and the FOMOD ships one `core/` for all of them.
 
 ## Pointers
 

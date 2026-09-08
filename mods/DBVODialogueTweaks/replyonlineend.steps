@@ -8,6 +8,12 @@
 #   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks \
 #       mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots
 #
+# The SAME script is how a UI-overhaul compatibility variant is verified — it is layout-independent
+# on purpose (see the topic-pick block below), so it only needs that variant's stage:
+#   mods/DBVODialogueTweaks/stage-test-profile.sh --variant nordicui
+#   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nordicui \
+#       mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots
+#
 # The control half of the A/B — the SAME stage with the DLL deleted, nothing else changed:
 #   SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nodll \
 #       mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots
@@ -58,15 +64,23 @@ wait until:menu:Dialogue Menu
 cmd {"cmd":"ui-set","menu":"Dialogue Menu","path":"_root.DialogueMenu_mc.dbvoPadMs","value":15000}
 wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.dbvoPadMs|15000.000000
 
-# --- click a topic ------------------------------------------------------------------
-# "Where can I learn more about magic?" — 7 words, so the swf's backstop is 7*300+2000 = 4100 ms.
-# A longer topic is chosen on purpose: the backstop has to outlast the remaining audio at the
-# moment the timer is armed, or it beats the DLL's line-end callback and the test measures the
-# fallback instead of the feature.
-move 915 517
-wait 1s
-click
-wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true    # the click armed the swf
+# --- pick a topic -------------------------------------------------------------------
+# "Where can I learn more about magic?" — entry 2, 7 words, so the swf's backstop is
+# 7*300 + 2000 = 4100 ms. A longer topic is chosen on purpose: the backstop has to outlast the
+# remaining audio at the moment the timer is armed, or it beats the DLL's line-end callback and
+# the test measures the fallback instead of the feature.
+#
+# Two `down`s + Activate, NOT a pixel click: this same script runs against every UI-overhaul
+# compatibility variant (variants/README.md), and each overhaul puts the topic list somewhere
+# else — stock DBVO and NORDIC UI centre it, Untarnished and Dear Diary put it on the left, so no
+# one coordinate can hit a topic in all of them. The list ORDER is the engine's and identical
+# everywhere, so entry 2 is the same topic in every layout; the gate below says which one out
+# loud instead of trusting that.
+tap down
+tap down
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.TopicListHolder.List_mc.selectedEntry.text|Where can I learn more about magic?
+tap e
+wait until:uivar:Dialogue Menu|_root.DialogueMenu_mc.timerBool|true    # the topic armed the swf
 
 # --- speak the player's line (the ConsoleUtil substitute) ---------------------------
 # The path MUST be quoted: the console splits an unquoted argument at `/` and `\`, so

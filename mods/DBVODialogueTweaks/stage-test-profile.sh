@@ -4,6 +4,13 @@
 #   ~/.cache/skytest-dbvotweaks         the mod as shipped (swf + esp + pex + DLL)
 #   ~/.cache/skytest-dbvotweaks-nodll   byte-identical MINUS the DLL — the A/B control
 #
+#   ./stage-test-profile.sh                       the stock-DBVO menu
+#   ./stage-test-profile.sh --variant nordicui    a UI-overhaul compatibility variant, staged as
+#                                                 ~/.cache/skytest-dbvotweaks-nordicui{,-nodll}
+#
+# A variant changes exactly one file — Interface/dialoguemenu.swf — so replaying the same script
+# against it tests the ported swf and nothing else (variants/README.md).
+#
 # They live outside the repo because they carry third-party content (SkyUI, and one Karat
 # voice line lifted out of the pack's BSA) that this repo does not redistribute.
 #
@@ -21,16 +28,26 @@ FULL="$(dirname "$GAME_DATA")/.profiles/full"
 # The newest packaged release, by version sort — never a hardcoded number (1.0.1 was baked in
 # here once and would have staged the old build under 1.1.0's name).
 DIST="$(ls "$REPO/mods/DBVODialogueTweaks/dist/DBVO Dialogue Tweaks "*.zip 2>/dev/null | sort -V | tail -1 || true)"
-A="$HOME/.cache/skytest-dbvotweaks"
-B="$HOME/.cache/skytest-dbvotweaks-nodll"
+STYLE="stock"
+if [[ "${1:-}" == "--variant" ]]; then
+	STYLE="${2:?--variant needs a variant id (see variants/)}"
+fi
+SUFFIX=""; [[ "$STYLE" == "stock" ]] || SUFFIX="-$STYLE"
+A="$HOME/.cache/skytest-dbvotweaks$SUFFIX"
+B="$HOME/.cache/skytest-dbvotweaks$SUFFIX-nodll"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
 [ -n "$DIST" ] && [ -f "$DIST" ] || { echo "stage: no packaged release in mods/DBVODialogueTweaks/dist/ (run ./package.sh)" >&2; exit 1; }
 echo "stage: using $(basename "$DIST")"
 [ -d "$FULL" ]  || { echo "stage: no full profile at $FULL (run skytest init --commit)" >&2; exit 1; }
 
-echo "stage: unpacking the shipped package"
-unzip -o -q "$DIST" 'core/*' -d "$WORK"
+echo "stage: unpacking the shipped package (menu style: $STYLE)"
+unzip -o -q "$DIST" 'core/*' "ui/$STYLE/*" -d "$WORK"
+[ -f "$WORK/ui/$STYLE/Interface/dialoguemenu.swf" ] || {
+	echo "stage: no menu style '$STYLE' in $(basename "$DIST") — styles:" >&2
+	unzip -Z1 "$DIST" 'ui/*/Interface/dialoguemenu.swf' | cut -d/ -f2 | sed 's/^/  /' >&2
+	exit 1
+}
 
 echo "stage: extracting the LONGEST Karat voice line as Sound/dbvo/t1.fuz"
 # Longest, not a named favourite: the replay has to arm the swf's timer while the line is still
@@ -56,6 +73,7 @@ echo "  longest line: $LONGEST"
 for T in "$A" "$B"; do
   rm -rf "$T"; mkdir -p "$T/Sound/dbvo"
   cp -a "$WORK/core/." "$T/"
+  cp -a "$WORK/ui/$STYLE/." "$T/"
   cp -a "$WORK/t1.fuz" "$T/Sound/dbvo/t1.fuz"
 done
 rm -f "$B/SKSE/Plugins/DBVODialogueTweaks.dll"

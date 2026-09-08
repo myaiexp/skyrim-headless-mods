@@ -4,22 +4,30 @@
 #   ./package.sh            build the FOMOD zip from build/ + plugin/build/ into dist/
 #
 # Run ./build.sh first (this only packages what's already built — it does not compile).
-# A FOMOD here adds no install choices (everything is required and installs together);
-# it exists for the branded install page (header image + description). A plain zip of
-# core/ would install identically.
+# The FOMOD carries one real choice: which dialoguemenu.swf to install — the stock-DBVO menu, or
+# a UI overhaul's own DBVO-patched menu with our deltas ported onto it (variants/README.md).
+# Everything else is required and installs together.
 #
 # Archive layout (root of the zip):
 #   fomod/info.xml            mod metadata (name, author, version, website)
-#   fomod/ModuleConfig.xml    single required component, shows the header + description
+#   fomod/ModuleConfig.xml    required component + the select-one menu-style group
 #   fomod/images/header.jpg   installer image
-#   core/<Data tree>          the files, mapped to Data/ on install
+#   core/<Data tree>          esp + Scripts + SKSE/Plugins — always installed
+#   ui/stock/Interface/…      the stock-DBVO menu (default)
+#   ui/<variant>/Interface/…  one per compatibility variant
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=variants/lib.sh
+source "$HERE/variants/lib.sh"
 
-# --- release identity (Version tracks plugin/src/main.cpp kVersion) ---
+# --- release identity ---
+# VERSION is the MOD's release number and normally tracks plugin/src/main.cpp kVersion. 1.2.0 is
+# the first release where they diverge on purpose: it adds menu styles for UI overhauls, which are
+# swf-only — the DLL ships byte-identical to 1.1.0, so kVersion stays 1.1.0 rather than forcing a
+# rebuild whose sole change is a version constant. Bump kVersion again the next time the C++ moves.
 NAME="DBVO Dialogue Tweaks"
-VERSION="1.1.0"
+VERSION="1.2.0"
 AUTHOR="Mase"
 WEBSITE="https://github.com/myaiexp/skyrim-headless-mods"
 CATEGORY="Patches"
@@ -35,18 +43,31 @@ FOMOD="$STAGE/fomod"
 ZIP="$DIST/${NAME} ${VERSION}.zip"
 
 # --- map each built artifact to its Data-relative destination under core/ ---
+# The swf is NOT here: it is the one file that differs per menu style, so it ships under ui/.
 declare -A FILES=(
-	["$BUILD/Interface/dialoguemenu.swf"]="Interface/dialoguemenu.swf"
 	["$BUILD/Scripts/DBVODialogueTweaksMCM.pex"]="Scripts/DBVODialogueTweaksMCM.pex"
 	["$BUILD/Scripts/DBVOTweaks.pex"]="Scripts/DBVOTweaks.pex"
 	["$BUILD/DBVODialogueTweaks.esp"]="DBVODialogueTweaks.esp"
 	["$DLL"]="SKSE/Plugins/DBVODialogueTweaks.dll"
 )
 
+# --- menu styles: stock first, then every declared variant, in variant.conf `order=` ---
+# A declared variant that did not build is FATAL here (build.sh only warns): a release that
+# quietly drops a menu style would strand exactly the users the style exists for.
+declare -A UI_SWF=( [stock]="$BUILD/Interface/dialoguemenu.swf" )
+UI_IDS=(stock)
+for id in $(variant_ids); do
+	UI_IDS+=("$id")
+	UI_SWF["$id"]="$BUILD/variants/$id/Interface/dialoguemenu.swf"
+done
+
 # --- preflight: every artifact must exist (else build.sh hasn't run) ---
 missing=0
 for src in "${!FILES[@]}"; do
 	[[ -f "$src" ]] || { echo "ERROR: missing artifact: $src" >&2; missing=1; }
+done
+for id in "${UI_IDS[@]}"; do
+	[[ -f "${UI_SWF[$id]}" ]] || { echo "ERROR: missing menu style '$id': ${UI_SWF[$id]}" >&2; missing=1; }
 done
 [[ -f "$HEADER" ]] || { echo "ERROR: missing installer image: $HEADER" >&2; missing=1; }
 if (( missing )); then
@@ -63,6 +84,10 @@ for src in "${!FILES[@]}"; do
 	dst="$CORE/${FILES[$src]}"
 	mkdir -p "$(dirname "$dst")"
 	cp "$src" "$dst"
+done
+for id in "${UI_IDS[@]}"; do
+	mkdir -p "$STAGE/ui/$id/Interface"
+	cp "${UI_SWF[$id]}" "$STAGE/ui/$id/Interface/dialoguemenu.swf"
 done
 cp "$HEADER" "$FOMOD/images/header.jpg"
 
@@ -97,7 +122,7 @@ cat > "$FOMOD/ModuleConfig.xml" <<'EOF'
 
 Reply-on-line-end timing, manual line skip, clean cut on skip and interrupt, player-voice volume, and a SkyUI MCM.
 
-Requires Dragonborn Voice Over 1.1.1 (the mod page's OLD FILES tab), SKSE, SkyUI, and Address Library. Let this overwrite DBVO's dialoguemenu.swf.</description>
+Requires Dragonborn Voice Over 1.1.1 (the mod page's OLD FILES tab), SKSE, SkyUI, and Address Library. Let this overwrite DBVO's dialoguemenu.swf — the next page picks WHICH menu that is, so choose your UI overhaul there if you use one.</description>
               <image path="fomod\images\header.jpg"/>
               <files>
                 <folder source="core" destination="" priority="0"/>
@@ -108,15 +133,52 @@ Requires Dragonborn Voice Over 1.1.1 (the mod page's OLD FILES tab), SKSE, SkyUI
             </plugin>
           </plugins>
         </group>
+EOF
+
+# --- fomod/ModuleConfig.xml, part 2: the menu-style group (generated from variants/) ---
+# Written by loop, not by hand: adding a fifth UI overhaul is a variants/ directory and nothing
+# else. `<` and `&` in a description would break the XML, so every interpolated string is escaped.
+xml_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+cat >> "$FOMOD/ModuleConfig.xml" <<'EOF'
+        <group name="Dialogue menu style" type="SelectExactlyOne">
+          <plugins order="Explicit">
+            <plugin name="Stock DBVO menu">
+              <description>The dialogue menu as Dragonborn Voice Over itself ships it — bottom-centre topic list, vanilla styling. Pick this unless you run one of the UI overhauls below.</description>
+              <files>
+                <folder source="ui\stock" destination="" priority="0"/>
+              </files>
+              <typeDescriptor>
+                <type name="Recommended"/>
+              </typeDescriptor>
+            </plugin>
+EOF
+
+for id in "${UI_IDS[@]}"; do
+	[[ "$id" == stock ]] && continue
+	{
+		printf '            <plugin name="%s">\n' "$(variant_get "$id" name | xml_escape)"
+		printf '              <description>%s\n\nPick this instead of the stock menu when you run %s: it is that mod'"'"'s own DBVO-patched dialogue menu with this mod'"'"'s changes ported onto it, so your dialogue keeps its layout.</description>\n' \
+			"$(variant_get "$id" desc | xml_escape)" \
+			"$(variant_get "$id" ui_mod | xml_escape)"
+		printf '              <files>\n                <folder source="ui\\%s" destination="" priority="0"/>\n              </files>\n' "$id"
+		printf '              <typeDescriptor>\n                <type name="Optional"/>\n              </typeDescriptor>\n'
+		printf '            </plugin>\n'
+	} >> "$FOMOD/ModuleConfig.xml"
+done
+
+cat >> "$FOMOD/ModuleConfig.xml" <<'EOF'
+          </plugins>
+        </group>
       </optionalFileGroups>
     </installStep>
   </installSteps>
 </config>
 EOF
 
-# --- zip (archive root = fomod/ + core/) ---
-( cd "$STAGE" && zip -rq "$ZIP" fomod core )
+# --- zip (archive root = fomod/ + core/ + ui/) ---
+( cd "$STAGE" && zip -rq "$ZIP" fomod core ui )
 
 echo ">> packaged: $ZIP"
-( cd "$STAGE" && find fomod core -type f | sort | sed 's/^/   /' )
+( cd "$STAGE" && find fomod core ui -type f | sort | sed 's/^/   /' )
 echo ">> size: $(du -h "$ZIP" | cut -f1)"

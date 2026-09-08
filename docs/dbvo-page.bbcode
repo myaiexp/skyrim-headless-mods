@@ -41,6 +41,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [*][b]Skyrim 1.7.104, yes, from v1.0.1 — and the reply timing is verified there.[/b] Tested in-engine on 1.7.104 with SKSE 2.3.1 and Address Library v13: the plugin loads, installs its hooks, and still does the thing it exists for. With a player line playing, it detected the line's real end, cancelled the menu's word-count guess, and fired the NPC's reply after the configured gap; with the same setup and only this mod's DLL removed, the reply landed on the word-count guess instead. The 1.1.0 volume boost is verified the same way: at 250% the plugin's log shows your line's XAudio2 gain read back at 2.5x the engine's value, at 100% no such line is written, and with the plugin removed the check fails. Version 1.0.0 does not load there at all — Skyrim 1.7.99 changed the Address Library database format, and 1.0.0 predates it, so it stops with "Unsupported address library format: 5". If you updated Skyrim and your dialogue timing went back to feeling wrong, that's why: grab 1.0.1.
 [*][b]VR, no.[/b] Skyrim VR uses a different dialogue UI and would need a separate build; it isn't provided.
 [*][b]DBVO 2, no.[/b] It replaced the whole swf + Papyrus stack with a single DLL; this mod patches that stack and softlocks dialogue on top of it. See the warning at the top.
+[*][b]Using a UI overhaul that moves the dialogue menu? Pick your menu in the installer.[/b] This mod ships the whole [font="Courier New"]dialoguemenu.swf[/font], so on an overhaul that has its own DBVO-patched menu one of the two has to win — installing this one used to drag your topic list back to DBVO's default position. From 1.2.0 the installer asks which menu to install: [b]Stock DBVO[/b] (the default), [b]Untarnished UI[/b], [b]Dear Diary Dark Mode[/b] (white or warm) or [b]NORDIC UI[/b]. Those four are that overhaul's own DBVO-patched menu with this mod's changes built into it, so you keep your layout and get the timing, skip and cuts. Pick the matching one and let it overwrite both DBVO's and the overhaul's copy. On an overhaul that isn't in the list, let the overhaul's menu win instead: the [b]volume slider still works[/b] (it lives in the plugin, not the menu), you just lose the skip key and the reply timing — and tell me which overhaul, it is a small job to add.
 [*]It overwrites only DBVO's [font="Courier New"]Interface/dialoguemenu.swf[/font] (let it win that conflict, install it after DBVO) and never touches DBVO's own scripts. The [font="Courier New"].esp[/font] is ESL-flagged and takes no load-order slot.
 [/list]
 
@@ -51,10 +52,18 @@ One DLL for SE and AE (CommonLibSSE-NG + Address Library, addresses resolved at 
 [*][b]1.0.0[/b] — Skyrim SE 1.5.97 through AE 1.6.1170 (Address Library formats 1 and 2). Does NOT load on 1.7.99 / 1.7.104. Tested on AE/Steam 1.6.1170; SE 1.5.97 and GOG are the same build but untested.
 [*][b]1.0.1[/b] — those builds plus Skyrim 1.7.99 / 1.7.104 (format 5, Address Library v13). No feature change. Tested on 1.7.104 with SKSE 2.3.1.
 [*][b]1.1.0[/b] — same builds as 1.0.1; adds the volume boost (slider to 300%). Tested on 1.7.104 with SKSE 2.3.1.
+[*][b]1.2.0[/b] — same builds and the same plugin as 1.1.0; adds the installer's menu-style choice for UI overhauls. Each style tested on 1.7.104 with SKSE 2.3.1.
 [/list]
 Match SKSE to your game (2.3.1 for 1.7.104) and use the Address Library for your build. Note the distinction on 1.7.104: [b]this mod[/b] runs and is verified there; [b]DBVO 1.x itself[/b] needs updated ConsoleUtilSSE NG and JContainers builds to run there (see Compatibility).
 
 [heading]Changelog[/heading]
+
+[b]1.2.0[/b]
+[list]
+[*][b]Menu styles for UI overhauls.[/b] The installer now asks which dialogue menu to install: stock DBVO, Untarnished UI, Dear Diary Dark Mode (white or warm), or NORDIC UI. Each of the four is that overhaul's own DBVO-patched menu with this mod's changes built in, so your dialogue keeps its layout instead of jumping back to DBVO's default — the "my dialogue options moved" report, fixed.
+[*]No change to the plugin, the scripts or the [font="Courier New"].esp[/font]: they are shared by every menu style. If you don't use one of those UI mods, keep "Stock DBVO menu" and nothing about the mod changes.
+[*]Each of the four was verified in-engine on Skyrim 1.7.104 the same way the stock menu is: the reply must still be waiting once DBVO's word-count guess would have fired, then land at the line's real end plus the configured gap.
+[/list]
 
 [b]1.1.0[/b]
 [list]

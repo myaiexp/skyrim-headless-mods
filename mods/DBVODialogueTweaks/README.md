@@ -112,17 +112,30 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   page's requirement list says.)
 - **VR, no.** Skyrim VR uses a different dialogue UI (a different `dialoguemenu.swf`) and needs a
   separate VR build; neither is provided.
-- **UI overhauls that replace the dialogue menu (Dialogue Interface ReShaped, Dear Diary, Nordic
-  UI, Untarnished UI, …) — one swf has to lose.** This mod ships the *whole* `dialoguemenu.swf`
-  (DBVO's own, script recompiled — the layout is DBVO's, untouched: the only positioning lines in
-  the script are Bethesda's exit-button and PAL-SD nudges, byte-identical to stock DBVO), so
-  installing it over a UI overhaul's DBVO-patched swf reverts the topic list to the stock
-  placement. That is the "my dialogue options moved" report (Nexus, 2026-09-08). Either let this
-  mod's swf win (skip + reply-on-line-end + volume, stock layout) or let the UI overhaul's win
-  (its layout + DBVO's own timing; the **volume slider still works**, because it is the DLL's
-  speak-sound hook and needs nothing from the swf — the DLL's `dbvoOnPlayerLineEnded` invoke is a
-  silent no-op on a swf that lacks it, and the cut events are never sent). Only a swf that carries
-  *both* sets of script edits would give both, and none is built.
+- **UI overhauls that replace the dialogue menu — pick your menu in the installer.** This mod ships
+  the *whole* `dialoguemenu.swf`, so on a UI overhaul that carries its own DBVO-patched menu one swf
+  has to lose, and installing this one used to revert the topic list to DBVO's stock placement —
+  that is the "my dialogue options moved from the left to the right" report (Nexus, 2026-09-08).
+  The FOMOD now asks which menu to install:
+
+  | Menu style | For |
+  | --- | --- |
+  | **Stock DBVO menu** (default) | no dialogue-menu overhaul, or one without a DBVO patch |
+  | **Untarnished UI** | [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188) |
+  | **Dear Diary Dark Mode (white)** / **(warm)** | [Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837), matching colour |
+  | **NORDIC UI** | [NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881) |
+
+  Each of those four **is that overhaul's own DBVO-patched swf** with this mod's script changes
+  ported onto it, so you keep your layout *and* get skip, reply-on-line-end and the cuts. Install
+  the matching one and let it overwrite both DBVO's and the overhaul's `dialoguemenu.swf`.
+
+  Running an overhaul that isn't listed (Dialogue Interface ReShaped, Convenient Dialogue UI,
+  Dragonborn Reskin, Edge UI, Oathvein, …)? Let the overhaul's swf win: the **volume slider still
+  works** — it is the DLL's speak-sound hook and needs nothing from the swf (the DLL's
+  `dbvoOnPlayerLineEnded` invoke is a silent no-op on a swf that lacks it, and the cut events are
+  never sent) — you lose only skip and the reply timing. Adding a variant is mechanical, and the
+  recipe is in
+  [`variants/README.md`](variants/README.md).
 - **⚠ Dragonborn ReVoiced (DBReV) — also incompatible, and it is where DBVO 1.x users are going.**
   [DBReV](https://www.nexusmods.com/skyrimspecialedition/mods/184221) (mod 184221, v1.5, 2026-09-02)
   is an independent successor that *does* eat DBVO 1.0 voice packs, computes reply timing natively
@@ -144,8 +157,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
 
 1. Install **DBVO 1.1.1** (the OLD FILES tab, _not_ the page's main DBVO 2 download) and get it working.
 2. Install this mod with a mod manager and let it **overwrite DBVO's `Interface/dialoguemenu.swf`**:
-   the bundled swf _is_ DBVO's, recompiled with these tweaks, so it must win over DBVO's copy (and lose
-   to nothing else that edits the dialogue menu).
+   the bundled swf _is_ DBVO's, recompiled with these tweaks, so it must win over DBVO's copy.
+   The installer's **Dialogue menu style** page is where a UI overhaul is handled — pick your
+   overhaul there instead of "Stock DBVO menu", and let that swf win over the overhaul's too
+   (see [Compatibility](#compatibility)).
 3. Enable `DBVODialogueTweaks.esp`.
 4. **Fully restart** Skyrim (the Papyrus VM caches scripts per session).
 
@@ -208,7 +223,16 @@ Bundled artifacts, all built headlessly on Linux:
 ## Building from source
 
 Linux, headless, no Creation Kit or SSEEdit. `./build.sh` produces all five artifacts (the swf, the
-DLL, the two `.pex`, and the `.esp`); `./build.sh --install` also copies them into the live game.
+DLL, the two `.pex`, and the `.esp`) plus one swf per UI-overhaul compatibility variant;
+`./build.sh --install` also copies them into the live game (`--install <variant>` installs that
+variant's swf instead of the stock one). `./package.sh` then builds the FOMOD, whose "Dialogue menu
+style" page is generated from whatever variants are present.
+
+A variant is the overhaul's own DBVO-patched swf with our deltas three-way-merged onto its
+decompiled script (`./variants/port.sh`), and the base swfs it merges onto are third-party UI
+assets, so they are **git-ignored** — a fresh clone builds the stock swf and skips the variants
+until you drop each `base.swf` in. Both, plus how to add a fifth overhaul, are in
+[`variants/README.md`](variants/README.md).
 
 Toolchain:
 
@@ -225,6 +249,15 @@ Toolchain:
 Built on **Dragonborn Voice Over** by **MathiewMay**, with permission received from the author. The
 bundled `dialoguemenu.swf` is MathiewMay's asset recompiled with these tweaks. **All credit for DBVO
 goes to MathiewMay.**
+
+The four UI-overhaul menu styles are built on the DBVO-patched `dialoguemenu.swf` published for each
+of those UI mods on the DBVO page's OLD FILES tab, and each carries that UI mod's own dialogue-menu
+design — [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188),
+[Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837),
+[NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881). Only the `DialogueMenu`
+class's script is changed; every layout, font and asset in them is its author's work, and **credit
+for each menu's look goes to that mod's author.** Redistributing those swfs in a release needs each
+of those authors' permission — DBVO's grant covers DBVO's own swf, not theirs.
 
 ## Testing
 
@@ -254,6 +287,21 @@ sound, on the audio thread, and XAudio2 accepted the gain.
 The last two steps are the assertion: the reply must **not** have fired once the swf's word-count
 backstop would have expired, and must then fire on its own at line-end + the configured gap. The
 control has exactly one file fewer and fails the first of those.
+
+**Each menu style is verified the same way** — `replyonlineend.steps` is layout-independent (it
+picks the topic with the keyboard and gates on which topic it landed on, because every overhaul
+puts the list somewhere else), so a variant needs only its own stage:
+
+```bash
+./stage-test-profile.sh --variant nordicui
+SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nordicui \
+    mods/DBVODialogueTweaks/replyonlineend.steps --headless --no-shots     # must PASS
+```
+
+All five passed on game 1.7.104 (2026-09-08): **stock**, **untarnished**, **dddm-white**,
+**dddm-warm**, **nordicui** — each against its own swf (distinct md5 per run), each reaching both
+assertion gates. `variants/menu.steps` is the companion pass that just photographs a variant's open
+dialogue menu, which is how a new overhaul's layout is eyeballed before trusting it.
 
 Because DBVO 1.x's Papyrus cannot run on 1.7.104 (see [Compatibility](#compatibility)), the script
 supplies the two stimuli that Papyrus would have: the console runs the same

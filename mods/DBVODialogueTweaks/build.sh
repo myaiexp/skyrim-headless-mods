@@ -6,9 +6,12 @@
 #   build/Scripts/DBVOTweaks.pex                (wine PapyrusCompiler — global-native bridge)
 #   build/DBVODialogueTweaks.esp                (Mutagen/EspGen — quest + player alias)
 #   plugin/build/DBVODialogueTweaks.dll         (clang-cl + xwin — SKSE plugin, tools/skse toolchain)
+# …plus one swf per UI-overhaul compatibility variant (variants/README.md):
+#   build/variants/<id>/Interface/dialoguemenu.swf
 #
-#   ./build.sh            build all five (Data artifacts into build/, DLL into plugin/build/)
-#   ./build.sh --install  also copy them into the live game (Data/ + SKSE/Plugins/) + activate the esp
+#   ./build.sh                    build all five + every variant whose base swf is present
+#   ./build.sh --install          also copy them into the live game (Data/ + SKSE/Plugins/) + activate the esp
+#   ./build.sh --install <id>     …installing that variant's swf instead of the stock-DBVO one
 #
 # Only src/__Packages/DialogueMenu.as is authored on the swf side; ffdec leaves every other
 # class untouched. The MCM menu is authored in DBVODialogueTweaksMCM.psc (no config.json).
@@ -29,15 +32,11 @@ MCM_SCRIPT="DBVODialogueTweaksMCM"
 FULLNAME="DBVO Dialogue Tweaks"
 PLAYER_ALIAS="SKI_PlayerLoadGameAlias"
 
-# ffdec lives at a stable home path (22 MB Java tool — externalized like ~/.dotnet / wine prefix,
-# not git-vendored). Override with FFDEC=... if installed elsewhere.
-FFDEC="${FFDEC:-$HOME/.local/share/ffdec/ffdec.jar}"
-if [[ ! -f "$FFDEC" ]]; then
-	echo "ERROR: ffdec.jar not found at $FFDEC" >&2
-	echo "  Install JPEXS Free Flash Decompiler and either place it there or set FFDEC=/path/to/ffdec.jar" >&2
-	echo "  (AUR: jpexs-decompiler, or extract the release zip)." >&2
-	exit 1
-fi
+# FFDEC resolution, the compatibility-variant list, and the built-swf checks all live in
+# variants/lib.sh (shared with package.sh and variants/port.sh).
+# shellcheck source=variants/lib.sh
+source "$HERE/variants/lib.sh"
+require_ffdec
 
 STOCK="$HERE/stock/dialoguemenu.swf"
 STOCK_MD5="b1f70c5806ad94359bb0d780a9069d34"
@@ -54,7 +53,26 @@ DLL="$PLUGIN_BUILD/DBVODialogueTweaks.dll"
 
 mkdir -p "$BUILD/Interface" "$BUILD/Scripts"
 
-# --- [1/5] swf (ffdec) ---
+# Import a DialogueMenu.as tree into a base swf, then PROVE the import landed: ffdec's
+# -importScript exits 0 whether or not it actually replaced the class, and a silently unpatched
+# swf behaves exactly like the mod not being installed — the one build failure a user would
+# report as "your mod does nothing".
+build_swf() { # <base swf> <src dir> <out swf> <label>
+	local base="$1" src="$2" out="$3" label="$4" work as rc=0
+	mkdir -p "$(dirname "$out")"
+	cp "$base" "$out"
+	# </dev/null is required: ffdec with no stdin/args opens its GUI; this keeps it headless.
+	java -jar "$FFDEC" -importScript "$out" "$out" "$src" </dev/null
+	work="$(mktemp -d)"
+	as="$(swf_dialoguemenu_as "$out" "$work/check")" || rc=1
+	(( rc )) || check_markers "$as" "$label swf" || rc=1
+	(( rc )) || check_offbranch "$as" "$label swf" || rc=1
+	rm -rf "$work"
+	(( rc == 0 )) || return 1
+	echo "   $label: $(md5sum "$out" | cut -d' ' -f1)   (base $(md5sum "$base" | cut -d' ' -f1))"
+}
+
+# --- [1/5] swf (ffdec) — the stock-DBVO build, plus one per compatibility variant ---
 # Guard against vendoring the wrong baseline (e.g. the +900 experiment).
 got="$(md5sum "$STOCK" | cut -d' ' -f1)"
 if [[ "$got" != "$STOCK_MD5" ]]; then
@@ -62,10 +80,20 @@ if [[ "$got" != "$STOCK_MD5" ]]; then
 	exit 1
 fi
 echo ">> [1/5] swf: import src/ into stock/ -> build/Interface/dialoguemenu.swf"
-cp "$STOCK" "$OUT"
-# </dev/null is required: ffdec with no stdin/args opens its GUI; this keeps it headless.
-java -jar "$FFDEC" -importScript "$OUT" "$OUT" "$SRC" </dev/null
-echo "   md5: $(md5sum "$OUT" | cut -d' ' -f1)  (stock was $STOCK_MD5)"
+build_swf "$STOCK" "$SRC" "$OUT" "stock"
+
+# Variants whose base swf is absent are SKIPPED, not fatal: the bases are third-party UI-mod
+# assets and are git-ignored, so a fresh clone legitimately has none. package.sh is the strict
+# one — a release must carry every declared variant.
+for id in $(variant_ids); do
+	if [[ -f "$VARIANTS_DIR/$id/base.swf" ]]; then
+		# Present but wrong (an md5 that isn't what the port was made against) IS fatal.
+		base="$(variant_base "$id")"
+		build_swf "$base" "$VARIANTS_DIR/$id/src" "$BUILD/variants/$id/Interface/dialoguemenu.swf" "$id"
+	else
+		echo "   $id: SKIPPED — no variants/$id/base.swf (see variants/README.md)"
+	fi
+done
 
 # --- [2/5] + [3/5] Papyrus scripts (wine PapyrusCompiler, against vendored SkyUI sources) ---
 echo ">> [2/5] compile $MCM_SCRIPT.psc (SkyUI MCM) -> build/Scripts/"
@@ -91,19 +119,29 @@ file "$DLL"
 
 echo ">> artifacts:"
 ls -la "$BUILD/$ESP" "$OUT" "$BUILD/Scripts/$MCM_SCRIPT.pex" "$BUILD/Scripts/$NATIVE_SCRIPT.pex" "$DLL"
+[[ -d "$BUILD/variants" ]] && ls -la "$BUILD"/variants/*/Interface/dialoguemenu.swf
 
 if [[ "${1:-}" == "--install" ]]; then
+	# `--install <variant>` swaps ONLY the swf: the esp, both .pex and the DLL are identical
+	# across variants (every base keeps Bethesda's _root.DialogueMenu_mc path, which is all the
+	# DLL and the MCM address).
+	SWF_IN="$OUT"
+	if [[ -n "${2:-}" ]]; then
+		SWF_IN="$BUILD/variants/$2/Interface/dialoguemenu.swf"
+		[[ -f "$SWF_IN" ]] || { echo "ERROR: no built swf for variant '$2' ($SWF_IN)" >&2; exit 1; }
+		echo ">> installing the '$2' variant swf ($(variant_get "$2" name))"
+	fi
 	echo ">> installing into live game (Data: $GAME_DATA)"
 	mkdir -p "$GAME_DATA/Interface" "$GAME_DATA/Scripts" "$GAME_DATA/SKSE/Plugins"
 	# List each copied file + its pre-install md5 so a later manual revert is possible.
 	declare -A DEST=(
-		["$OUT"]="$GAME_DATA/Interface/dialoguemenu.swf"
+		["$SWF_IN"]="$GAME_DATA/Interface/dialoguemenu.swf"
 		["$BUILD/Scripts/$MCM_SCRIPT.pex"]="$GAME_DATA/Scripts/$MCM_SCRIPT.pex"
 		["$BUILD/Scripts/$NATIVE_SCRIPT.pex"]="$GAME_DATA/Scripts/$NATIVE_SCRIPT.pex"
 		["$BUILD/$ESP"]="$GAME_DATA/$ESP"
 		["$DLL"]="$GAME_DATA/SKSE/Plugins/DBVODialogueTweaks.dll"
 	)
-	for src in "$OUT" "$BUILD/Scripts/$MCM_SCRIPT.pex" "$BUILD/Scripts/$NATIVE_SCRIPT.pex" "$BUILD/$ESP" "$DLL"; do
+	for src in "$SWF_IN" "$BUILD/Scripts/$MCM_SCRIPT.pex" "$BUILD/Scripts/$NATIVE_SCRIPT.pex" "$BUILD/$ESP" "$DLL"; do
 		dst="${DEST[$src]}"
 		echo "   live before: $(md5sum "$dst" 2>/dev/null | cut -d' ' -f1 || echo missing)  $dst"
 		cp -v "$src" "$dst"
