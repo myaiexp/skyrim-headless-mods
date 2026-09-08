@@ -252,12 +252,15 @@ goes to MathiewMay.**
 
 The four UI-overhaul menu styles are built on the DBVO-patched `dialoguemenu.swf` published for each
 of those UI mods on the DBVO page's OLD FILES tab, and each carries that UI mod's own dialogue-menu
-design — [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188),
-[Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837),
-[NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881). Only the `DialogueMenu`
-class's script is changed; every layout, font and asset in them is its author's work, and **credit
-for each menu's look goes to that mod's author.** Redistributing those swfs in a release needs each
-of those authors' permission — DBVO's grant covers DBVO's own swf, not theirs.
+design. Only the `DialogueMenu` class's script is changed; every layout, font and asset in them is
+its author's work, used under that mod's own Nexus permissions (checked 2026-09-09 — all three
+permit it), and **credit for each menu's look goes to its author**:
+
+| Menu style | Mod | Author |
+| --- | --- | --- |
+| Untarnished UI | [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188) | **Vor** |
+| Dear Diary Dark Mode (white / warm) | [Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837) | **uranreactor** |
+| NORDIC UI | [NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881) | **outobugi** |
 
 ## Testing
 

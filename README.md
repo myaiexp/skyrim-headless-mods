@@ -106,9 +106,11 @@ keep their own separate terms and credits:
   reuse-with-credit terms).
 - **DBVO `dialoguemenu.swf` / `.as`** — by **MathiewMay** (Dragonborn Voice Over), recompiled and
   redistributed with the author's permission. See `mods/DBVODialogueTweaks/README.md`.
-  The UI overhauls' own DBVO-patched menus, which that mod's compatibility variants are built on,
-  are **not** redistributed here — `mods/*/variants/*/base.swf` is git-ignored and populated
-  locally (`mods/DBVODialogueTweaks/variants/README.md`); only our ported script is committed.
+- **UI-overhaul `dialoguemenu.swf`** — the DBVO-patched menus for **Untarnished UI** (Vor),
+  **Dear Diary Dark Mode** (uranreactor) and **NORDIC UI** (outobugi), which that mod's
+  compatibility variants are built on. Committed under each mod's own permissions (checked
+  2026-09-09); the menu designs are their authors' work. See
+  `mods/DBVODialogueTweaks/variants/README.md`.
 
 All other Bethesda/SKSE files the toolchain needs (vanilla stubs, `.flg`, the CK Papyrus compiler)
 are **not** redistributed here: they are git-ignored and populated locally from your own install.

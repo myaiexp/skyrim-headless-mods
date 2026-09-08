@@ -159,9 +159,10 @@ for id in "${UI_IDS[@]}"; do
 	[[ "$id" == stock ]] && continue
 	{
 		printf '            <plugin name="%s">\n' "$(variant_get "$id" name | xml_escape)"
-		printf '              <description>%s\n\nPick this instead of the stock menu when you run %s: it is that mod'"'"'s own DBVO-patched dialogue menu with this mod'"'"'s changes ported onto it, so your dialogue keeps its layout.</description>\n' \
+		printf '              <description>%s\n\nPick this instead of the stock menu when you run %s: it is that mod'"'"'s own DBVO-patched dialogue menu with this mod'"'"'s changes ported onto it, so your dialogue keeps its layout. The menu itself is %s'"'"'s work, used under that mod'"'"'s permissions.</description>\n' \
 			"$(variant_get "$id" desc | xml_escape)" \
-			"$(variant_get "$id" ui_mod | xml_escape)"
+			"$(variant_get "$id" ui_mod | xml_escape)" \
+			"$(variant_get "$id" ui_author | xml_escape)"
 		printf '              <files>\n                <folder source="ui\\%s" destination="" priority="0"/>\n              </files>\n' "$id"
 		printf '              <typeDescriptor>\n                <type name="Optional"/>\n              </typeDescriptor>\n'
 		printf '            </plugin>\n'

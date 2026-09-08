@@ -350,8 +350,8 @@ shipped, verified in-game. Deferred:
   DDDM warm, NordicUI, each verified in-engine. What remains is the *next* three overhauls (DIR,
   CDUI's four looks, Dragonborn Reskin), which is a `variants/<id>/` directory and one `port.sh`
   run each: `mods/DBVODialogueTweaks/variants/README.md`, priority in `docs/dbvo-landscape.md`.
-  **Releasing them needs each UI author's permission** — DBVO's grant covers DBVO's swf, not the
-  overhauls' assets.
+  Read the new mod's Nexus permissions first — the four shipped ones were cleared that way
+  (2026-09-09) and each menu's author is credited on the page, in the README and in the installer.
 - **Try DBVO 1.x end-to-end on 1.7.104.** Both refused dependencies now have 1.7.104 builds on
   Nexus (ConsoleUtilSSE NG 1.6.1, JContainers SE 4.3.2 since 2026-09-07). Nobody has tried the
   pair; it is two downloads in the managing repo and would let `replyonlineend.steps` drop its two
