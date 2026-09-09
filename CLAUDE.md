@@ -156,7 +156,7 @@ What this means for anything you touch here:
 - **Git: this repo HAS a remote** (`origin` → GitHub) — commit **and** `git push origin`, unlike the
   local-only `~/Downloads/skyrim-mods/`. The tree is **clean for open-source**: all third-party IP
   (Bethesda vanilla stubs + `.flg`, SKSE sources, CK compiler binary) is git-ignored and populated
-  locally (see each dir's `README.md`); license is **MIT** (`LICENSE`). Old commits still contain
+  locally (see each dir's `README.md`); license is **0BSD** (`LICENSE`). Old commits still contain
   those files — **accepted, no history rewrite** (they ship with the game / are widely mirrored).
   A few third-party files are intentionally **kept committed in the tree** because their licenses
   permit redistribution with credit: DBVO's `dialoguemenu.swf`/`.as` (DBVO permits modding +
