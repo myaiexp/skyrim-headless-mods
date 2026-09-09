@@ -358,6 +358,16 @@ shipped, verified in-game. Deferred:
   managing-repo job: drop both updated DLLs in, re-enable the pack, and the full profile gets its
   dialogue voice back. Note the full profile is still dead for other reasons (every other
   third-party SKSE DLL predates format 5).
+- **Verify 1.1.x in-engine on 1.6.1170, at the downgrade.** 1.1.1 is *built* to run there and the
+  Nexus page now says so (cumulative releases, the code chain is cited in the mod's `README.md`),
+  but the only in-engine evidence on 1.6.1170 is v1.0.0's — 1.1.x has been tested on 1.7.104 only,
+  and the page carries that caveat plus a "fall back to 1.0.0 and report" instruction. The standing
+  plan downgrades the game to 1.6.1170 for actual play, and the runtime is global, so that window is
+  the free chance to settle it: replay `voiceboost.steps` and `replyonlineend.steps` there and
+  upgrade the page from a code claim to a verified one. The harness gets *better* down there —
+  Start On Save 2.7.0.1 loads again (boot-into-save returns) and `CrashLogger.dll` stops being
+  stale. **SE 1.5.97 stays untested regardless**: that is the `RelocationID`'s other branch (id
+  36541) and no SE layout has ever been exercised — keep its "untested" wording either way.
 - **SkytestProbe nits** (seen 2026-09-08, untouched): `main.cpp`'s load line still says
   "SkytestProbe 0.2.0 loaded" while `SKSEPluginInfo` is 0.4.0; the root `README.md` probe row and
   `docs/plans/skytest-probe-design.md`'s command table predate `ui-*` and `papyrus-call`.

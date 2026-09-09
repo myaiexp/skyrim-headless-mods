@@ -69,6 +69,18 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   purely through the Address Library (the SE/AE addresses are resolved at runtime), so the same file
   runs on every SE and AE build (Steam or GOG) as long as Address Library is installed. The Papyrus
   scripts, the `.esp`, and the recompiled swf are all shared across SE and AE.
+- **The releases are cumulative — the 1.7.x rebuild did NOT fork off the older builds.** Easy to
+  misread the changelog the other way (the Nexus page used to invite exactly that), so, verified in
+  the vendored NG v7.1.0 rather than assumed: the runtime test is a *floor*, `_version[1] >= 6` →
+  `Runtime::AE` (`REL/Module.h:344-348`), so 1.6.1170 (minor 6) and 1.7.104 (minor 7) land in the
+  same bucket and take the same `RelocationID(36541, 37542)` AE id; the versionlib filename is built
+  from the running exe's own version (`REL/IDDB.h:275-279`); and the load passes `std::nullopt` as
+  the expected format — *"real loads … dispatch on whatever format byte the file actually contains"*
+  (`REL/IDDB.h:283-284`) — with formats **1, 2 and 5** all handled at `src/REL/IDDB.cpp:193-212`.
+  alandtse's fix turned an `== 6` into `>= 6`; it **added** 1.7.x and could not have removed 1.6.x.
+  So 1.1.x is built to run on 1.6.1170 and SE 1.5.97 — but that is a code claim, not an in-engine
+  one: **only 1.7.104 has ever been tested for 1.1.x** (1.6.1170 was last tested at v1.0.0), and the
+  SE-id branch has never been exercised at all. See `docs/ideas.md` for the pending 1.6.1170 replay.
 - **Skyrim 1.7.104, yes — from v1.0.1, and the reply timing is verified there.** Tested in-engine
   on game 1.7.104 with SKSE 2.3.1 and Address Library v13 (2026-09-03). The plugin loads, installs
   its speak-sound hook, registers its Papyrus native and both event sinks — and the feature this
