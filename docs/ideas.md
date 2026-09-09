@@ -358,6 +358,19 @@ shipped, verified in-game. Deferred:
   managing-repo job: drop both updated DLLs in, re-enable the pack, and the full profile gets its
   dialogue voice back. Note the full profile is still dead for other reasons (every other
   third-party SKSE DLL predates format 5).
+- **Port the eased mouth-close from SkytestProbe into DBVODialogueTweaks.** The fix is **built and
+  verified in-engine** (Mase, full-profile Lydia save: the NPC mouth eases shut over 150 ms on skip,
+  no snap, no freeze-open) but it lives in the *test harness*, `mods/SkytestProbe/src/facegen_ramp.
+  {h,cpp}`. The shipped mod's `CutNpcReply` still does the `Reset(0.0,…)` close, which resets
+  expression/modifier/phoneme (0x20/0x60/0x80) and **never touches `unk140`**, the keyframe the
+  visible mouth actually rides. So the mod as released still snaps. Move the ease into
+  `DBVODialogueTweaks::CutNpcReply`: ease `unk140` + `unk0C0` + `unk180` open→rest over 150 ms via
+  the same `BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) vtable hook, with DBVO carrying its own
+  copy of the hook plus the rolling pre-snap capture. **The trap:** the vtable slot is process-wide,
+  so with SkytestProbe also loaded both detour 0x2C. Chained pass-through is fine, but **do not
+  double-scale**. Mechanism and the dead ends: `docs/plans/dbvo-mouth-snap-handoff.md`; the
+  corrected seam verdict is finding #21 in `skytest/docs/headless-findings.md`. Known leftover once
+  ported: a one-frame tongue flick at the skip instant, hypothesis and untried fixes in the handoff.
 - **Verify 1.1.x in-engine on 1.6.1170, at the downgrade.** 1.1.1 is *built* to run there and the
   Nexus page now says so (cumulative releases, the code chain is cited in the mod's `README.md`),
   but the only in-engine evidence on 1.6.1170 is v1.0.0's — 1.1.x has been tested on 1.7.104 only,

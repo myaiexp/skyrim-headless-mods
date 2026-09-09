@@ -432,10 +432,26 @@ frame** — the pump overwrites it afterward (probe trace: our `maxAfter` decays
 audio plays; the snap is the pump _releasing_ the keyframe (0.5→0 in one frame) when the cut audio
 finally stops (~200 ms after `FadeOutAndRelease`). `Reset(0.0)` is a red herring — it doesn't touch
 `transitionTarget`. The only seam that wins is a **per-frame hook at the morph-APPLY point** (scale the
-keyframe after the pump writes, before the mesh reads). **Open:** a vtable hook on
-`BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) overrides the keyframe cleanly but still snaps —
-that's a _transform_ pass, not the morph apply. Finding the real apply/write seam (Ghidra) is the
-open work — see `docs/plans/dbvo-mouth-snap-handoff.md`.
+keyframe after the pump writes, before the mesh reads).
+
+> **SUPERSEDED (2026-09-09) — do NOT reopen the Ghidra seam hunt.** This finding used to end
+> "`BSFaceGenNiNode::UpdateDownwardPass` (idx 0x2C) overrides the keyframe cleanly but still snaps,
+> that's a _transform_ pass, not the morph apply; finding the real apply/write seam (Ghidra) is the
+> open work." **That was wrong.** 0x2C **is** a usable seam: scaling the target keyframe pre-original
+> there does render, and zeroing `unk140` visibly closes the mouth. The eased close is built and
+> **verified in-engine by Mase** on the full-profile Lydia save (mouth eases shut over 150 ms, no
+> snap, no freeze-open). Working code: `mods/SkytestProbe/src/facegen_ramp.{h,cpp}`.
+>
+> Three things the working version needs, none of them obvious:
+>
+> 1. Ease toward a **captured pre-snap REST**, not the live value (the engine has already snapped by
+>    the time you look).
+> 2. Ease **all three apply-read channels in lockstep** (`unk0C0` + `unk140` + `unk180`, the
+>    `kMouthChans` set). Easing only `unk140` flashes the tongue to rest while the lips glide.
+> 3. `transitionTarget` is **dead for the mouth**. The whole v1–v3 avenue around it was a dead end.
+>
+> Full detail in `docs/plans/dbvo-mouth-snap-handoff.md`. What is genuinely still open is the
+> **product port** into `DBVODialogueTweaks`, tracked in `docs/ideas.md`, not the seam.
 
 ## 22. CONFIRMED: per-step screenshots work under `--headless` (real composited frames)
 

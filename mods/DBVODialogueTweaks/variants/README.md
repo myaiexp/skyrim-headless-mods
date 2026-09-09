@@ -82,3 +82,20 @@ writes the conflicted file next to the target as `DialogueMenu.as.conflict` and 
 
 The priority order for further overhauls (Dialogue Interface ReShaped, Convenient Dialogue UI's
 four looks, Dragonborn Reskin) is in `docs/dbvo-landscape.md`.
+
+## Do not strip these from a ported menu
+
+Whatever the overhaul's own script looks like, a ported `dialoguemenu.swf` must keep all of this.
+Each one is load-bearing and none of it is obvious from reading the diff:
+
+- **`bAllowProgress`, `SkipText`, `ALLOW_PROGRESS_DELAY`, and the `startTopicClickedTimer` `"off"`
+  branch.** The `"off"` branch is the voice-pack-disabled path: with no DBVO voice for a line it must
+  still fire `TopicClicked` directly, or dialogue stops advancing for anyone who has a voice pack
+  switched off. A port that "cleans up" these symbols passes the reply-on-line-end test and breaks
+  that path silently, because the test always runs *with* a voice pack.
+- **The double-fire guard.** `topicClicked()` guards its state via `timerBool`, and calling it twice
+  must stay impossible: `trySkipPlayerLine` clears `this.timer` / `timerBool` before calling, so the
+  already-scheduled callback cannot also fire.
+
+Originally recorded in `docs/plans/dbvo-dialogue-tweaks-plan.md`, which nothing reads. It lives here
+because this is the file open when someone is porting a fifth menu.
