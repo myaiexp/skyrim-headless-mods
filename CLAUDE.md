@@ -67,9 +67,10 @@ What this means for anything you touch here:
   not the 33 (a *rejected* plugin doesn't block the boot, it just goes missing). Per-mod
   availability, the traps, and the load order itself:
   `~/Downloads/skyrim-mods/00-docs/1.7.104-status.md`. **Standing plan (2026-09-08): the game gets
-  downgraded to 1.6.1170 for actual play, and 1.7.104 is kept for mod testing** — the runtime is
-  global, so those two cannot be live at once; check `skytest status`'s `runtime` line before
-  trusting any result here.
+  downgraded to 1.6.1170 for actual play, and 1.7.104 is kept for mod testing.** **The downgrade was
+  done on 2026-09-16, so the live runtime is 1.6.1170 now.** The runtime is global, so the two can't
+  be live at once, and a 1.7.104 test first needs the swap back that the status doc describes. Check
+  `skytest status`'s `runtime` line before trusting any result here.
 - **"1.7.99" on a file is not a reason to skip it.** 1.7.99 (2026-08-20) and 1.7.104 (2026-08-27)
   both ship Address Library **format 5**, and v13 covers both — the break was 1.6.1170 → 1.7.x, and
   1.7.99 → 1.7.104 was *not* a second one. An address-library-independent CommonLibSSE-NG plugin
