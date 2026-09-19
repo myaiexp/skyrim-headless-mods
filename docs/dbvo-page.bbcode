@@ -41,16 +41,22 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 
 [b]SE 1.5.97 and GOG[/b] use the same file but have never been run. If something misbehaves there, please report it with the relevant line from [font=Courier New]SKSE/skse64.log[/font] or the plugin's own [font=Courier New]DBVODialogueTweaks.log[/font].
 [heading]Compatibility[/heading]
+[b]Doesn't work with[/b]
 [list]
-[*][b]DBVO 2: no.[/b] It replaced the whole swf + Papyrus stack with a single DLL, so the patched menu here never gets the call that arms the reply and [b]clicking a topic softlocks the conversation[/b]: the topic list collapses and the NPC never answers. Tab gets you out, so you lose the conversation and not your save, and DBVO 2 logs a "Conflict" warning naming the patched swf. You would gain nothing anyway: it times the reply off real audio length natively, [b]npc_response_delay[/b] is the gap, [b]dialogue_volume[/b] the volume, and 2.0.1.6 added manual skip.[/*]
-[*][b]Dragonborn ReVoiced (DBReV): no.[/b] [url=https://www.nexusmods.com/skyrimspecialedition/mods/184221]DBReV[/url] is an independent successor that does play DBVO 1.0 voice packs, and it says plainly that patches targeting the legacy DBVO mod must be removed. This mod is one of those. If you are moving to DBReV or to DBVO 2, uninstall this one first. Both time the reply natively and neither loads a patched dialoguemenu.swf.[/*]
-[*][b]Skyrim VR: no.[/b] It uses a different dialogue UI and would need a separate build, which is not provided.[/*]
-[*][b]On Skyrim 1.7.104, update DBVO's two dependencies or nothing will speak, and that will look like this mod's fault.[/b] SKSE 2.3.1 refuses the old builds of both SKSE plugins DBVO 1.x needs, before they even load, and says so in its own pop-up: [font=Courier New]ConsoleUtilSSE.dll: must be recompiled for new address library[/font] and [font=Courier New]JContainers64.dll: disabled, incompatible with current version of the game[/font]. ConsoleUtil speaks your line and JContainers reads DBVO's settings, so with both refused DBVO produces no player voice at all, and this mod has nothing to time.
-
-[b]The fix is two downloads.[/b] With [b]ConsoleUtilSSE NG 1.6.1[/b] and [b]JContainers SE 4.3.2[/b], DBVO 1.1.1 works on Skyrim 1.7.104. Two things to watch. Install JContainers' whole [font=Courier New]SKSE/Plugins/JCData[/font] folder, or the game dies on startup while the SKSE log still claims the plugin loaded fine. And if SkyUI greets you with "SKYUI ERROR CODE 4, your Papyrus INI settings are invalid", that is SkyUI complaining about your own [font=Courier New]Skyrim.ini[/font] and is unrelated to this mod, but dismiss the box before you talk to anyone, because it eats the activation key.[/*]
-[*][b]Using a UI overhaul that moves the dialogue menu? Pick your menu in the installer.[/b] This mod ships the whole [font=Courier New]dialoguemenu.swf[/font], so where an overhaul has its own DBVO-patched menu, one of the two has to win, and installing this one used to drag your topic list back to DBVO's default position. From 1.1.1 the installer asks: [b]Stock DBVO[/b] (the default), [b]Untarnished UI[/b], [b]Dear Diary Dark Mode[/b] (white or warm), [b]NORDIC UI[/b] or, from 1.1.2, [b]Vel'dun UI[/b] (default or ESO Style dialogue, matching what you picked in Vel'dun's installer). Each is that overhaul's own menu with this mod's changes built in, so you keep your layout and get the timing, skip and cuts. Pick the matching one and let it overwrite both DBVO's copy and the overhaul's. On an overhaul that is not listed, let the overhaul's menu win instead: the [b]volume slider still works[/b], since it lives in the plugin rather than the menu, and you lose only the skip key and the reply timing. Tell me which overhaul and I will add it.[/*]
-[*][b]Load order.[/b] It overwrites only DBVO's [font=Courier New]Interface/dialoguemenu.swf[/font], so let it win that conflict and install it after DBVO. It never touches DBVO's own scripts. The [font=Courier New].esp[/font] is ESL-flagged and takes no load-order slot.[/*]
+[*][b]DBVO 2 or [url=https://www.nexusmods.com/skyrimspecialedition/mods/184221]Dragonborn ReVoiced[/url].[/b] Both already time the reply to your line on their own, and with this mod installed, clicking a topic softlocks the conversation (Tab gets you out; your save is fine). Moving to either? Uninstall this first.[/*]
+[*][b]Skyrim VR.[/b] It uses a different dialogue menu.[/*]
 [/list]
+
+[b]UI overhauls[/b]
+This mod replaces the dialogue menu, so pick your UI in the installer: Untarnished UI, Dear Diary Dark Mode (white or warm), NORDIC UI, or Vel'dun UI (default or ESO Style). You keep your layout and get every feature. Let it overwrite both DBVO's menu and your overhaul's.
+
+Not listed? Let your overhaul's menu win. The volume slider still works; you lose the skip key and the reply timing. Tell me which overhaul you use and I'll add it.
+
+[b]Skyrim 1.7.104[/b]
+DBVO's own dependencies need their updated builds (see Requirements), or DBVO never speaks and this mod has nothing to time. If yours are old, SKSE shows a pop-up naming both. Install JContainers' whole [font=Courier New]SKSE/Plugins/JCData[/font] folder, or the game crashes on startup.
+
+[b]Load order[/b]
+Install after DBVO and let it overwrite [font=Courier New]Interface/dialoguemenu.swf[/font]. The [font=Courier New].esp[/font] is ESL-flagged and takes no slot.
 [heading]Configuration[/heading]
 [list]
 [*][b]Gap after your line ends (0–1000 ms)[/b]: pause between your line ending and the NPC's reply. 0 = instant.[/*]
