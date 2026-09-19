@@ -34,26 +34,28 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [b]The newest one, on every supported build.[/b] The uploads are cumulative: each release runs everywhere the one before it did and adds a game build or a feature. There is no "old Skyrim" version and "new Skyrim" version. One DLL covers SE and AE, Steam or GOG, because it resolves every engine address at runtime through the Address Library.
 
 [list]
-[*][b]1.1.2[/b], newest. Same plugin, scripts and esp as 1.1.1. Adds the Vel'dun UI menu styles. Tested on 1.6.1170.
-[*][b]1.1.1[/b]. Same builds as 1.1.0, and the same plugin, scripts and esp byte for byte. Adds the installer's menu-style choice for UI overhauls. Each style tested on 1.7.104.
-[*][b]1.1.0[/b]. Same builds as 1.0.1. Adds the volume boost, slider to 300%. Tested on 1.7.104.
-[*][b]1.0.1[/b]. Everything 1.0.0 ran on, [b]plus[/b] Skyrim 1.7.99 / 1.7.104. No feature change. Tested on 1.7.104.
-[*][b]1.0.0[/b]. Skyrim SE 1.5.97 through AE 1.6.1170 only. Does [b]not[/b] load on 1.7.99 / 1.7.104: those builds changed the Address Library database to a format it predates, so it stops with "Unsupported address library format: 5". Tested on AE/Steam 1.6.1170.
+[*][b]1.1.2[/b], newest. Same plugin, scripts and esp as 1.1.1. Adds the Vel'dun UI menu styles.
+[*][b]1.1.1[/b]. Same builds as 1.1.0, and the same plugin, scripts and esp byte for byte. Adds the installer's menu-style choice for UI overhauls.
+[*][b]1.1.0[/b]. Same builds as 1.0.1. Adds the volume boost, slider to 300%.
+[*][b]1.0.1[/b]. Everything 1.0.0 ran on, [b]plus[/b] Skyrim 1.7.99 / 1.7.104. No feature change.
+[*][b]1.0.0[/b]. Skyrim SE 1.5.97 through AE 1.6.1170 only. Does [b]not[/b] load on 1.7.99 / 1.7.104: those builds changed the Address Library database to a format it predates, so it stops with "Unsupported address library format: 5".
 [/list]
 
 [b]On Skyrim 1.7.99 or 1.7.104 you need 1.0.1 or newer.[/b] If you updated Skyrim and your dialogue timing went back to feeling wrong, that is why.
 
-[b]Staying on 1.6.1170? Take the newest, with one honest caveat.[/b] Nothing after 1.0.0 dropped your build, and the archive is identical on every build. The reply timing has now been tested on 1.6.1170 too: 1.1.2's Vel'dun menus passed the same in-engine check there as every menu did on 1.7.104. The volume slider has not. It has its own hook, and I have only watched it work on 1.7.104, so for the slider on 1.6.1170 I am telling you how it is built, not what I have seen it do. If it misbehaves, drop back to 1.0.0, which is still on the FILES tab and costs you only the boost and the menu styles, then please report it with the relevant line from [font="Courier New"]SKSE/skse64.log[/font] or the plugin's own [font="Courier New"]DBVODialogueTweaks.log[/font]. I would much rather fix it than have people sit on 1.0.0 assuming the newer files are not for them. The same goes for [b]SE 1.5.97[/b] and [b]GOG[/b], with even less mileage behind it: same file, built to work, never tested.
+[b]On 1.6.1170, take the newest too.[/b] The same file runs there.
+
+[b]SE 1.5.97 and GOG[/b] use the same file but have never been run. If something misbehaves there, please report it with the relevant line from [font="Courier New"]SKSE/skse64.log[/font] or the plugin's own [font="Courier New"]DBVODialogueTweaks.log[/font].
 
 [heading]Compatibility[/heading]
 
 [list]
-[*][b]DBVO 2: no.[/b] It replaced the whole swf + Papyrus stack with a single DLL, so the patched menu here never gets the call that arms the reply and [b]clicking a topic softlocks the conversation[/b]: the topic list collapses and the NPC never answers. Tested, not guessed: with DBVO 2 alone the NPC replied in about five seconds, and with this mod installed the same topic was still stuck half a minute later. Tab gets you out, so you lose the conversation and not your save, and DBVO 2 logs a "Conflict" warning naming the patched swf. You would gain nothing anyway: it times the reply off real audio length natively, [b]npc_response_delay[/b] is the gap, [b]dialogue_volume[/b] the volume, and 2.0.1.6 added manual skip.
+[*][b]DBVO 2: no.[/b] It replaced the whole swf + Papyrus stack with a single DLL, so the patched menu here never gets the call that arms the reply and [b]clicking a topic softlocks the conversation[/b]: the topic list collapses and the NPC never answers. Tab gets you out, so you lose the conversation and not your save, and DBVO 2 logs a "Conflict" warning naming the patched swf. You would gain nothing anyway: it times the reply off real audio length natively, [b]npc_response_delay[/b] is the gap, [b]dialogue_volume[/b] the volume, and 2.0.1.6 added manual skip.
 [*][b]Dragonborn ReVoiced (DBReV): no.[/b] [url=https://www.nexusmods.com/skyrimspecialedition/mods/184221]DBReV[/url] is an independent successor that does play DBVO 1.0 voice packs, and it says plainly that patches targeting the legacy DBVO mod must be removed. This mod is one of those. If you are moving to DBReV or to DBVO 2, uninstall this one first. Both time the reply natively and neither loads a patched dialoguemenu.swf.
 [*][b]Skyrim VR: no.[/b] It uses a different dialogue UI and would need a separate build, which is not provided.
 [*][b]On Skyrim 1.7.104, update DBVO's two dependencies or nothing will speak, and that will look like this mod's fault.[/b] SKSE 2.3.1 refuses the old builds of both SKSE plugins DBVO 1.x needs, before they even load, and says so in its own pop-up: [font="Courier New"]ConsoleUtilSSE.dll: must be recompiled for new address library[/font] and [font="Courier New"]JContainers64.dll: disabled, incompatible with current version of the game[/font]. ConsoleUtil speaks your line and JContainers reads DBVO's settings, so with both refused DBVO produces no player voice at all, and this mod has nothing to time.
 
-[b]The fix is two downloads, and I have tested it.[/b] With [b]ConsoleUtilSSE NG 1.6.1[/b] and [b]JContainers SE 4.3.2[/b], DBVO 1.1.1 works on Skyrim 1.7.104, verified in-engine on 2026-09-09. Two things to watch. Install JContainers' whole [font="Courier New"]SKSE/Plugins/JCData[/font] folder, or the game dies on startup while the SKSE log still claims the plugin loaded fine. And if SkyUI greets you with "SKYUI ERROR CODE 4, your Papyrus INI settings are invalid", that is SkyUI complaining about your own [font="Courier New"]Skyrim.ini[/font] and is unrelated to this mod, but dismiss the box before you talk to anyone, because it eats the activation key.
+[b]The fix is two downloads.[/b] With [b]ConsoleUtilSSE NG 1.6.1[/b] and [b]JContainers SE 4.3.2[/b], DBVO 1.1.1 works on Skyrim 1.7.104. Two things to watch. Install JContainers' whole [font="Courier New"]SKSE/Plugins/JCData[/font] folder, or the game dies on startup while the SKSE log still claims the plugin loaded fine. And if SkyUI greets you with "SKYUI ERROR CODE 4, your Papyrus INI settings are invalid", that is SkyUI complaining about your own [font="Courier New"]Skyrim.ini[/font] and is unrelated to this mod, but dismiss the box before you talk to anyone, because it eats the activation key.
 [*][b]Using a UI overhaul that moves the dialogue menu? Pick your menu in the installer.[/b] This mod ships the whole [font="Courier New"]dialoguemenu.swf[/font], so where an overhaul has its own DBVO-patched menu, one of the two has to win, and installing this one used to drag your topic list back to DBVO's default position. From 1.1.1 the installer asks: [b]Stock DBVO[/b] (the default), [b]Untarnished UI[/b], [b]Dear Diary Dark Mode[/b] (white or warm), [b]NORDIC UI[/b] or, from 1.1.2, [b]Vel'dun UI[/b] (default or ESO Style dialogue, matching what you picked in Vel'dun's installer). Each is that overhaul's own menu with this mod's changes built in, so you keep your layout and get the timing, skip and cuts. Pick the matching one and let it overwrite both DBVO's copy and the overhaul's. On an overhaul that is not listed, let the overhaul's menu win instead: the [b]volume slider still works[/b], since it lives in the plugin rather than the menu, and you lose only the skip key and the reply timing. Tell me which overhaul and I will add it.
 [*][b]Load order.[/b] It overwrites only DBVO's [font="Courier New"]Interface/dialoguemenu.swf[/font], so let it win that conflict and install it after DBVO. It never touches DBVO's own scripts. The [font="Courier New"].esp[/font] is ESL-flagged and takes no load-order slot.
 [/list]
@@ -77,7 +79,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [list]
 [*][b]Menu styles for UI overhauls.[/b] The installer now asks which dialogue menu to install: stock DBVO, Untarnished UI, Dear Diary Dark Mode (white or warm), or NORDIC UI. Each is that overhaul's own DBVO-patched menu with this mod's changes built in, so your dialogue keeps its layout instead of jumping back to DBVO's default. The "my dialogue options moved" report, fixed.
 [*]No change to the plugin, the scripts or the [font="Courier New"].esp[/font]: they are shared by every menu style. If you don't use one of those UI mods, keep "Stock DBVO menu" and nothing about the mod changes.
-[*][b]Not a change to this mod, but worth knowing:[/b] DBVO 1.1.1 itself works on Skyrim 1.7.104 again, with ConsoleUtilSSE NG 1.6.1 and JContainers SE 4.3.2. I tested the whole chain end to end there and nothing here had to change for it. See [b]Compatibility[/b].
+[*][b]Not a change to this mod, but worth knowing:[/b] DBVO 1.1.1 itself works on Skyrim 1.7.104 again, with ConsoleUtilSSE NG 1.6.1 and JContainers SE 4.3.2. Nothing here had to change for it. See [b]Compatibility[/b].
 [/list]
 
 [b]1.1.0[/b]
@@ -90,7 +92,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [list]
 [*]Rebuilt so the plugin loads on Skyrim [b]1.7.99 / 1.7.104[/b], which changed the Address Library database to a format 1.0.0 could not read. It did not drop the older builds: see [b]Which version do I download?[/b]
 [*]The installer now warns, before it overwrites anything, that this mod is for [b]DBVO 1.x only[/b] and softlocks dialogue on DBVO 2.
-[*]No gameplay or feature changes. If you are on 1.6.1170 or older and 1.0.0 works for you, there is nothing in [i]this[/i] release you need. 1.1.0 and 1.1.1 are a different matter: they do add features, and they are built to run on your build too.
+[*]No gameplay or feature changes. If you are on 1.6.1170 or older and 1.0.0 works for you, there is nothing in [i]this[/i] release you need; the later ones add features and run on your build too.
 [/list]
 
 [b]1.0.0[/b]
@@ -98,7 +100,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [*]Initial release: reply on line-end, manual skip, clean cuts on skip and interrupt, player-voice volume, configurable gap, SkyUI MCM.
 [/list]
 
-[heading]How it works, and how I tested it[/heading]
+[heading]How it works[/heading]
 
 [spoiler]
 [b]The starting point.[/b] DBVO ships no SKSE plugin of its own: it's built entirely from Papyrus, ConsoleUtil, and an edited dialogue menu. Your voiced line is played through ConsoleUtil's [font="Courier New"]Player.SpeakSound "DBVO/<file>.fuz"[/font], which starts the sound and returns nothing: there's no "this line finished" callback to wait on. So the NPC's reply is gated by a plain timer inside [font="Courier New"]dialoguemenu.swf[/font], started when you pick a topic:
@@ -138,18 +140,6 @@ When the DLL is present and working, [font="Courier New"]dbvoOnPlayerLineEnded[/
 
 [b]Tidying up.[/b] When the dialogue menu closes, the watcher is disarmed, so a half-finished line can't leak its reply into your next conversation. And firing a reply into a closed menu is a no-op anyway: the call simply finds no menu and does nothing.
 
-[line]
-
-[b]How I tested it.[/b] Every claim on this page is checked in-engine on Skyrim 1.7.104 (SKSE 2.3.1, Address Library v13), each one A/B'd against the same save and the same setup with only this mod's DLL removed:
-
-[list]
-[*][b]Reply on line-end.[/b] With the DLL, the reply landed at the line's real end plus the configured gap: a 15 s gap put it 20.3 s after the line started, against 20.0 s predicted. Without the DLL, the reply fired at the swf backstop 4.1 s after the timer was armed, ignoring the gap entirely.
-[*][b]Volume boost.[/b] At 250% the plugin's log shows the line's XAudio2 gain read back at 2.5x the engine's own value. At 100% no such line is written. With the plugin removed the check fails outright.
-[*][b]Menu styles.[/b] Every one was verified the same way as the stock menu (the first four on 1.7.104, Vel'dun's two on 1.6.1170): the reply must still be waiting once DBVO's word-count guess would have fired, then land at the line's real end plus the configured gap.
-[*][b]The DBVO 1.x chain on 1.7.104.[/b] With ConsoleUtilSSE NG 1.6.1 and JContainers SE 4.3.2, the whole real chain was driven end to end: DBVO's own Papyrus took the mod event, resolved the voice pack through JContainers, spoke the line through ConsoleUtil, and the NPC replied on the line's end plus the gap.
-[/list]
-
-The one gap I will not paper over: apart from the reply timing, this is all on 1.7.104. Reply timing was checked on 1.6.1170 with 1.1.2, through the Vel'dun menus (2026-09-19). The volume boost has never been run on 1.6.1170, and nothing from 1.1.x has run on SE 1.5.97. Those are only reasoned about from how the plugin resolves addresses. See [b]Which version do I download?[/b]
 [/spoiler]
 
 [heading]Source[/heading]

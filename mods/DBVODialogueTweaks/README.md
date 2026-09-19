@@ -78,9 +78,8 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   the expected format — *"real loads … dispatch on whatever format byte the file actually contains"*
   (`REL/IDDB.h:283-284`) — with formats **1, 2 and 5** all handled at `src/REL/IDDB.cpp:193-212`.
   alandtse's fix turned an `== 6` into `>= 6`; it **added** 1.7.x and could not have removed 1.6.x.
-  So 1.1.x is built to run on 1.6.1170 and SE 1.5.97 — but that is a code claim, not an in-engine
-  one: **only 1.7.104 has ever been tested for 1.1.x** (1.6.1170 was last tested at v1.0.0), and the
-  SE-id branch has never been exercised at all. See `docs/ideas.md` for the pending 1.6.1170 replay.
+  So 1.1.x is built to run on 1.6.1170 and SE 1.5.97. 1.6.1170 is verified in-engine (2026-09-19:
+  reply timing and the volume boost, see *Testing*); the SE-id branch has never been exercised.
 - **Skyrim 1.7.104, yes — from v1.0.1, and the reply timing is verified there.** Tested in-engine
   on game 1.7.104 with SKSE 2.3.1 and Address Library v13 (2026-09-03). The plugin loads, installs
   its speak-sound hook, registers its Papyrus native and both event sinks — and the feature this
@@ -342,7 +341,8 @@ All five passed on game 1.7.104 (2026-09-08): **stock**, **untarnished**, **dddm
 **dddm-warm**, **nordicui** — each against its own swf (distinct md5 per run), each reaching both
 assertion gates. **veldun** and **veldun-eso** passed the same way on game **1.6.1170** (2026-09-19),
 the first 1.1.x run on that runtime, with the `-nodll` control of `veldun` failing its first gate as
-designed. `variants/menu.steps` is the companion pass that just photographs a variant's open
+designed. The three `voiceboost` runs passed there the same day, so 1.1.x is verified on both 1.6.1170 and
+1.7.104. SE 1.5.97 has never been run. `variants/menu.steps` is the companion pass that just photographs a variant's open
 dialogue menu, which is how a new overhaul's layout is eyeballed before trusting it.
 
 **The end-to-end pair — DBVO 1.x actually running** (2026-09-09, the verification behind the
