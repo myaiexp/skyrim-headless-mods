@@ -73,7 +73,8 @@ dotnet run --project tools/BsaExtract -- "<Skyrim - Interface.bsa>" controlmap /
 
 ## How the pieces were obtained
 
-- **.NET 8 SDK** → `dotnet-install.sh` into `~/.dotnet` (no root).
+- **.NET SDK** → `dotnet-install.sh` into `~/.dotnet` (no root), or the system SDK — `tools/env.sh`
+  falls back to the one on PATH and sets `DOTNET_ROLL_FORWARD=Major` so the net8 tools run on it.
 - **Mutagen** → NuGet (`Mutagen.Bethesda.Skyrim`).
 - **PapyrusCompiler.exe + DLLs** → copied from a Skyrim install (here, the one bundled with
   Nemesis) into `tools/papyrus-compiler/`.
