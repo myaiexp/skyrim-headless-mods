@@ -65,33 +65,28 @@ Install after DBVO and let it overwrite [font=Courier New]Interface/dialoguemenu
 [/list]
 [heading]Changelog[/heading]
 [b]1.1.2[/b]
-
 [list]
 [*][b]Vel'dun UI menu styles[/b], by request: one for Vel'dun's default dialogue menu and one for its ESO Style dialogue. Vel'dun stopped shipping a DBVO patch in 1.0.6, so these are its own menus with DBVO's hooks put back and this mod's changes built in. Pick the one matching the dialogue style you chose in Vel'dun's installer.[/*]
 [*]No change to the plugin, the scripts, the [font=Courier New].esp[/font] or the other menu styles.[/*]
 [/list]
 [b]1.1.1[/b]
-
 [list]
 [*][b]Menu styles for UI overhauls.[/b] The installer now asks which dialogue menu to install: stock DBVO, Untarnished UI, Dear Diary Dark Mode (white or warm), or NORDIC UI. Each is that overhaul's own DBVO-patched menu with this mod's changes built in, so your dialogue keeps its layout instead of jumping back to DBVO's default. The "my dialogue options moved" report, fixed.[/*]
 [*]No change to the plugin, the scripts or the [font=Courier New].esp[/font]: they are shared by every menu style. If you don't use one of those UI mods, keep "Stock DBVO menu" and nothing about the mod changes.[/*]
 [*][b]Not a change to this mod, but worth knowing:[/b] DBVO 1.1.1 itself works on Skyrim 1.7.104 again, with ConsoleUtilSSE NG 1.6.1 and JContainers SE 4.3.2. Nothing here had to change for it. See [b]Compatibility[/b].[/*]
 [/list]
 [b]1.1.0[/b]
-
 [list]
 [*][b]The volume slider now goes to 300%.[/b] Above 100 the plugin amplifies your own DBVO line. The engine's own volume path is clamped at 100%, so this is a second small hook on the engine's volume-apply function that multiplies the XAudio2 voice's gain for your line only. Asked for by a user with a quiet vampire pack.[/*]
 [*]The MCM shows an info line for each option.[/*]
 [/list]
 [b]1.0.1[/b]
-
 [list]
 [*]Rebuilt so the plugin loads on Skyrim [b]1.7.99 / 1.7.104[/b], which changed the Address Library database to a format 1.0.0 could not read. It did not drop the older builds: see [b]Which version do I download?[/b][/*]
 [*]The installer now warns, before it overwrites anything, that this mod is for [b]DBVO 1.x only[/b] and softlocks dialogue on DBVO 2.[/*]
 [*]No gameplay or feature changes. If you are on 1.6.1170 or older and 1.0.0 works for you, there is nothing in [i]this[/i] release you need; the later ones add features and run on your build too.[/*]
 [/list]
 [b]1.0.0[/b]
-
 [list]
 [*]Initial release: reply on line-end, manual skip, clean cuts on skip and interrupt, player-voice volume, configurable gap, SkyUI MCM.[/*]
 [/list]
