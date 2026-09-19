@@ -154,7 +154,7 @@ downloads) and the mod pages. A compatibility patch = our script deltas re-appli
 | NORDIC UI (49881) | 2.61M / 24.4k | **centre** (vanilla-like) | DBVO Old files "NordicUI Patch" v1.1.0; 87378 (21:9) |
 | Edge UI (130983) | 709k / 5.0k | **right** | bundled in its FOMOD ("DBVO compatibility" option) |
 | Oathvein UI (160916) | 368k / 1.8k | **right** | FOMOD with/without DBVO; also via 182554 |
-| Vel'dun UI (176230) | 201k / 1.3k | unknown | **removed** in 1.0.6 ("no longer needed with DBVO 2 or DBReV") |
+| Vel'dun UI (176230) | 201k / 1.3k | left (DDDM-based; default or "ESO Style") | **removed** in 1.0.6 ("no longer needed with DBVO 2 or DBReV"), but its `DialogueMenu` is DDDM's unchanged, so DBVO's DDDM patch covers it — **shipped as our `veldun`/`veldun-eso` variants (1.1.2)** |
 
 Not relevant: SkyHUD (hudmenu only), Dear Diary paper (no dialogue menu), Better Dialogue
 Controls (vanilla placement). **Every DBVO-page patch sits under Old files, all v1.1.0 dated

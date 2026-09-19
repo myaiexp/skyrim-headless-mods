@@ -82,9 +82,9 @@ fi
 echo ">> [1/5] swf: import src/ into stock/ -> build/Interface/dialoguemenu.swf"
 build_swf "$STOCK" "$SRC" "$OUT" "stock"
 
-# Variants whose base swf is absent are SKIPPED, not fatal: the bases are third-party UI-mod
-# assets and are git-ignored, so a fresh clone legitimately has none. package.sh is the strict
-# one — a release must carry every declared variant.
+# Variants whose base swf is absent are SKIPPED, not fatal: a base whose author forbids
+# re-uploading is git-ignored (see .gitignore), so a fresh clone legitimately lacks it.
+# package.sh is the strict one — a release must carry every declared variant.
 for id in $(variant_ids); do
 	if [[ -f "$VARIANTS_DIR/$id/base.swf" ]]; then
 		# Present but wrong (an md5 that isn't what the port was made against) IS fatal.

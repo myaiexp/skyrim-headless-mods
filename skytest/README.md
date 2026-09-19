@@ -246,6 +246,11 @@ that recipe, instead of burning the full 180 s in-world timeout waiting for some
 going to deliver. The coordinates are for the headless default 1280x720 — re-read them off a `shot`
 if you change resolution.
 
+A `replay` stuck at `waiting for gate inworld` has usually sent its Yes before the prompt drew:
+seen once, on the first boot after the 1.6.1170 swap (2026-09-19), and the next boot was fine. A
+`shot` shows the prompt still up. Rescue it live, since the replay's gate picks up where it stalled:
+`drive tap enter`, then `drive click 602 421` on the "Creations are currently loaded" box.
+
 It still **isolates saves**, so the menu's Load list holds only `SkytestBase` and driving it cannot
 hit the missing-content modal (finding #13) that a real modded save would pop. Fix the underlying
 problem by dropping Start On Save 2.8.0 (Nexus 50054, file 795157) into `skytest/base-skse/`.

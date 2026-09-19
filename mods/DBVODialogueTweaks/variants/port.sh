@@ -60,8 +60,15 @@ failed=0
 for id in "${ids[@]}"; do
 	[[ -f "$HERE/$id/variant.conf" ]] || { echo "ERROR: no such variant: $id" >&2; failed=1; continue; }
 	echo ">> $id — $(variant_get "$id" name)"
-	base_swf="$(variant_base "$id")" || { failed=1; continue; }
-	theirs="$(swf_dialoguemenu_as "$base_swf" "$WORK/$id")" || { failed=1; continue; }
+	variant_base "$id" >/dev/null || { failed=1; continue; }
+	# `script_from=<other id>`: this UI mod ships no DBVO-patched menu, but its DialogueMenu class
+	# is that other variant's UI mod's, unchanged — so the other base's DBVO-patched script stands
+	# in as "theirs". build.sh still imports the result into THIS variant's own base.swf.
+	script_id="$(variant_get "$id" script_from)"
+	script_id="${script_id:-$id}"
+	[[ "$script_id" == "$id" ]] || echo "   script: $script_id's DBVO-patched DialogueMenu"
+	script_swf="$(variant_base "$script_id")" || { failed=1; continue; }
+	theirs="$(swf_dialoguemenu_as "$script_swf" "$WORK/$id")" || { failed=1; continue; }
 	merged="$WORK/$id.merged.as"
 
 	# `git merge-file <current> <base> <other>`: replay base->other (stock DBVO -> ours) onto

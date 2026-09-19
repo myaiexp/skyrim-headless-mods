@@ -17,7 +17,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [*][b]Player-voice volume[/b]: just your own DBVO line, 0–300%, without touching other audio. Below 100 attenuates. Above 100 amplifies (since 1.1.0), for a pack mastered far quieter than the NPCs. Gain above unity can clip a pack that is already loud, so raise it only as far as it needs.
 [*][b]Configurable gap[/b]: the pause after your line ends before the NPC answers, 0–1000 ms (0 = instant).
 [*][b]Native SkyUI MCM[/b]: one screen, no MCM Helper dependency.
-[*][b]Menu styles for UI overhauls[/b] (1.1.1): keep your interface. The installer can put these tweaks into Untarnished UI's, Dear Diary Dark Mode's (white or warm) or NORDIC UI's own dialogue menu instead of DBVO's stock one.
+[*][b]Menu styles for UI overhauls[/b] (1.1.1, Vel'dun UI in 1.1.2): keep your interface. The installer can put these tweaks into Untarnished UI's, Dear Diary Dark Mode's (white or warm), NORDIC UI's or Vel'dun UI's (default or ESO Style) own dialogue menu instead of DBVO's stock one.
 [/list]
 
 [heading]Requirements[/heading]
@@ -34,7 +34,8 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [b]The newest one, on every supported build.[/b] The uploads are cumulative: each release runs everywhere the one before it did and adds a game build or a feature. There is no "old Skyrim" version and "new Skyrim" version. One DLL covers SE and AE, Steam or GOG, because it resolves every engine address at runtime through the Address Library.
 
 [list]
-[*][b]1.1.1[/b], newest. Same builds as 1.1.0, and the same plugin, scripts and esp byte for byte. Adds the installer's menu-style choice for UI overhauls. Each style tested on 1.7.104.
+[*][b]1.1.2[/b], newest. Same plugin, scripts and esp as 1.1.1. Adds the Vel'dun UI menu styles. Tested on 1.6.1170.
+[*][b]1.1.1[/b]. Same builds as 1.1.0, and the same plugin, scripts and esp byte for byte. Adds the installer's menu-style choice for UI overhauls. Each style tested on 1.7.104.
 [*][b]1.1.0[/b]. Same builds as 1.0.1. Adds the volume boost, slider to 300%. Tested on 1.7.104.
 [*][b]1.0.1[/b]. Everything 1.0.0 ran on, [b]plus[/b] Skyrim 1.7.99 / 1.7.104. No feature change. Tested on 1.7.104.
 [*][b]1.0.0[/b]. Skyrim SE 1.5.97 through AE 1.6.1170 only. Does [b]not[/b] load on 1.7.99 / 1.7.104: those builds changed the Address Library database to a format it predates, so it stops with "Unsupported address library format: 5". Tested on AE/Steam 1.6.1170.
@@ -42,7 +43,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 
 [b]On Skyrim 1.7.99 or 1.7.104 you need 1.0.1 or newer.[/b] If you updated Skyrim and your dialogue timing went back to feeling wrong, that is why.
 
-[b]Staying on 1.6.1170? Take 1.1.1, with one honest caveat.[/b] Nothing after 1.0.0 dropped your build, and the archive is identical on every build, so the volume slider and the menu styles are meant to work for you exactly as they do on 1.7.104. But I have only tested 1.1.x on 1.7.104. For 1.1.x on 1.6.1170 I am telling you how it is built, not what I have watched it do. If it misbehaves, drop back to 1.0.0, which is still on the FILES tab and costs you only the boost and the menu styles, then please report it with the relevant line from [font="Courier New"]SKSE/skse64.log[/font] or the plugin's own [font="Courier New"]DBVODialogueTweaks.log[/font]. I would much rather fix it than have people sit on 1.0.0 assuming the newer files are not for them. The same goes for [b]SE 1.5.97[/b] and [b]GOG[/b], with even less mileage behind it: same file, built to work, never tested.
+[b]Staying on 1.6.1170? Take the newest, with one honest caveat.[/b] Nothing after 1.0.0 dropped your build, and the archive is identical on every build. The reply timing has now been tested on 1.6.1170 too: 1.1.2's Vel'dun menus passed the same in-engine check there as every menu did on 1.7.104. The volume slider has not. It has its own hook, and I have only watched it work on 1.7.104, so for the slider on 1.6.1170 I am telling you how it is built, not what I have seen it do. If it misbehaves, drop back to 1.0.0, which is still on the FILES tab and costs you only the boost and the menu styles, then please report it with the relevant line from [font="Courier New"]SKSE/skse64.log[/font] or the plugin's own [font="Courier New"]DBVODialogueTweaks.log[/font]. I would much rather fix it than have people sit on 1.0.0 assuming the newer files are not for them. The same goes for [b]SE 1.5.97[/b] and [b]GOG[/b], with even less mileage behind it: same file, built to work, never tested.
 
 [heading]Compatibility[/heading]
 
@@ -53,7 +54,7 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [*][b]On Skyrim 1.7.104, update DBVO's two dependencies or nothing will speak, and that will look like this mod's fault.[/b] SKSE 2.3.1 refuses the old builds of both SKSE plugins DBVO 1.x needs, before they even load, and says so in its own pop-up: [font="Courier New"]ConsoleUtilSSE.dll: must be recompiled for new address library[/font] and [font="Courier New"]JContainers64.dll: disabled, incompatible with current version of the game[/font]. ConsoleUtil speaks your line and JContainers reads DBVO's settings, so with both refused DBVO produces no player voice at all, and this mod has nothing to time.
 
 [b]The fix is two downloads, and I have tested it.[/b] With [b]ConsoleUtilSSE NG 1.6.1[/b] and [b]JContainers SE 4.3.2[/b], DBVO 1.1.1 works on Skyrim 1.7.104, verified in-engine on 2026-09-09. Two things to watch. Install JContainers' whole [font="Courier New"]SKSE/Plugins/JCData[/font] folder, or the game dies on startup while the SKSE log still claims the plugin loaded fine. And if SkyUI greets you with "SKYUI ERROR CODE 4, your Papyrus INI settings are invalid", that is SkyUI complaining about your own [font="Courier New"]Skyrim.ini[/font] and is unrelated to this mod, but dismiss the box before you talk to anyone, because it eats the activation key.
-[*][b]Using a UI overhaul that moves the dialogue menu? Pick your menu in the installer.[/b] This mod ships the whole [font="Courier New"]dialoguemenu.swf[/font], so where an overhaul has its own DBVO-patched menu, one of the two has to win, and installing this one used to drag your topic list back to DBVO's default position. From 1.1.1 the installer asks: [b]Stock DBVO[/b] (the default), [b]Untarnished UI[/b], [b]Dear Diary Dark Mode[/b] (white or warm) or [b]NORDIC UI[/b]. Those four are that overhaul's own menu with this mod's changes built in, so you keep your layout and get the timing, skip and cuts. Pick the matching one and let it overwrite both DBVO's copy and the overhaul's. On an overhaul that is not listed, let the overhaul's menu win instead: the [b]volume slider still works[/b], since it lives in the plugin rather than the menu, and you lose only the skip key and the reply timing. Tell me which overhaul and I will add it.
+[*][b]Using a UI overhaul that moves the dialogue menu? Pick your menu in the installer.[/b] This mod ships the whole [font="Courier New"]dialoguemenu.swf[/font], so where an overhaul has its own DBVO-patched menu, one of the two has to win, and installing this one used to drag your topic list back to DBVO's default position. From 1.1.1 the installer asks: [b]Stock DBVO[/b] (the default), [b]Untarnished UI[/b], [b]Dear Diary Dark Mode[/b] (white or warm), [b]NORDIC UI[/b] or, from 1.1.2, [b]Vel'dun UI[/b] (default or ESO Style dialogue, matching what you picked in Vel'dun's installer). Each is that overhaul's own menu with this mod's changes built in, so you keep your layout and get the timing, skip and cuts. Pick the matching one and let it overwrite both DBVO's copy and the overhaul's. On an overhaul that is not listed, let the overhaul's menu win instead: the [b]volume slider still works[/b], since it lives in the plugin rather than the menu, and you lose only the skip key and the reply timing. Tell me which overhaul and I will add it.
 [*][b]Load order.[/b] It overwrites only DBVO's [font="Courier New"]Interface/dialoguemenu.swf[/font], so let it win that conflict and install it after DBVO. It never touches DBVO's own scripts. The [font="Courier New"].esp[/font] is ESL-flagged and takes no load-order slot.
 [/list]
 
@@ -65,6 +66,12 @@ The NPC's reply lands when your voiced line actually ends. A small SKSE plugin w
 [/list]
 
 [heading]Changelog[/heading]
+
+[b]1.1.2[/b]
+[list]
+[*][b]Vel'dun UI menu styles[/b], by request: one for Vel'dun's default dialogue menu and one for its ESO Style dialogue. Vel'dun stopped shipping a DBVO patch in 1.0.6, so these are its own menus with DBVO's hooks put back and this mod's changes built in. Pick the one matching the dialogue style you chose in Vel'dun's installer.
+[*]No change to the plugin, the scripts, the [font="Courier New"].esp[/font] or the other menu styles.
+[/list]
 
 [b]1.1.1[/b]
 [list]
@@ -138,11 +145,11 @@ When the DLL is present and working, [font="Courier New"]dbvoOnPlayerLineEnded[/
 [list]
 [*][b]Reply on line-end.[/b] With the DLL, the reply landed at the line's real end plus the configured gap: a 15 s gap put it 20.3 s after the line started, against 20.0 s predicted. Without the DLL, the reply fired at the swf backstop 4.1 s after the timer was armed, ignoring the gap entirely.
 [*][b]Volume boost.[/b] At 250% the plugin's log shows the line's XAudio2 gain read back at 2.5x the engine's own value. At 100% no such line is written. With the plugin removed the check fails outright.
-[*][b]Menu styles.[/b] All four were verified the same way as the stock menu: the reply must still be waiting once DBVO's word-count guess would have fired, then land at the line's real end plus the configured gap.
+[*][b]Menu styles.[/b] Every one was verified the same way as the stock menu (the first four on 1.7.104, Vel'dun's two on 1.6.1170): the reply must still be waiting once DBVO's word-count guess would have fired, then land at the line's real end plus the configured gap.
 [*][b]The DBVO 1.x chain on 1.7.104.[/b] With ConsoleUtilSSE NG 1.6.1 and JContainers SE 4.3.2, the whole real chain was driven end to end: DBVO's own Papyrus took the mod event, resolved the voice pack through JContainers, spoke the line through ConsoleUtil, and the NPC replied on the line's end plus the gap.
 [/list]
 
-The one gap I will not paper over: this is all on 1.7.104. Versions 1.1.0 and 1.1.1 have never been run on 1.6.1170 or on SE 1.5.97, only reasoned about from how the plugin resolves addresses. See [b]Which version do I download?[/b]
+The one gap I will not paper over: apart from the reply timing, this is all on 1.7.104. Reply timing was checked on 1.6.1170 with 1.1.2, through the Vel'dun menus (2026-09-19). The volume boost has never been run on 1.6.1170, and nothing from 1.1.x has run on SE 1.5.97. Those are only reasoned about from how the plugin resolves addresses. See [b]Which version do I download?[/b]
 [/spoiler]
 
 [heading]Source[/heading]
@@ -155,10 +162,11 @@ It's all built headlessly on Linux: no Creation Kit, no SSEEdit, no GUI tooling.
 
 Built on [url=https://www.nexusmods.com/skyrimspecialedition/mods/84329]Dragonborn Voice Over[/url] by [b]MathiewMay[/b], with permission received from the author. The bundled [font="Courier New"]dialoguemenu.swf[/font] is DBVO's asset recompiled with these tweaks. All credit for DBVO goes to MathiewMay.
 
-The four UI-overhaul menu styles are built on the DBVO-patched menus published for those mods on DBVO's own OLD FILES tab, and each one keeps that mod's dialogue-menu design: only the menu's script is changed. Every layout, font and colour in them is its author's work, used under that mod's permissions, and the credit for how those menus look belongs to them:
+The UI-overhaul menu styles are built on the DBVO-patched menus published for those mods on DBVO's own OLD FILES tab (for Vel'dun UI, which ships no DBVO patch, on its own two menus), and each one keeps that mod's dialogue-menu design: only the menu's script is changed. Every layout, font and colour in them is its author's work, used under that mod's permissions, and the credit for how those menus look belongs to them:
 [list]
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/75188]Untarnished UI[/url] by [b]Vor[/b]
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/60837]Dear Diary Dark Mode[/url] by [b]uranreactor[/b]
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/49881]NORDIC UI[/url] by [b]outobugi[/b]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/176230]Vel'dun UI[/url] by [b]Nithog[/b], whose dialogue menu builds on uranreactor's Dear Diary Dark Mode
 [/list]
 If you are one of those authors and would rather this menu style were not shipped here, say so and I will pull it.

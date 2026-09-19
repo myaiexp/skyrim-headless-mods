@@ -28,7 +28,7 @@ source "$HERE/variants/lib.sh"
 # styles for UI overhauls, which is a compatibility fix on the install side. Hence a patch bump and
 # an unchanged kVersion; a minor bump is for the next release that actually moves the C++.
 NAME="DBVO Dialogue Tweaks"
-VERSION="1.1.1"
+VERSION="1.1.2"
 AUTHOR="Mase"
 WEBSITE="https://github.com/myaiexp/skyrim-headless-mods"
 CATEGORY="Patches"
@@ -137,7 +137,7 @@ Requires Dragonborn Voice Over 1.1.1 (the mod page's OLD FILES tab), SKSE, SkyUI
 EOF
 
 # --- fomod/ModuleConfig.xml, part 2: the menu-style group (generated from variants/) ---
-# Written by loop, not by hand: adding a fifth UI overhaul is a variants/ directory and nothing
+# Written by loop, not by hand: adding another UI overhaul is a variants/ directory and nothing
 # else. `<` and `&` in a description would break the XML, so every interpolated string is escaped.
 xml_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
@@ -159,7 +159,7 @@ for id in "${UI_IDS[@]}"; do
 	[[ "$id" == stock ]] && continue
 	{
 		printf '            <plugin name="%s">\n' "$(variant_get "$id" name | xml_escape)"
-		printf '              <description>%s\n\nPick this instead of the stock menu when you run %s: it is that mod'"'"'s own DBVO-patched dialogue menu with this mod'"'"'s changes ported onto it, so your dialogue keeps its layout. The menu itself is %s'"'"'s work, used under that mod'"'"'s permissions.</description>\n' \
+		printf '              <description>%s\n\nPick this instead of the stock menu when you run %s: it is that mod'"'"'s own dialogue menu with DBVO'"'"'s hooks and this mod'"'"'s changes built in, so your dialogue keeps its layout. The menu itself is %s'"'"'s work, used under that mod'"'"'s permissions.</description>\n' \
 			"$(variant_get "$id" desc | xml_escape)" \
 			"$(variant_get "$id" ui_mod | xml_escape)" \
 			"$(variant_get "$id" ui_author | xml_escape)"

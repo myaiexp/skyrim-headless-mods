@@ -346,11 +346,12 @@ shipped, verified in-game. Deferred:
 
 ## 2026-09-08 — DBVO follow-ups left by the UI-compatibility session
 
-- **The four UI-overhaul compatibility variants SHIPPED (2026-09-08)** — Untarnished, DDDM white,
-  DDDM warm, NordicUI, each verified in-engine. What remains is the *next* three overhauls (DIR,
-  CDUI's four looks, Dragonborn Reskin), which is a `variants/<id>/` directory and one `port.sh`
-  run each: `mods/DBVODialogueTweaks/variants/README.md`, priority in `docs/dbvo-landscape.md`.
-  Read the new mod's Nexus permissions first — the four shipped ones were cleared that way
+- **The UI-overhaul compatibility variants SHIPPED** — Untarnished, DDDM white, DDDM warm,
+  NordicUI (1.1.1), Vel'dun default + ESO (1.1.2, by request), each verified in-engine. What remains
+  is the *next* three overhauls (DIR, CDUI's four looks, Dragonborn Reskin), which is a
+  `variants/<id>/` directory and one `port.sh` run each (a UI mod with no DBVO patch of its own:
+  see the Vel'dun section of the variants README): `mods/DBVODialogueTweaks/variants/README.md`, priority in `docs/dbvo-landscape.md`.
+  Read the new mod's Nexus permissions first — the shipped ones were cleared that way
   (2026-09-09) and each menu's author is credited on the page, in the README and in the installer.
 - **Install the revived DBVO 1.x chain in the LIVE game** (the end-to-end test itself is done —
   2026-09-09, ConsoleUtilSSE NG 1.6.1 + JContainers SE 4.3.2, `docs/dbvo-landscape.md`). The live
@@ -371,7 +372,10 @@ shipped, verified in-game. Deferred:
   double-scale**. Mechanism and the dead ends: `docs/plans/dbvo-mouth-snap-handoff.md`; the
   corrected seam verdict is finding #21 in `skytest/docs/headless-findings.md`. Known leftover once
   ported: a one-frame tongue flick at the skip instant, hypothesis and untried fixes in the handoff.
-- **Verify 1.1.x in-engine on 1.6.1170, at the downgrade.** 1.1.1 is *built* to run there and the
+- **Verify 1.1.x in-engine on 1.6.1170, at the downgrade.** *Half done 2026-09-19:*
+  `replyonlineend.steps` passed on 1.6.1170 with 1.1.2's Vel'dun menus (A/B control failed as
+  designed), so the plugin's line-end detection works there. **Still open: `voiceboost.steps`**, the
+  one feature with its own hook. Then rewrite the page's 1.6.1170 caveat. 1.1.1 is *built* to run there and the
   Nexus page now says so (cumulative releases, the code chain is cited in the mod's `README.md`),
   but the only in-engine evidence on 1.6.1170 is v1.0.0's — 1.1.x has been tested on 1.7.104 only,
   and the page carries that caveat plus a "fall back to 1.0.0 and report" instruction. The standing

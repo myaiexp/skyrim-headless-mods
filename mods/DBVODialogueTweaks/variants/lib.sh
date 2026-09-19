@@ -3,7 +3,7 @@
 #
 # A "variant" is our swf deltas re-applied on top of a UI overhaul's OWN DBVO-patched
 # dialoguemenu.swf, so a user of that overhaul keeps their menu layout and still gets this mod.
-# See variants/README.md for the tree, and for how to add a fifth.
+# See variants/README.md for the tree, and for how to add another.
 #
 # Sourced, never executed. Every function prints to stderr and returns non-zero on failure.
 
@@ -98,7 +98,8 @@ variant_get() {
 }
 
 # The base swf a variant patches: present, and the exact file we ported against.
-# Ignored by git (third-party UI-mod assets) — variants/README.md says where to get each.
+# Committed where the UI mod's permissions allow it, git-ignored where they don't — either way
+# its variant.conf `source=` says where to get it.
 variant_base() {
 	local id="$1" swf="$VARIANTS_DIR/$1/base.swf" want got
 	if [[ ! -f "$swf" ]]; then

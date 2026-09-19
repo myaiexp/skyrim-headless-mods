@@ -158,9 +158,10 @@ lightweight SKSE plugin watches your line and cues the reply the moment it stops
   | **Untarnished UI** | [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188) |
   | **Dear Diary Dark Mode (white)** / **(warm)** | [Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837), matching colour |
   | **NORDIC UI** | [NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881) |
+  | **Vel'dun UI** / **(ESO Style dialogue)** | [Vel'dun UI](https://www.nexusmods.com/skyrimspecialedition/mods/176230), matching the dialogue style picked in its installer |
 
-  Each of those four **is that overhaul's own DBVO-patched swf** with this mod's script changes
-  ported onto it, so you keep your layout *and* get skip, reply-on-line-end and the cuts. Install
+  Each of those **is that overhaul's own dialogue swf** with DBVO's hooks and this mod's script
+  changes ported onto it, so you keep your layout *and* get skip, reply-on-line-end and the cuts. Install
   the matching one and let it overwrite both DBVO's and the overhaul's `dialoguemenu.swf`.
 
   Running an overhaul that isn't listed (Dialogue Interface ReShaped, Convenient Dialogue UI,
@@ -284,17 +285,19 @@ Built on **Dragonborn Voice Over** by **MathiewMay**, with permission received f
 bundled `dialoguemenu.swf` is MathiewMay's asset recompiled with these tweaks. **All credit for DBVO
 goes to MathiewMay.**
 
-The four UI-overhaul menu styles are built on the DBVO-patched `dialoguemenu.swf` published for each
-of those UI mods on the DBVO page's OLD FILES tab, and each carries that UI mod's own dialogue-menu
-design. Only the `DialogueMenu` class's script is changed; every layout, font and asset in them is
-its author's work, used under that mod's own Nexus permissions (checked 2026-09-09 — all three
-permit it), and **credit for each menu's look goes to its author**:
+The UI-overhaul menu styles are built on each UI mod's own `dialoguemenu.swf`: the DBVO-patched one
+published on the DBVO page's OLD FILES tab, or for Vel'dun (which ships no DBVO patch) its own two
+menus from its main file. Each carries that UI mod's own dialogue-menu design. Only the
+`DialogueMenu` class's script is changed; every layout, font and asset in them is its author's
+work, used under that mod's own Nexus permissions (checked 2026-09-09, Vel'dun 2026-09-19 — all
+permit it with credit), and **credit for each menu's look goes to its author**:
 
 | Menu style | Mod | Author |
 | --- | --- | --- |
 | Untarnished UI | [Untarnished UI](https://www.nexusmods.com/skyrimspecialedition/mods/75188) | **Vor** |
 | Dear Diary Dark Mode (white / warm) | [Dear Diary Dark Mode](https://www.nexusmods.com/skyrimspecialedition/mods/60837) | **uranreactor** |
 | NORDIC UI | [NORDIC UI](https://www.nexusmods.com/skyrimspecialedition/mods/49881) | **outobugi** |
+| Vel'dun UI (default / ESO Style) | [Vel'dun UI](https://www.nexusmods.com/skyrimspecialedition/mods/176230) | **Nithog**, on **uranreactor**'s Dear Diary Dark Mode |
 
 ## Testing
 
@@ -337,7 +340,9 @@ SKYTEST_NO_AUTOLOAD=1 skytest replay ~/.cache/skytest-dbvotweaks-nordicui \
 
 All five passed on game 1.7.104 (2026-09-08): **stock**, **untarnished**, **dddm-white**,
 **dddm-warm**, **nordicui** — each against its own swf (distinct md5 per run), each reaching both
-assertion gates. `variants/menu.steps` is the companion pass that just photographs a variant's open
+assertion gates. **veldun** and **veldun-eso** passed the same way on game **1.6.1170** (2026-09-19),
+the first 1.1.x run on that runtime, with the `-nodll` control of `veldun` failing its first gate as
+designed. `variants/menu.steps` is the companion pass that just photographs a variant's open
 dialogue menu, which is how a new overhaul's layout is eyeballed before trusting it.
 
 **The end-to-end pair — DBVO 1.x actually running** (2026-09-09, the verification behind the
